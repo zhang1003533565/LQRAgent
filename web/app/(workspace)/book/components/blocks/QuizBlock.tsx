@@ -138,9 +138,9 @@ function QuizQuestionCard({
                 onClick={() => setSelected(upperKey)}
                 className={`flex w-full items-start gap-2 rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
                   isCorrect
-                    ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100"
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-900"
                     : isWrongPick
-                      ? "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100"
+                      ? "border-rose-300 bg-rose-50 text-rose-900"
                       : isSelected
                         ? "border-[var(--primary)] bg-[var(--primary)]/8 text-[var(--foreground)]"
                         : "border-[var(--border)] bg-[var(--card)] text-[var(--foreground)] hover:border-[var(--primary)]/40"

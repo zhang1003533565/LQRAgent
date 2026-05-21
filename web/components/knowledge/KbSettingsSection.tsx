@@ -68,7 +68,7 @@ export default function KbSettingsSection({
           </p>
         </div>
         {kb.is_default ? (
-          <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-100 px-2.5 py-1 text-[12px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-100 px-2.5 py-1 text-[12px] font-medium text-amber-700">
             <Star className="h-3 w-3" fill="currentColor" />
             {t("Currently default")}
           </span>
@@ -84,12 +84,12 @@ export default function KbSettingsSection({
         )}
       </section>
 
-      <section className="space-y-3 rounded-lg border border-red-200 bg-red-50/40 p-3 dark:border-red-900/60 dark:bg-red-950/15">
+      <section className="space-y-3 rounded-lg border border-red-200 bg-red-50/40 p-3">
         <div>
-          <div className="text-[12.5px] font-medium text-red-700 dark:text-red-300">
+          <div className="text-[12.5px] font-medium text-red-700">
             {t("Danger zone")}
           </div>
-          <p className="mt-0.5 text-[11.5px] text-red-700/80 dark:text-red-300/80">
+          <p className="mt-0.5 text-[11.5px] text-red-700/80">
             {t(
               "Deleting a knowledge base permanently removes its raw documents and index versions.",
             )}
@@ -98,7 +98,7 @@ export default function KbSettingsSection({
         <button
           type="button"
           onClick={() => void onDelete()}
-          className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-[12px] font-medium text-red-700 transition-colors hover:bg-red-100 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300 dark:hover:bg-red-950/50"
+          className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-[12px] font-medium text-red-700 transition-colors hover:bg-red-100"
         >
           <Trash2 className="h-3 w-3" />
           {t("Delete knowledge base")}

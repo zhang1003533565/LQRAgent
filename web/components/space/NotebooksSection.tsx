@@ -177,35 +177,35 @@ export default function NotebooksSection() {
       case "chat":
         return {
           label: t("Chat"),
-          color: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+          color: "bg-sky-100 text-sky-700",
           icon: MessageSquare,
         };
       case "tutorbot":
         return {
           label: t("Tutorbot"),
           color:
-            "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+            "bg-violet-100 text-violet-700",
           icon: Bot,
         };
       case "research":
         return {
           label: t("Research"),
           color:
-            "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+            "bg-emerald-100 text-emerald-700",
           icon: Search,
         };
       case "co_writer":
         return {
           label: t("Co-Writer"),
           color:
-            "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+            "bg-amber-100 text-amber-700",
           icon: Pencil,
         };
       default:
         return {
           label: type,
           color:
-            "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
+            "bg-slate-100 text-slate-600",
           icon: NotebookPen,
         };
     }

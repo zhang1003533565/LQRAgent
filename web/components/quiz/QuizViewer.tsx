@@ -653,10 +653,10 @@ export default function QuizViewer({
               <span
                 className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium uppercase ${
                   q.difficulty === "hard"
-                    ? "bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400"
+                    ? "bg-red-50 text-red-600"
                     : q.difficulty === "medium"
-                      ? "bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400"
-                      : "bg-green-50 text-green-600 dark:bg-green-950/30 dark:text-green-400"
+                      ? "bg-amber-50 text-amber-600"
+                      : "bg-green-50 text-green-600"
                 }`}
               >
                 {q.difficulty}
@@ -675,8 +675,8 @@ export default function QuizViewer({
                 title={currentBookmarked ? t("Remove Bookmark") : t("Bookmark")}
                 className={`rounded-lg p-1.5 transition-all disabled:opacity-30 ${
                   currentBookmarked
-                    ? "scale-110 text-amber-500 dark:text-amber-400"
-                    : "text-[var(--muted-foreground)] hover:text-amber-500 dark:hover:text-amber-400"
+                    ? "scale-110 text-amber-500"
+                    : "text-[var(--muted-foreground)] hover:text-amber-500"
                 }`}
               >
                 <Bookmark
@@ -767,10 +767,10 @@ export default function QuizViewer({
                   "border-[var(--primary)] bg-[var(--primary)]/[0.06] text-[var(--foreground)] ring-1 ring-[var(--primary)]/20";
               } else if (showFeedback && isCorrectOption) {
                 optionClass =
-                  "border-green-500 bg-green-50 text-green-800 dark:bg-green-950/20 dark:text-green-300 dark:border-green-700";
+                  "border-green-500 bg-green-50 text-green-800";
               } else if (showFeedback && isSelected && !isCorrectOption) {
                 optionClass =
-                  "border-red-400 bg-red-50 text-red-700 dark:bg-red-950/20 dark:text-red-300 dark:border-red-700";
+                  "border-red-400 bg-red-50 text-red-700";
               }
 
               return (
@@ -839,8 +839,8 @@ export default function QuizViewer({
                 <span
                   className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${
                     isCorrect
-                      ? "bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400"
-                      : "bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400"
+                      ? "bg-green-100 text-green-700"
+                      : "bg-red-100 text-red-700"
                   }`}
                 >
                   {isCorrect ? t("Correct") : t("Incorrect")}

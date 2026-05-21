@@ -10,7 +10,6 @@ import {
 } from "react";
 import {
   getStoredTheme,
-  getSystemTheme,
   setTheme as applyThemePreference,
   subscribeToThemeChanges,
   type Theme,
@@ -46,21 +45,16 @@ interface AppShellContextValue {
 const AppShellContext = createContext<AppShellContextValue | null>(null);
 
 export function AppShellProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    return getStoredTheme() ?? getSystemTheme();
-  });
-  // Always start with "en" to match SSR; hydrate from localStorage after mount
-  const [language, setLanguageState] = useState<AppLanguage>("en");
+  const [theme, setThemeState] = useState<Theme>(() => getStoredTheme() ?? "light");
+  const [language, setLanguageState] = useState<AppLanguage>(() =>
+    readStoredLanguage(),
+  );
   const [activeSessionId, setActiveSessionIdState] = useState<string | null>(
     () => readStoredActiveSessionId(),
   );
-  // Always start expanded to match SSR; hydrate from localStorage after mount
-  const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(false);
-
-  useEffect(() => {
-    setLanguageState(readStoredLanguage());
-    setSidebarCollapsedState(readStoredSidebarCollapsed());
-  }, []);
+  const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(() =>
+    readStoredSidebarCollapsed(),
+  );
 
   useEffect(() => {
     return subscribeToThemeChanges((nextTheme) => {
@@ -118,8 +112,9 @@ export function AppShellProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setLanguage = useCallback((nextLanguage: AppLanguage) => {
-    writeStoredLanguage(nextLanguage);
-    setLanguageState(nextLanguage);
+    const normalizedLanguage = normalizeLanguage(nextLanguage);
+    writeStoredLanguage(normalizedLanguage);
+    setLanguageState(normalizedLanguage);
   }, []);
 
   const setActiveSessionId = useCallback((sessionId: string | null) => {

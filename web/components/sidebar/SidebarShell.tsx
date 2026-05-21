@@ -36,39 +36,39 @@ interface NavEntry {
 const PRIMARY_NAV: NavEntry[] = [
   {
     href: "/chat",
-    label: "Chat",
+    label: "聊天",
     icon: MessageSquare,
     tooltipKey: "Chat tooltip",
   },
   {
     href: "/agents",
-    label: "TutorBot",
+    label: "导师机器人",
     icon: Bot,
     tooltipKey: "TutorBot tooltip",
   },
   {
     href: "/co-writer",
-    label: "Co-Writer",
+    label: "协作写作",
     icon: PenLine,
     tooltipKey: "Co-Writer tooltip",
   },
-  { href: "/book", label: "Book", icon: Library, tooltipKey: "Book tooltip" },
+  { href: "/book", label: "图书", icon: Library, tooltipKey: "Book tooltip" },
   {
     href: "/knowledge",
-    label: "Knowledge",
+    label: "知识库",
     icon: BookOpen,
     tooltipKey: "Knowledge tooltip",
   },
   {
     href: "/space",
-    label: "Space",
+    label: "空间",
     icon: LayoutGrid,
     tooltipKey: "Space tooltip",
   },
 ];
 
 const SECONDARY_NAV: NavEntry[] = [
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/settings", label: "设置", icon: Settings },
 ];
 const DEFAULT_SESSION_VIEWPORT_CLASS_NAME = "max-h-[112px]";
 const GITHUB_REPO_URL = "https://github.com/HKUDS/DeepTutor";
@@ -120,12 +120,12 @@ export function SidebarShell({
         <div className="relative mb-2 flex h-9 w-9 items-center justify-center">
           <Link
             href="/"
-            aria-label="DeepTutor"
+            aria-label={t("DeepTutor")}
             className="flex items-center justify-center transition-opacity duration-150 group-hover/sb:opacity-0"
           >
             <Image
               src="/logo-ver2.png"
-              alt="DeepTutor"
+              alt={t("DeepTutor")}
               width={22}
               height={22}
               className="h-[22px] w-[22px] rounded-md"
@@ -216,8 +216,8 @@ export function SidebarShell({
             href={GITHUB_REPO_URL}
             target="_blank"
             rel="noreferrer noopener"
-            title="GitHub"
-            aria-label="GitHub"
+            title={t("GitHub")}
+            aria-label={t("GitHub")}
             className="mt-1 flex h-9 w-9 items-center justify-center rounded-xl text-[var(--muted-foreground)]/70 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--foreground)]"
           >
             <Github size={15} strokeWidth={1.6} />
@@ -236,13 +236,13 @@ export function SidebarShell({
         <Link href="/" className="group flex items-center gap-2">
           <Image
             src="/logo-ver2.png"
-            alt="DeepTutor"
+            alt={t("DeepTutor")}
             width={22}
             height={22}
             className="h-[22px] w-[22px] transition-transform duration-200 group-hover:scale-105"
           />
           <span className="text-[16px] font-semibold leading-none tracking-[-0.02em] text-[var(--foreground)]">
-            DeepTutor
+            {t("DeepTutor")}
           </span>
         </Link>
         <button
@@ -339,8 +339,8 @@ export function SidebarShell({
             href={GITHUB_REPO_URL}
             target="_blank"
             rel="noreferrer noopener"
-            title="GitHub"
-            aria-label="GitHub"
+            title={t("GitHub")}
+            aria-label={t("GitHub")}
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--muted-foreground)]/55 transition-colors hover:bg-[var(--background)]/50 hover:text-[var(--muted-foreground)]"
           >
             <Github size={13} strokeWidth={1.7} />

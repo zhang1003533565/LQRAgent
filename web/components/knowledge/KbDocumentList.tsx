@@ -161,7 +161,7 @@ export default function KbDocumentList({
 
       <div className="flex-1 overflow-y-auto px-1.5 pb-2.5">
         {error ? (
-          <div className="rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-[11px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          <div className="rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-[11px] text-red-700">
             {error}
             <button
               type="button"

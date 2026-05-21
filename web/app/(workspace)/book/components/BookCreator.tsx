@@ -714,17 +714,9 @@ export default function BookCreator({
             <div className="flex items-center justify-between gap-3">
               <label className="text-xs text-[var(--muted-foreground)]">
                 {t("Language")}{" "}
-                <select
-                  value={language}
-                  onChange={(e) => {
-                    languageTouchedRef.current = true;
-                    setLanguage(e.target.value as "en" | "zh");
-                  }}
-                  className="ml-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-xs text-[var(--foreground)]"
-                >
-                  <option value="en">{t("language.english")}</option>
-                  <option value="zh">{t("language.chinese")}</option>
-                </select>
+                <span className="ml-1 rounded-md border border-[var(--border)] bg-[var(--background)] px-1.5 py-0.5 text-xs text-[var(--foreground)]">
+                  {t("language.chinese")}
+                </span>
               </label>
               <button
                 onClick={handleCreate}

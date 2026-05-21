@@ -40,9 +40,9 @@ const MarkdownRenderer = dynamic(
 type FilterMode = "all" | "bookmarked" | "wrong";
 
 const FILTERS: { mode: FilterMode; label: string }[] = [
-  { mode: "all", label: "All" },
-  { mode: "bookmarked", label: "Bookmarked" },
-  { mode: "wrong", label: "Wrong Only" },
+  { mode: "all", label: "全部" },
+  { mode: "bookmarked", label: "已收藏" },
+  { mode: "wrong", label: "仅错题" },
 ];
 
 export default function QuestionBankSection() {
@@ -270,7 +270,7 @@ export default function QuestionBankSection() {
                     </button>
                     <button
                       onClick={() => void handleDeleteCategory(cat.id)}
-                      className="rounded p-1 text-[var(--muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30"
+                      className="rounded p-1 text-[var(--muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-500"
                     >
                       <Trash2 size={12} />
                     </button>
@@ -362,8 +362,8 @@ export default function QuestionBankSection() {
           <Loader2 className="h-5 w-5 animate-spin text-[var(--muted-foreground)]" />
         </div>
       ) : errorMsg ? (
-        <div className="flex min-h-[320px] flex-col items-center justify-center rounded-xl border border-dashed border-red-300 text-center dark:border-red-900">
-          <div className="mb-3 rounded-xl bg-red-50 p-2.5 text-red-500 dark:bg-red-950/30">
+        <div className="flex min-h-[320px] flex-col items-center justify-center rounded-xl border border-dashed border-red-300 text-center">
+          <div className="mb-3 rounded-xl bg-red-50 p-2.5 text-red-500">
             <AlertTriangle size={18} />
           </div>
           <p className="text-[14px] font-medium text-[var(--foreground)]">
@@ -409,10 +409,10 @@ export default function QuestionBankSection() {
                         <span
                           className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium uppercase ${
                             item.difficulty === "hard"
-                              ? "bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400"
+                              ? "bg-red-50 text-red-600"
                               : item.difficulty === "medium"
-                                ? "bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400"
-                                : "bg-green-50 text-green-600 dark:bg-green-950/30 dark:text-green-400"
+                                ? "bg-amber-50 text-amber-600"
+                                : "bg-green-50 text-green-600"
                           }`}
                         >
                           {item.difficulty}
@@ -426,8 +426,8 @@ export default function QuestionBankSection() {
                       <span
                         className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${
                           item.is_correct
-                            ? "bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400"
-                            : "bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400"
+                            ? "bg-green-100 text-green-700"
+                            : "bg-red-100 text-red-700"
                         }`}
                       >
                         {item.is_correct ? t("Correct") : t("Incorrect")}
@@ -494,18 +494,18 @@ export default function QuestionBankSection() {
                           key={key}
                           className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 text-[13px] transition-colors ${
                             isCorrectAnswer
-                              ? "border-green-200 bg-green-50/60 dark:border-green-900 dark:bg-green-950/20"
+                              ? "border-green-200 bg-green-50/60"
                               : isWrongPick
-                                ? "border-red-200 bg-red-50/60 dark:border-red-900 dark:bg-red-950/20"
+                                ? "border-red-200 bg-red-50/60"
                                 : "border-transparent bg-[var(--muted)]/30"
                           }`}
                         >
                           <span
                             className={`mt-px shrink-0 font-semibold ${
                               isCorrectAnswer
-                                ? "text-green-600 dark:text-green-400"
+                                ? "text-green-600"
                                 : isWrongPick
-                                  ? "text-red-600 dark:text-red-400"
+                                  ? "text-red-600"
                                   : "text-[var(--muted-foreground)]"
                             }`}
                           >
@@ -521,12 +521,12 @@ export default function QuestionBankSection() {
                             {text}
                           </span>
                           {isCorrectAnswer && (
-                            <span className="mt-px shrink-0 text-[10px] font-medium text-green-600 dark:text-green-400">
+                            <span className="mt-px shrink-0 text-[10px] font-medium text-green-600">
                               ✓ {t("Correct")}
                             </span>
                           )}
                           {isWrongPick && (
-                            <span className="mt-px shrink-0 text-[10px] font-medium text-red-600 dark:text-red-400">
+                            <span className="mt-px shrink-0 text-[10px] font-medium text-red-600">
                               ✗ {t("Your pick")}
                             </span>
                           )}
@@ -541,15 +541,15 @@ export default function QuestionBankSection() {
                     <div
                       className={`rounded-lg border px-3 py-2.5 ${
                         !item.is_correct
-                          ? "border-red-200/60 bg-red-50/40 dark:border-red-900/40 dark:bg-red-950/15"
-                          : "border-green-200/60 bg-green-50/40 dark:border-green-900/40 dark:bg-green-950/15"
+                          ? "border-red-200/60 bg-red-50/40"
+                          : "border-green-200/60 bg-green-50/40"
                       }`}
                     >
                       <div
                         className={`mb-1 text-[11px] font-medium uppercase tracking-wide ${
                           !item.is_correct
-                            ? "text-red-500 dark:text-red-400"
-                            : "text-green-600 dark:text-green-400"
+                            ? "text-red-500"
+                            : "text-green-600"
                         }`}
                       >
                         {t("Your Answer")} {item.is_correct ? "✓" : "✗"}
@@ -576,8 +576,8 @@ export default function QuestionBankSection() {
                         )}
                       </div>
                     </div>
-                    <div className="rounded-lg border border-green-200/60 bg-green-50/40 px-3 py-2.5 dark:border-green-900/40 dark:bg-green-950/15">
-                      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-green-600 dark:text-green-400">
+                    <div className="rounded-lg border border-green-200/60 bg-green-50/40 px-3 py-2.5">
+                      <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-green-600">
                         {t("Reference Answer")}
                       </div>
                       <div className="text-[var(--foreground)]">
@@ -612,8 +612,8 @@ export default function QuestionBankSection() {
                 )}
 
                 {item.explanation && (
-                  <div className="mb-3 rounded-lg border border-blue-200/60 bg-blue-50/30 px-3 py-2.5 dark:border-blue-900/40 dark:bg-blue-950/15">
-                    <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400">
+                  <div className="mb-3 rounded-lg border border-blue-200/60 bg-blue-50/30 px-3 py-2.5">
+                    <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-blue-600">
                       {t("Explanation")}
                     </div>
                     <div className="text-[13px] leading-relaxed text-[var(--foreground)]">

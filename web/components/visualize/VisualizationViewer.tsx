@@ -59,8 +59,8 @@ function ChartJsRenderer({ config }: { config: string }) {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900/60 dark:bg-red-950/30">
-        <p className="text-sm font-medium text-red-600 dark:text-red-400">
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+        <p className="text-sm font-medium text-red-600">
           {t("Chart rendering error")}
         </p>
         <pre className="mt-2 whitespace-pre-wrap text-xs text-red-500">
@@ -139,8 +139,8 @@ function SvgRenderer({ svg }: { svg: string }) {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900/60 dark:bg-red-950/30">
-        <p className="text-sm font-medium text-red-600 dark:text-red-400">
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+        <p className="text-sm font-medium text-red-600">
           {t("SVG rendering error")}
         </p>
         <pre className="mt-2 whitespace-pre-wrap text-xs text-red-500">

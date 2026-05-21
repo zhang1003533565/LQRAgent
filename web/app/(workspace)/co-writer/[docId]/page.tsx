@@ -85,25 +85,25 @@ const MIN_PANEL_RATIO = 0.18;
 const MAX_PANEL_RATIO = 0.82;
 
 const ACTION_LABELS: Record<EditAction, string> = {
-  rewrite: "Rewrite",
-  shorten: "Shorten",
-  expand: "Expand",
+  rewrite: "改写",
+  shorten: "精简",
+  expand: "扩写",
 };
 
 const TOOL_OPTIONS: Array<{ name: ToolName; label: string }> = [
-  { name: "brainstorm", label: "Brainstorm" },
+  { name: "brainstorm", label: "头脑风暴" },
   { name: "rag", label: "RAG" },
-  { name: "web_search", label: "Web Search" },
-  { name: "code_execution", label: "Code" },
-  { name: "reason", label: "Reason" },
-  { name: "paper_search", label: "Arxiv Search" },
+  { name: "web_search", label: "网络搜索" },
+  { name: "code_execution", label: "代码执行" },
+  { name: "reason", label: "推理" },
+  { name: "paper_search", label: "论文搜索" },
 ];
 
 const MODE_OPTIONS: Array<{ value: SelectionMode; label: string }> = [
-  { value: "none", label: "None" },
-  { value: "shorten", label: "Shorten" },
-  { value: "expand", label: "Expand" },
-  { value: "rewrite", label: "Rewrite" },
+  { value: "none", label: "无" },
+  { value: "shorten", label: "精简" },
+  { value: "expand", label: "扩写" },
+  { value: "rewrite", label: "改写" },
 ];
 
 interface ToolbarItem {
@@ -1129,77 +1129,77 @@ export default function CoWriterPage() {
 
   const TOOLBAR: ToolbarItem[] = useMemo(
     () => [
-      { id: "undo", icon: Undo2, title: "Undo", action: handleUndo },
-      { id: "redo", icon: Redo2, title: "Redo", action: handleRedo },
+      { id: "undo", icon: Undo2, title: "撤销", action: handleUndo },
+      { id: "redo", icon: Redo2, title: "重做", action: handleRedo },
       { id: "sep-1", icon: Minus, title: "", type: "separator" },
-      { id: "h1", icon: Heading1, title: "Heading 1", snippet: "\n# " },
-      { id: "h2", icon: Heading2, title: "Heading 2", snippet: "\n## " },
-      { id: "h3", icon: Heading3, title: "Heading 3", snippet: "\n### " },
-      { id: "h4", icon: Heading4, title: "Heading 4", snippet: "\n#### " },
-      { id: "h5", icon: Heading5, title: "Heading 5", snippet: "\n##### " },
-      { id: "h6", icon: Heading6, title: "Heading 6", snippet: "\n###### " },
+      { id: "h1", icon: Heading1, title: "标题 1", snippet: "\n# " },
+      { id: "h2", icon: Heading2, title: "标题 2", snippet: "\n## " },
+      { id: "h3", icon: Heading3, title: "标题 3", snippet: "\n### " },
+      { id: "h4", icon: Heading4, title: "标题 4", snippet: "\n#### " },
+      { id: "h5", icon: Heading5, title: "标题 5", snippet: "\n##### " },
+      { id: "h6", icon: Heading6, title: "标题 6", snippet: "\n###### " },
       { id: "sep-2", icon: Minus, title: "", type: "separator" },
-      { id: "bold", icon: Bold, title: "Bold", snippet: "**bold**" },
-      { id: "italic", icon: Italic, title: "Italic", snippet: "*italic*" },
+      { id: "bold", icon: Bold, title: "加粗", snippet: "**bold**" },
+      { id: "italic", icon: Italic, title: "斜体", snippet: "*italic*" },
       {
         id: "strikethrough",
         icon: Strikethrough,
-        title: "Strikethrough",
+        title: "删除线",
         snippet: "~~text~~",
       },
-      { id: "code", icon: Braces, title: "Inline Code", snippet: "`code`" },
+      { id: "code", icon: Braces, title: "行内代码", snippet: "`code`" },
       { id: "sep-3", icon: Minus, title: "", type: "separator" },
-      { id: "quote", icon: Quote, title: "Blockquote", snippet: "\n> " },
+      { id: "quote", icon: Quote, title: "引用块", snippet: "\n> " },
       {
         id: "ul",
         icon: List,
-        title: "Bullet List",
+        title: "无序列表",
         snippet: "\n- Item\n- Item\n",
       },
       {
         id: "ol",
         icon: ListOrdered,
-        title: "Numbered List",
+        title: "有序列表",
         snippet: "\n1. Item\n2. Item\n",
       },
       {
         id: "task",
         icon: ListTodo,
-        title: "Task List",
+        title: "任务列表",
         snippet: "\n- [ ] Task\n- [x] Done\n",
       },
       { id: "sep-4", icon: Minus, title: "", type: "separator" },
-      { id: "hr", icon: Minus, title: "Horizontal Rule", snippet: "\n---\n" },
+      { id: "hr", icon: Minus, title: "分隔线", snippet: "\n---\n" },
       {
         id: "table",
         icon: Table2,
-        title: "Table",
+        title: "表格",
         snippet:
           "\n| Column | Column |\n| ------ | ------ |\n| Cell   | Cell   |\n",
       },
       {
         id: "link",
         icon: LinkIcon,
-        title: "Link",
+        title: "链接",
         snippet: "[text](https://)",
       },
       {
         id: "image",
         icon: ImageIcon,
-        title: "Image",
+        title: "图片",
         snippet: "![alt](https://)",
       },
       { id: "sep-5", icon: Minus, title: "", type: "separator" },
       {
         id: "codeblock",
         icon: Code2,
-        title: "Code Block",
+        title: "代码块",
         snippet: '\n```python\nprint("hello")\n```\n',
       },
       {
         id: "mermaid",
         icon: Workflow,
-        title: "Mermaid Diagram",
+        title: "Mermaid 图表",
         snippet: "\n```mermaid\nflowchart TD\n  A[Start] --> B[End]\n```\n",
       },
       {
@@ -1209,7 +1209,7 @@ export default function CoWriterPage() {
             &Sigma;
           </span>
         ),
-        title: "Math Block",
+        title: "数学公式块",
         snippet: "\n$$\na^2 + b^2 = c^2\n$$\n",
       },
     ],
@@ -1844,10 +1844,10 @@ export default function CoWriterPage() {
             className="mx-0.5 h-3 w-px bg-[var(--border)]"
             aria-hidden="true"
           />
-          <span className="rounded bg-[var(--muted)] px-1.5 py-0.5">GFM</span>
-          <span className="rounded bg-[var(--muted)] px-1.5 py-0.5">KaTeX</span>
+          <span className="rounded bg-[var(--muted)] px-1.5 py-0.5">{t("GFM")}</span>
+          <span className="rounded bg-[var(--muted)] px-1.5 py-0.5">{t("KaTeX")}</span>
           <span className="rounded bg-[var(--muted)] px-1.5 py-0.5">
-            Mermaid
+            {t("Mermaid")}
           </span>
         </div>
       </div>
@@ -2222,8 +2222,8 @@ export default function CoWriterPage() {
         <div
           className={`shrink-0 border-t px-4 py-1.5 text-xs ${
             error
-              ? "border-red-200 bg-red-50 text-red-600 dark:border-red-900 dark:bg-red-950/30 dark:text-red-400"
-              : "border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-400"
+              ? "border-red-200 bg-red-50 text-red-600"
+              : "border-emerald-200 bg-emerald-50 text-emerald-600"
           }`}
         >
           {error || status}
@@ -2372,7 +2372,7 @@ export default function CoWriterPage() {
             </div>
 
             <div className="px-4 py-3">
-              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
                 {t(
                   "Undo is available with Ctrl/Cmd+Z or the toolbar Undo button.",
                 )}
@@ -2433,9 +2433,9 @@ function ToolbarIconBtn({
 }) {
   const toneClass =
     tone === "danger"
-      ? "hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400"
+      ? "hover:bg-red-500/10 hover:text-red-600"
       : tone === "warning"
-        ? "hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300"
+        ? "hover:bg-amber-500/10 hover:text-amber-700"
         : "hover:bg-[var(--muted)] hover:text-[var(--foreground)]";
 
   return (

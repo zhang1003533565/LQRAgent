@@ -43,10 +43,10 @@ const SECTIONS: {
   label: string;
   Icon: typeof FileText;
 }[] = [
-  { key: "files", label: "Files", Icon: FileText },
-  { key: "add", label: "Add documents", Icon: Upload },
-  { key: "versions", label: "Index versions", Icon: Layers },
-  { key: "settings", label: "Settings", Icon: SettingsIcon },
+  { key: "files", label: "文件", Icon: FileText },
+  { key: "add", label: "添加文档", Icon: Upload },
+  { key: "versions", label: "索引版本", Icon: Layers },
+  { key: "settings", label: "设置", Icon: SettingsIcon },
 ];
 
 /** Sections that fill the detail body edge-to-edge (no max-w wrapper). */
@@ -121,13 +121,13 @@ export default function KnowledgeBaseDetail({
                 {kb.name}
               </h1>
               {kb.is_default && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
                   <Star className="h-3 w-3" fill="currentColor" />
                   {t("Default")}
                 </span>
               )}
               {kb.assigned && (
-                <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+                <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
                   {kb.provenance_label || t("Assigned by admin")}
                 </span>
               )}

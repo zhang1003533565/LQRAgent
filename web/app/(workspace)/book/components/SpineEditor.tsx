@@ -29,30 +29,28 @@ interface ContentTypeOption {
 const CONTENT_TYPE_OPTIONS: ContentTypeOption[] = [
   {
     value: "theory",
-    label: "Theory",
-    description: "Long-form explanation with diagrams + flash cards + a quiz.",
+    label: "理论",
+    description: "长篇讲解，搭配图示、闪卡与测验。",
   },
   {
     value: "derivation",
-    label: "Derivation",
-    description:
-      "Step-by-step derivation, often with animation + verifying code.",
+    label: "推导",
+    description: "分步推导，通常配合动画与验证代码。",
   },
   {
     value: "history",
-    label: "History",
-    description: "Narrative + timeline + period image, ends with a recap quiz.",
+    label: "历史",
+    description: "叙事、时间线与时代配图，最后附带回顾测验。",
   },
   {
     value: "practice",
-    label: "Practice",
-    description:
-      "Quiz-heavy chapter with a runnable code scaffold + explanation.",
+    label: "练习",
+    description: "以测验为主的章节，附带可运行代码骨架与说明。",
   },
   {
     value: "concept",
-    label: "Concept",
-    description: "Definition + figure + flash cards + common-pitfall callout.",
+    label: "概念",
+    description: "定义、图示、闪卡以及常见误区提示。",
   },
 ];
 
@@ -161,7 +159,7 @@ export default function SpineEditor({
                   </button>
                   <button
                     onClick={() => remove(idx)}
-                    className="rounded-md border border-rose-300/60 p-1 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                    className="rounded-md border border-rose-300/60 p-1 text-rose-500 hover:bg-rose-50"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>

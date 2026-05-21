@@ -89,7 +89,7 @@ export default function BlockRenderer({
       | { kind?: string; message?: string; retryable?: boolean }
       | undefined;
     return (
-      <div className="rounded-2xl border border-rose-300/60 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100">
+      <div className="rounded-2xl border border-rose-300/60 bg-rose-50 px-4 py-3 text-sm text-rose-900">
         <div className="mb-1 flex items-center gap-2 font-medium">
           <AlertTriangle className="h-4 w-4" />
           {t("{{type}} block failed", { type: t(block.type) })}
@@ -106,7 +106,7 @@ export default function BlockRenderer({
         {onRegenerate && (
           <button
             onClick={() => onRegenerate(block)}
-            className="mt-2 inline-flex rounded-md border border-rose-400/60 bg-white/40 px-2 py-1 text-xs font-medium hover:bg-white/60 dark:bg-white/10"
+            className="mt-2 inline-flex rounded-md border border-rose-400/60 bg-white/40 px-2 py-1 text-xs font-medium hover:bg-white/60"
           >
             {t("Retry")}
           </button>
@@ -248,7 +248,7 @@ export default function BlockRenderer({
           {onDelete && (
             <button
               onClick={() => onDelete(block)}
-              className="pointer-events-auto rounded p-1 hover:bg-rose-100 hover:text-rose-700 dark:hover:bg-rose-500/10 dark:hover:text-rose-200"
+              className="pointer-events-auto rounded p-1 hover:bg-rose-100 hover:text-rose-700"
               title={t("Delete")}
             >
               <Trash2 className="h-3.5 w-3.5" />

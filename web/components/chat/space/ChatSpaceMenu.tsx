@@ -73,8 +73,8 @@ export default memo(function ChatSpaceMenu({
     key === "books"
       ? {
           key,
-          label: "Books",
-          description: "Reference generated book chapters in chat.",
+          label: "图书",
+          description: "在聊天中引用已生成的图书章节。",
           icon: BookOpen,
         }
       : SPACE_ITEMS.find((it) => it.key === key)!,

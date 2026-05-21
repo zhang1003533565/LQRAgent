@@ -6,14 +6,11 @@
 import { setTheme, type Theme } from "./theme";
 
 /**
- * Toggle theme between light and dark
+ * Theme toggling now resolves to the single supported light theme.
  */
-export function toggleTheme(currentTheme: Theme): Theme {
-  const order: Theme[] = ["snow", "light", "dark", "glass"];
-  const idx = order.indexOf(currentTheme);
-  const newTheme = order[(idx + 1) % order.length];
-  setTheme(newTheme);
-  return newTheme;
+export function toggleTheme(_currentTheme: Theme): Theme {
+  setTheme("light");
+  return "light";
 }
 
 /**
@@ -24,36 +21,31 @@ export function setLightTheme(): void {
 }
 
 /**
- * Set theme to dark mode
+ * Backward-compatible alias that now resolves to light mode.
  */
 export function setDarkTheme(): void {
-  setTheme("dark");
+  setTheme("light");
 }
 
 /**
- * Get CSS class for theme-aware styling
+ * Legacy helper kept for compatibility with older callers.
  */
-export function getThemeClass(theme: Theme): string {
-  if (theme === "dark") return "dark";
-  if (theme === "glass") return "dark theme-glass";
-  if (theme === "snow") return "theme-snow";
+export function getThemeClass(_theme: Theme): string {
   return "";
 }
 
 /**
- * Get contrast color for theme
+ * Get the text color classes for the single light theme.
  */
-export function getTextColorForTheme(theme: Theme): string {
-  return theme === "dark"
-    ? "text-slate-100 dark:text-slate-100"
-    : "text-slate-900 dark:text-slate-900";
+export function getTextColorForTheme(_theme: Theme): string {
+  return "text-slate-900";
 }
 
 /**
- * Get background color for theme
+ * Get the background color classes for the single light theme.
  */
-export function getBackgroundForTheme(theme: Theme): string {
-  return theme === "dark" ? "dark:bg-slate-800" : "bg-white";
+export function getBackgroundForTheme(_theme: Theme): string {
+  return "bg-white";
 }
 
 /**
@@ -61,13 +53,7 @@ export function getBackgroundForTheme(theme: Theme): string {
  */
 export function onThemeChange(callback: (theme: Theme) => void): () => void {
   const handleStorageChange = (e: StorageEvent) => {
-    if (
-      e.key === "deeptutor-theme" &&
-      (e.newValue === "light" ||
-        e.newValue === "dark" ||
-        e.newValue === "glass" ||
-        e.newValue === "snow")
-    ) {
+    if (e.key === "deeptutor-theme" && e.newValue === "light") {
       callback(e.newValue);
     }
   };

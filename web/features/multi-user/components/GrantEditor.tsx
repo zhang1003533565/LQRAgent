@@ -202,9 +202,9 @@ export function GrantEditor({ userId }: { userId: string }) {
 
   const statusTone =
     saveState === "error"
-      ? "text-red-600 dark:text-red-400"
+      ? "text-red-600"
       : saveState === "saved" && !dirty
-        ? "text-emerald-700 dark:text-emerald-300"
+        ? "text-emerald-700"
         : "text-[var(--muted-foreground)]";
 
   if (loading && !resources) {

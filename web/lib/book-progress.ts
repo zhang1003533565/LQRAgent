@@ -78,28 +78,28 @@ export const STAGE_ORDER: StageId[] = [
 
 const STAGE_LABELS: Record<StageId, { label: string; description: string }> = {
   ideation: {
-    label: "Ideation",
-    description: "Drafting the proposal from your inputs.",
+    label: "构思",
+    description: "根据你的输入起草方案。",
   },
   exploration: {
-    label: "Source sweep",
-    description: "Parallel multi-query retrieval across your KBs.",
+    label: "资料检索",
+    description: "并行检索你的知识库与相关资料。",
   },
   synthesis: {
-    label: "Synthesis",
-    description: "Spine + concept graph (draft → revise).",
+    label: "综合整理",
+    description: "生成目录骨架与概念图，并持续修订。",
   },
   critique: {
-    label: "Critique",
-    description: "Self-review rounds tightening the spine.",
+    label: "评审",
+    description: "通过自检轮次收紧目录结构。",
   },
   overview: {
-    label: "Overview chapter",
-    description: "Auto-built table of contents + concept map.",
+    label: "总览章节",
+    description: "自动生成目录总览与概念地图。",
   },
   compilation: {
-    label: "Compilation",
-    description: "Per-page block planning + generation.",
+    label: "编译生成",
+    description: "逐页规划内容块并生成最终页面。",
   },
 };
 

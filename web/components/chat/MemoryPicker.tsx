@@ -23,15 +23,15 @@ interface MemoryOption {
 const MEMORY_OPTIONS: MemoryOption[] = [
   {
     key: "summary",
-    label: "Summary",
+    label: "摘要",
     description:
-      "Inject the assistant's running summary of past learning sessions.",
+      "附带助手对以往学习会话的动态摘要。",
     icon: ScrollText,
   },
   {
     key: "profile",
-    label: "Profile",
-    description: "Inject the learner profile (preferences, goals, background).",
+    label: "画像",
+    description: "附带学习者画像，包括偏好、目标和背景信息。",
     icon: FileText,
   },
 ];

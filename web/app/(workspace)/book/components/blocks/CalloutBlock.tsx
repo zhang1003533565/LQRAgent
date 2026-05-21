@@ -14,27 +14,27 @@ const VARIANT_STYLES: Record<
 > = {
   key_idea: {
     icon: Lightbulb,
-    rule: "border-amber-400/70 dark:border-amber-300/60",
-    tint: "bg-amber-50/60 text-amber-950 dark:bg-amber-500/[0.06] dark:text-amber-100",
-    accent: "text-amber-700 dark:text-amber-300",
+    rule: "border-amber-400/70",
+    tint: "bg-amber-50/60 text-amber-950",
+    accent: "text-amber-700",
   },
   common_pitfall: {
     icon: AlertTriangle,
-    rule: "border-rose-400/70 dark:border-rose-300/60",
-    tint: "bg-rose-50/60 text-rose-950 dark:bg-rose-500/[0.06] dark:text-rose-100",
-    accent: "text-rose-700 dark:text-rose-300",
+    rule: "border-rose-400/70",
+    tint: "bg-rose-50/60 text-rose-950",
+    accent: "text-rose-700",
   },
   summary: {
     icon: BookmarkCheck,
-    rule: "border-sky-400/70 dark:border-sky-300/60",
-    tint: "bg-sky-50/60 text-sky-950 dark:bg-sky-500/[0.06] dark:text-sky-100",
-    accent: "text-sky-700 dark:text-sky-300",
+    rule: "border-sky-400/70",
+    tint: "bg-sky-50/60 text-sky-950",
+    accent: "text-sky-700",
   },
   tip: {
     icon: Sparkles,
-    rule: "border-emerald-400/70 dark:border-emerald-300/60",
-    tint: "bg-emerald-50/60 text-emerald-950 dark:bg-emerald-500/[0.06] dark:text-emerald-100",
-    accent: "text-emerald-700 dark:text-emerald-300",
+    rule: "border-emerald-400/70",
+    tint: "bg-emerald-50/60 text-emerald-950",
+    accent: "text-emerald-700",
   },
 };
 

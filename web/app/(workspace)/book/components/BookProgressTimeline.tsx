@@ -46,19 +46,19 @@ const STATE_TONE = {
     bar: "bg-[var(--border)]",
   },
   running: {
-    fg: "text-sky-700 dark:text-sky-200",
+    fg: "text-sky-700",
     bg: "bg-gradient-to-br from-sky-400/20 to-indigo-400/15",
     ring: "ring-sky-400/60",
     bar: "bg-gradient-to-r from-sky-400 to-indigo-400",
   },
   completed: {
-    fg: "text-emerald-700 dark:text-emerald-200",
+    fg: "text-emerald-700",
     bg: "bg-emerald-500/10",
     ring: "ring-emerald-400/50",
     bar: "bg-gradient-to-r from-emerald-400 to-teal-400",
   },
   error: {
-    fg: "text-rose-700 dark:text-rose-200",
+    fg: "text-rose-700",
     bg: "bg-rose-500/10",
     ring: "ring-rose-400/60",
     bar: "bg-rose-400",
@@ -221,10 +221,10 @@ export default function BookProgressTimeline({
                   <span className="absolute inset-0 animate-ping rounded-full bg-sky-400/40" />
                 )}
                 {s === "completed" && (
-                  <Check className="h-2 w-2 text-emerald-600 dark:text-emerald-300" />
+                  <Check className="h-2 w-2 text-emerald-600" />
                 )}
                 {s === "error" && (
-                  <AlertTriangle className="h-2 w-2 text-rose-600 dark:text-rose-300" />
+                  <AlertTriangle className="h-2 w-2 text-rose-600" />
                 )}
               </span>
             );

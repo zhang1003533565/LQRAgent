@@ -433,7 +433,7 @@ export default function SkillsSection() {
                     </button>
                     <button
                       onClick={() => void handleDeleteTag(tag)}
-                      className="rounded p-1 text-[var(--muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30"
+                      className="rounded p-1 text-[var(--muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-500"
                       title={t("Delete")}
                     >
                       <Trash2 size={12} />
@@ -497,7 +497,7 @@ export default function SkillsSection() {
       </div>
 
       {errorMsg && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
           {errorMsg}
         </div>
       )}
@@ -569,7 +569,7 @@ export default function SkillsSection() {
                   <button
                     onClick={() => void handleDelete(skill.name)}
                     disabled={deleting === skill.name}
-                    className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:hover:bg-red-950/30"
+                    className="rounded-md p-1.5 text-[var(--muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
                     title={t("Delete")}
                   >
                     {deleting === skill.name ? (
@@ -646,14 +646,14 @@ export default function SkillsSection() {
                   placeholder={t("e.g. socratic-math-mentor")}
                   className={`w-full rounded-lg border bg-[var(--background)] px-3 py-2 text-[13px] outline-none transition-colors focus:border-[var(--foreground)]/25 ${
                     editorNameInvalid
-                      ? "border-red-400 dark:border-red-600"
+                      ? "border-red-400"
                       : "border-[var(--border)]"
                   }`}
                 />
                 <p
                   className={`mt-1 text-[11px] transition-colors ${
                     editorNameInvalid
-                      ? "text-red-500 dark:text-red-400"
+                      ? "text-red-500"
                       : "text-[var(--muted-foreground)]/70"
                   }`}
                 >
@@ -754,7 +754,7 @@ export default function SkillsSection() {
               </div>
 
               {editor.error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
                   {editor.error}
                 </div>
               )}

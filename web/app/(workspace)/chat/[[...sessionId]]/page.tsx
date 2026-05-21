@@ -148,18 +148,18 @@ interface ResearchSourceDef {
 }
 
 const ALL_TOOLS: ToolDef[] = [
-  { name: "brainstorm", label: "Brainstorm", icon: Lightbulb },
+  { name: "brainstorm", label: "头脑风暴", icon: Lightbulb },
   { name: "rag", label: "RAG", icon: Database },
-  { name: "web_search", label: "Web Search", icon: Globe },
-  { name: "code_execution", label: "Code", icon: Code2 },
-  { name: "reason", label: "Reason", icon: Sparkles },
-  { name: "paper_search", label: "Arxiv Search", icon: FileSearch },
+  { name: "web_search", label: "网络搜索", icon: Globe },
+  { name: "code_execution", label: "代码执行", icon: Code2 },
+  { name: "reason", label: "推理", icon: Sparkles },
+  { name: "paper_search", label: "论文搜索", icon: FileSearch },
 ];
 
 const RESEARCH_SOURCES: ResearchSourceDef[] = [
-  { name: "kb", label: "Knowledge Base", icon: Database },
-  { name: "web", label: "Web", icon: Globe },
-  { name: "papers", label: "Papers", icon: FileSearch },
+  { name: "kb", label: "知识库", icon: Database },
+  { name: "web", label: "网络", icon: Globe },
+  { name: "papers", label: "论文", icon: FileSearch },
 ];
 
 interface CapabilityDef {
@@ -174,8 +174,8 @@ interface CapabilityDef {
 const CAPABILITIES: CapabilityDef[] = [
   {
     value: "",
-    label: "Chat",
-    description: "Flexible conversation with any tool",
+    label: "聊天",
+    description: "可灵活调用任意工具进行对话",
     icon: MessageSquare,
     allowedTools: [
       "brainstorm",
@@ -189,40 +189,40 @@ const CAPABILITIES: CapabilityDef[] = [
   },
   {
     value: "deep_solve",
-    label: "Deep Solve",
-    description: "Multi-step reasoning & problem solving",
+    label: "深度解题",
+    description: "多步推理与问题求解",
     icon: BrainCircuit,
     allowedTools: ["rag", "web_search", "code_execution", "reason"],
     defaultTools: ["rag", "web_search", "code_execution", "reason"],
   },
   {
     value: "deep_question",
-    label: "Quiz Generation",
-    description: "Auto-validated question generation",
+    label: "题目生成",
+    description: "自动校验的题目生成",
     icon: PenLine,
     allowedTools: ["rag", "web_search", "code_execution"],
     defaultTools: ["rag", "web_search", "code_execution"],
   },
   {
     value: "deep_research",
-    label: "Deep Research",
-    description: "Comprehensive multi-agent research",
+    label: "深度研究",
+    description: "多智能体综合研究",
     icon: Microscope,
     allowedTools: [],
     defaultTools: [],
   },
   {
     value: "math_animator",
-    label: "Math Animator",
-    description: "Generate math videos or storyboard images",
+    label: "数学动画",
+    description: "生成数学视频或分镜图",
     icon: Clapperboard,
     allowedTools: [],
     defaultTools: [],
   },
   {
     value: "visualize",
-    label: "Visualize",
-    description: "Generate SVG, Chart.js, or Mermaid visualizations",
+    label: "可视化",
+    description: "生成 SVG、Chart.js 或 Mermaid 可视化内容",
     icon: BarChart3,
     allowedTools: [],
     defaultTools: [],

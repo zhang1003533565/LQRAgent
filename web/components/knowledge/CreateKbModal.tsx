@@ -153,7 +153,7 @@ export default function CreateKbModal({
         </div>
 
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
             <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
               {error}
             </pre>

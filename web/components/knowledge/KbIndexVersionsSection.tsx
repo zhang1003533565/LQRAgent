@@ -87,7 +87,7 @@ export default function KbIndexVersionsSection({
             title={t(
               "Click Re-index to rebuild this knowledge base with the active embedding model. Existing index versions are preserved.",
             )}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-[12px] font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-[12px] font-medium text-amber-700 transition-colors hover:bg-amber-100 disabled:opacity-50"
           >
             {submitting || isReindexingHere ? (
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -100,7 +100,7 @@ export default function KbIndexVersionsSection({
       </div>
 
       {(needsReindex || mismatch) && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-[12px] text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
+        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-[12px] text-amber-700">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
             {t(
@@ -178,7 +178,7 @@ export default function KbIndexVersionsSection({
               </div>
             )}
             {task.error && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700">
                 <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
                   {task.error}
                 </pre>
@@ -217,9 +217,9 @@ function IndexVersionRow({
       <div
         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
           isActive
-            ? "bg-emerald-100 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-300"
+            ? "bg-emerald-100 text-emerald-600"
             : isPhantom
-              ? "bg-amber-100 text-amber-600 dark:bg-amber-950/30 dark:text-amber-300"
+              ? "bg-amber-100 text-amber-600"
               : "bg-[var(--muted)] text-[var(--muted-foreground)]"
         }`}
         title={
@@ -248,19 +248,19 @@ function IndexVersionRow({
           <span
             className={`truncate text-[12.5px] font-medium ${
               isPhantom
-                ? "text-amber-700 line-through decoration-amber-400/70 dark:text-amber-300"
+                ? "text-amber-700 line-through decoration-amber-400/70"
                 : "text-[var(--foreground)]"
             }`}
           >
             {title}
           </span>
           {isActive && (
-            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
+            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
               {t("Active")}
             </span>
           )}
           {isPhantom && (
-            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
               {t("Stale")}
             </span>
           )}

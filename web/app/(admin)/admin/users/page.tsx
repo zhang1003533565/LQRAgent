@@ -198,7 +198,7 @@ export default function AdminUsersPage() {
         </div>
 
         {actionError && (
-          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">
+          <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-600">
             {actionError}
           </div>
         )}
@@ -247,7 +247,7 @@ export default function AdminUsersPage() {
                             className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium
                             ${
                               user.role === "admin"
-                                ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
+                                ? "bg-purple-500/15 text-purple-600"
                                 : "bg-[var(--muted)]/50 text-[var(--muted-foreground)]"
                             }`}
                           >

@@ -13,25 +13,25 @@ export const SIDEBAR_COLLAPSED_EVENT = "deeptutor:sidebar-collapsed";
 export function normalizeLanguage(
   value: string | null | undefined,
 ): AppLanguage {
-  return value === "zh" ? "zh" : "en";
+  return "zh";
 }
 
 export function readStoredLanguage(): AppLanguage {
-  if (typeof window === "undefined") return "en";
+  if (typeof window === "undefined") return "zh";
   try {
     return normalizeLanguage(window.localStorage.getItem(LANGUAGE_STORAGE_KEY));
   } catch {
-    return "en";
+    return "zh";
   }
 }
 
 export function writeStoredLanguage(language: AppLanguage): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, "zh");
     window.dispatchEvent(
       new CustomEvent(LANGUAGE_EVENT, {
-        detail: { language },
+        detail: { language: "zh" },
       }),
     );
   } catch {

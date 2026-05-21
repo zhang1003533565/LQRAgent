@@ -194,7 +194,7 @@ export default function PageReader({
         ) : (
           <article className="mx-auto flex w-full max-w-[78ch] flex-col gap-6 [&>:first-child]:mt-0">
             {hasFailedBlocks && (
-              <div className="rounded-2xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+              <div className="rounded-2xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-950">
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <div className="font-semibold">
                     {failedBlocks.length === 1
@@ -208,7 +208,7 @@ export default function PageReader({
                   {onRecompile && (
                     <button
                       onClick={onRecompile}
-                      className="inline-flex items-center gap-1 rounded-md border border-current px-2 py-1 text-xs font-medium hover:bg-white/40 dark:hover:bg-white/10"
+                      className="inline-flex items-center gap-1 rounded-md border border-current px-2 py-1 text-xs font-medium hover:bg-white/40"
                     >
                       <RefreshCcw className="h-3.5 w-3.5" />
                       {t("Regenerate page")}
@@ -225,7 +225,7 @@ export default function PageReader({
                         key={block.id}
                         className="flex flex-wrap items-center gap-2"
                       >
-                        <code className="rounded bg-white/50 px-1.5 py-0.5 dark:bg-white/10">
+                        <code className="rounded bg-white/50 px-1.5 py-0.5">
                           {block.type}
                         </code>
                         <span>
@@ -237,7 +237,7 @@ export default function PageReader({
                         {onRegenerateBlock && (
                           <button
                             onClick={() => onRegenerateBlock(block)}
-                            className="rounded border border-current px-1.5 py-0.5 text-[11px] font-medium hover:bg-white/40 dark:hover:bg-white/10"
+                            className="rounded border border-current px-1.5 py-0.5 text-[11px] font-medium hover:bg-white/40"
                           >
                             {t("Retry block")}
                           </button>

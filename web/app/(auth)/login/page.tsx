@@ -60,7 +60,7 @@ function LoginPageContent() {
 
       {/* Registered success notice */}
       {registered && (
-        <div className="mb-4 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-600 dark:text-green-400">
+        <div className="mb-4 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-600">
           Account created! Sign in to continue.
         </div>
       )}

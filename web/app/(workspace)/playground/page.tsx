@@ -79,9 +79,9 @@ const RESEARCH_SOURCE_OPTIONS: Array<{
   label: string;
   icon: LucideIcon;
 }> = [
-  { name: "kb", label: "Knowledge Base", icon: Database },
-  { name: "web", label: "Web", icon: Globe },
-  { name: "papers", label: "Papers", icon: FileSearch },
+  { name: "kb", label: "知识库", icon: Database },
+  { name: "web", label: "网络", icon: Globe },
+  { name: "papers", label: "论文", icon: FileSearch },
 ];
 
 const CAPABILITY_ICONS: Record<string, LucideIcon> = {
@@ -325,7 +325,7 @@ function TracePanel({ events }: { events: StreamEvent[] }) {
                   return (
                     <div
                       key={`${stage}-e-${i}`}
-                      className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
+                      className="rounded-md border border-red-200 bg-red-50 px-2.5 py-1.5 text-[12px] text-red-700"
                     >
                       {ev.content}
                     </div>
@@ -590,7 +590,7 @@ function ToolExecutor({
 
       {/* Error */}
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
           {error}
         </div>
       )}
@@ -600,11 +600,11 @@ function ToolExecutor({
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             {result.success ? (
-              <span className="inline-flex items-center gap-1 rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700 dark:bg-green-950/30 dark:text-green-400">
+              <span className="inline-flex items-center gap-1 rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700">
                 <Check size={10} /> {t("Success")}
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700 dark:bg-red-950/30 dark:text-red-400">
+              <span className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700">
                 <X size={10} /> {t("Failed")}
               </span>
             )}
@@ -673,17 +673,17 @@ function CapabilityResultPanel({
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         {result.success ? (
-          <span className="inline-flex items-center gap-1 rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700 dark:bg-green-950/30 dark:text-green-400">
+          <span className="inline-flex items-center gap-1 rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700">
             <Check size={10} /> {t("Success")}
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700 dark:bg-red-950/30 dark:text-red-400">
+          <span className="inline-flex items-center gap-1 rounded-md bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700">
             <X size={10} /> {t("Failed")}
           </span>
         )}
         {typeof result.elapsedMs === "number" && (
           <span className="text-[11px] text-[var(--muted-foreground)]">
-            {result.elapsedMs} ms
+            {result.elapsedMs} {t("ms")}
           </span>
         )}
       </div>
@@ -1141,7 +1141,7 @@ function DeepQuestionTester({
                 title={t("Process")}
               />
               {msg.error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
                   {msg.error}
                 </div>
               )}
@@ -1443,7 +1443,7 @@ function DeepResearchTester({
                 title={t("Process")}
               />
               {msg.error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
                   {msg.error}
                 </div>
               )}
@@ -1652,7 +1652,7 @@ function CapabilityTester({
                 title={t("Process")}
               />
               {msg.error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-[13px] text-red-700">
                   {msg.error}
                 </div>
               )}

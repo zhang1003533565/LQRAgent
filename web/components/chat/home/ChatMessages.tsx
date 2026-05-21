@@ -518,11 +518,11 @@ export const SpaceContextChips = memo(function SpaceContextChips({
       {historySessions.map((session) => (
         <span
           key={session.sessionId}
-          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-1.5 text-[12px] text-sky-800 shadow-sm dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-200"
+          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-1.5 text-[12px] text-sky-800 shadow-sm"
         >
           <MessageSquare size={12} strokeWidth={1.8} className="shrink-0" />
           <span className="shrink-0 font-medium">{t("Chat History")}</span>
-          <span className="truncate text-sky-700/90 dark:text-sky-200/90">
+          <span className="truncate text-sky-700/90">
             {session.title}
           </span>
           <button
@@ -536,11 +536,11 @@ export const SpaceContextChips = memo(function SpaceContextChips({
       {bookReferences.map((book) => (
         <span
           key={book.bookId}
-          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-1.5 text-[12px] text-teal-800 shadow-sm dark:border-teal-900/60 dark:bg-teal-950/30 dark:text-teal-200"
+          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-1.5 text-[12px] text-teal-800 shadow-sm"
         >
           <BookOpen size={12} strokeWidth={1.8} className="shrink-0" />
           <span className="shrink-0 font-medium">{t("Book")}</span>
-          <span className="truncate text-teal-700/90 dark:text-teal-200/90">
+          <span className="truncate text-teal-700/90">
             {book.bookTitle} ({book.pages.length})
           </span>
           <button
@@ -572,11 +572,11 @@ export const SpaceContextChips = memo(function SpaceContextChips({
       {questionEntries.map((entry) => (
         <span
           key={entry.id}
-          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-[12px] text-amber-800 shadow-sm dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-1.5 text-[12px] text-amber-800 shadow-sm"
         >
           <ClipboardList size={12} strokeWidth={1.8} className="shrink-0" />
           <span className="shrink-0 font-medium">{t("Question Bank")}</span>
-          <span className="truncate text-amber-700/90 dark:text-amber-200/90">
+          <span className="truncate text-amber-700/90">
             {entry.question.length > 40
               ? `${entry.question.slice(0, 40)}…`
               : entry.question}
@@ -590,10 +590,10 @@ export const SpaceContextChips = memo(function SpaceContextChips({
         </span>
       ))}
       {skillsAutoMode && (
-        <span className="inline-flex max-w-full items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-[12px] text-violet-800 shadow-sm dark:border-violet-900/60 dark:bg-violet-950/30 dark:text-violet-200">
+        <span className="inline-flex max-w-full items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-[12px] text-violet-800 shadow-sm">
           <Wand2 size={12} strokeWidth={1.8} className="shrink-0" />
           <span className="shrink-0 font-medium">{t("Skills")}</span>
-          <span className="truncate text-violet-700/90 dark:text-violet-200/90">
+          <span className="truncate text-violet-700/90">
             {t("Auto")}
           </span>
           <button
@@ -607,11 +607,11 @@ export const SpaceContextChips = memo(function SpaceContextChips({
       {selectedSkills.map((skill) => (
         <span
           key={skill}
-          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-[12px] text-violet-800 shadow-sm dark:border-violet-900/60 dark:bg-violet-950/30 dark:text-violet-200"
+          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-[12px] text-violet-800 shadow-sm"
         >
           <Wand2 size={12} strokeWidth={1.8} className="shrink-0" />
           <span className="shrink-0 font-medium">{t("Skill")}</span>
-          <span className="truncate text-violet-700/90 dark:text-violet-200/90">
+          <span className="truncate text-violet-700/90">
             {skill}
           </span>
           <button
@@ -625,11 +625,11 @@ export const SpaceContextChips = memo(function SpaceContextChips({
       {memoryFiles.map((file) => (
         <span
           key={file}
-          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[12px] text-emerald-800 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200"
+          className="inline-flex max-w-full items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[12px] text-emerald-800 shadow-sm"
         >
           <Brain size={12} strokeWidth={1.8} className="shrink-0" />
           <span className="shrink-0 font-medium">{t("Memory")}</span>
-          <span className="truncate text-emerald-700/90 dark:text-emerald-200/90">
+          <span className="truncate text-emerald-700/90">
             {file === "summary" ? t("Summary") : t("Profile")}
           </span>
           <button

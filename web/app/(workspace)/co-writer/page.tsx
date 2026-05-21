@@ -172,7 +172,7 @@ export default function CoWriterHomePage() {
 
       <main className="flex-1 overflow-y-auto px-6 py-6">
         {error ? (
-          <div className="mb-4 rounded-md border border-rose-300/30 bg-rose-50/40 px-3 py-2 text-xs text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">
+          <div className="mb-4 rounded-md border border-rose-300/30 bg-rose-50/40 px-3 py-2 text-xs text-rose-700">
             {error}
           </div>
         ) : null}
@@ -240,8 +240,8 @@ export default function CoWriterHomePage() {
                       }
                       className={`shrink-0 rounded-md p-1 transition-colors disabled:opacity-50 ${
                         isPendingDelete
-                          ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
-                          : "text-[var(--muted-foreground)]/60 opacity-0 hover:bg-rose-500/10 hover:text-rose-600 group-hover:opacity-100 dark:hover:text-rose-400"
+                          ? "bg-rose-500/15 text-rose-600"
+                          : "text-[var(--muted-foreground)]/60 opacity-0 hover:bg-rose-500/10 hover:text-rose-600 group-hover:opacity-100"
                       }`}
                     >
                       {isDeleting ? (

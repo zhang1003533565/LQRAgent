@@ -26,20 +26,20 @@ interface ResearchConfigPanelProps {
 // the dropdown options match the active UI language.
 const MODE_OPTIONS: Array<{ value: Exclude<ResearchMode, "">; label: string }> =
   [
-    { value: "notes", label: "Study Notes" },
-    { value: "report", label: "Report" },
-    { value: "comparison", label: "Comparison" },
-    { value: "learning_path", label: "Learning Path" },
+    { value: "notes", label: "学习笔记" },
+    { value: "report", label: "报告" },
+    { value: "comparison", label: "对比分析" },
+    { value: "learning_path", label: "学习路径" },
   ];
 
 const DEPTH_OPTIONS: Array<{
   value: Exclude<ResearchDepth, "">;
   label: string;
 }> = [
-  { value: "quick", label: "Quick" },
-  { value: "standard", label: "Standard" },
-  { value: "deep", label: "Deep" },
-  { value: "manual", label: "Manual" },
+  { value: "quick", label: "快速" },
+  { value: "standard", label: "标准" },
+  { value: "deep", label: "深入" },
+  { value: "manual", label: "手动" },
 ];
 
 function NumberSlider({

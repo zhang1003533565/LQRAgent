@@ -150,7 +150,7 @@ export default function QuestionFollowupPanel({
                 </div>
               )}
               {thread.error && (
-                <div className="mb-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] text-red-700 dark:border-red-950/50 dark:bg-red-950/20 dark:text-red-300">
+                <div className="mb-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] text-red-700">
                   {thread.error}
                 </div>
               )}

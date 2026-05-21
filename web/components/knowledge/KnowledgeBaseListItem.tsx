@@ -82,7 +82,7 @@ export default function KnowledgeBaseListItem({
               {kb.name}
             </span>
             {kb.assigned && (
-              <span className="shrink-0 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700 dark:text-emerald-300">
+              <span className="shrink-0 rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-700">
                 {t("Assigned")}
               </span>
             )}
@@ -122,7 +122,7 @@ export default function KnowledgeBaseListItem({
                 ? t("Assigned knowledge bases are read-only")
                 : t("Delete")
             }
-            className="rounded p-1 text-[var(--muted-foreground)] hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-red-950/30"
+            className="rounded p-1 text-[var(--muted-foreground)] hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
           >
             <Trash2 className="h-3 w-3" />
           </button>

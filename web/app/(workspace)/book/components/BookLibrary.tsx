@@ -23,38 +23,38 @@ const STATUS_STYLES: Record<
   { label: string; className: string; dot: string }
 > = {
   draft: {
-    label: "Draft",
+    label: "草稿",
     className:
-      "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300",
+      "bg-amber-50 text-amber-700",
     dot: "bg-amber-500",
   },
   spine_ready: {
-    label: "Outline",
-    className: "bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300",
+    label: "大纲完成",
+    className: "bg-sky-50 text-sky-700",
     dot: "bg-sky-500",
   },
   compiling: {
-    label: "Compiling",
+    label: "编译中",
     className:
-      "bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300",
+      "bg-violet-50 text-violet-700",
     dot: "bg-violet-500 animate-pulse",
   },
   ready: {
-    label: "Ready",
+    label: "已完成",
     className:
-      "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300",
+      "bg-emerald-50 text-emerald-700",
     dot: "bg-emerald-500",
   },
   error: {
-    label: "Error",
+    label: "错误",
     className:
-      "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300",
+      "bg-rose-50 text-rose-700",
     dot: "bg-rose-500",
   },
   archived: {
-    label: "Archived",
+    label: "已归档",
     className:
-      "bg-zinc-100 text-zinc-600 dark:bg-zinc-500/10 dark:text-zinc-400",
+      "bg-zinc-100 text-zinc-600",
     dot: "bg-zinc-400",
   },
 };
@@ -224,13 +224,13 @@ export default function BookLibrary({
             icon={<Sparkles size={14} />}
             label={t("Ready")}
             value={stats.ready}
-            accent="text-emerald-600 dark:text-emerald-400"
+            accent="text-emerald-600"
           />
           <StatCard
             icon={<Loader2 size={14} />}
             label={t("In progress")}
             value={stats.inProgress}
-            accent="text-violet-600 dark:text-violet-400"
+            accent="text-violet-600"
           />
           <StatCard
             icon={<Layers size={14} />}
@@ -374,8 +374,8 @@ export default function BookLibrary({
                       }
                       className={`absolute right-2 top-2 rounded-md p-1.5 transition-colors ${
                         isPendingDelete
-                          ? "bg-rose-500/15 text-rose-600 dark:text-rose-400"
-                          : "bg-white/60 text-[var(--muted-foreground)] opacity-0 backdrop-blur-sm hover:bg-rose-500/10 hover:text-rose-600 group-hover:opacity-100 dark:bg-black/30 dark:hover:text-rose-400"
+                          ? "bg-rose-500/15 text-rose-600"
+                          : "bg-white/60 text-[var(--muted-foreground)] opacity-0 backdrop-blur-sm hover:bg-rose-500/10 hover:text-rose-600 group-hover:opacity-100"
                       }`}
                     >
                       <Trash2 size={13} />

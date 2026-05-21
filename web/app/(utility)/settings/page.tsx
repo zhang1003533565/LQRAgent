@@ -23,13 +23,22 @@ import {
 
 import { useTranslation } from "react-i18next";
 
-import { writeStoredLanguage } from "@/context/app-shell-storage";
 import { ModelAccessSummary } from "@/features/multi-user/components/ModelAccessSummary";
 import type { ModelAccess } from "@/features/multi-user/types";
 import { apiFetch, apiUrl } from "@/lib/api";
-import { setTheme as applyThemePreference } from "@/lib/theme";
 
 type ServiceName = "llm" | "embedding" | "search";
+
+const DEFAULT_PROFILE_NAME_MAP: Record<string, string> = {
+  "Default LLM Endpoint": "默认大语言模型接口",
+  "Default Embedding Endpoint": "默认嵌入模型接口",
+  "Default Search Provider": "默认搜索提供商",
+  "New Profile": "新配置文件",
+};
+
+const DEFAULT_MODEL_NAME_MAP: Record<string, string> = {
+  "New Model": "新模型",
+};
 
 type CatalogModel = {
   id: string;
@@ -75,7 +84,7 @@ type Catalog = {
 };
 
 type UiSettings = {
-  theme: "light" | "dark" | "glass" | "snow";
+  theme: "light";
   language: "en" | "zh";
 };
 
@@ -106,6 +115,20 @@ const SERVICES = ["llm", "embedding", "search"] as const;
 
 function cloneCatalog(catalog: Catalog): Catalog {
   return JSON.parse(JSON.stringify(catalog)) as Catalog;
+}
+
+function localizeCatalogLabels(catalog: Catalog): Catalog {
+  const next = cloneCatalog(catalog);
+  for (const service of SERVICES) {
+    const serviceConfig = next.services[service];
+    for (const profile of serviceConfig.profiles) {
+      profile.name = DEFAULT_PROFILE_NAME_MAP[profile.name] ?? profile.name;
+      for (const model of profile.models) {
+        model.name = DEFAULT_MODEL_NAME_MAP[model.name] ?? model.name;
+      }
+    }
+  }
+  return next;
 }
 
 function getActiveProfile(
@@ -549,9 +572,9 @@ function DimensionField({
         <div
           className={`text-[11px] ${
             sourceInfo.tone === "warn"
-              ? "text-amber-600 dark:text-amber-400"
+              ? "text-amber-600"
               : sourceInfo.tone === "ok"
-                ? "text-emerald-600 dark:text-emerald-400"
+                ? "text-emerald-600"
                 : "text-[var(--muted-foreground)]"
           }`}
         >
@@ -585,10 +608,8 @@ function SettingsPageContent() {
   const { t } = useTranslation();
 
   const [status, setStatus] = useState<SystemStatus | null>(null);
-  const [theme, setTheme] = useState<"light" | "dark" | "glass" | "snow">(
-    "light",
-  );
-  const [language, setLanguage] = useState<"en" | "zh">("en");
+  const [theme, setTheme] = useState<"light">("light");
+  const [language, setLanguage] = useState<"en" | "zh">("zh");
   const [catalog, setCatalog] = useState<Catalog>(defaultCatalog());
   const [draft, setDraft] = useState<Catalog>(defaultCatalog());
   const [modelAccess, setModelAccess] = useState<ModelAccess | null>(null);
@@ -630,15 +651,18 @@ function SettingsPageContent() {
         const settingsPayload =
           (await settingsResponse.json()) as SettingsPayload;
         if (settingsPayload.catalog) {
-          setCatalog(settingsPayload.catalog);
-          setDraft(cloneCatalog(settingsPayload.catalog));
+          const localizedCatalog = localizeCatalogLabels(
+            settingsPayload.catalog,
+          );
+          setCatalog(localizedCatalog);
+          setDraft(cloneCatalog(localizedCatalog));
           setCatalogEditable(true);
           setModelAccess(null);
         } else {
           setCatalogEditable(false);
           setModelAccess(settingsPayload.model_access ?? null);
         }
-        setTheme(settingsPayload.ui.theme);
+        setTheme("light");
         setLanguage(settingsPayload.ui.language);
         if (settingsPayload.providers) setProviders(settingsPayload.providers);
       } catch (err) {
@@ -734,7 +758,7 @@ function SettingsPageContent() {
   // -- UI preference helpers ----------------------------------------------
 
   const persistUi = async (
-    nextTheme: "light" | "dark" | "glass" | "snow",
+    nextTheme: "light",
     nextLanguage: "en" | "zh",
   ) => {
     await apiFetch(apiUrl("/api/v1/settings/ui"), {
@@ -742,20 +766,6 @@ function SettingsPageContent() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ theme: nextTheme, language: nextLanguage }),
     });
-  };
-
-  const updateTheme = async (
-    nextTheme: "light" | "dark" | "glass" | "snow",
-  ) => {
-    setTheme(nextTheme);
-    applyThemePreference(nextTheme);
-    await persistUi(nextTheme, language);
-  };
-
-  const updateLanguage = async (nextLanguage: "en" | "zh") => {
-    setLanguage(nextLanguage);
-    writeStoredLanguage(nextLanguage);
-    await persistUi(theme, nextLanguage);
   };
 
   // -- Catalog mutations --------------------------------------------------
@@ -781,7 +791,7 @@ function SettingsPageContent() {
       const profileId = `${activeService}-profile-${Date.now()}`;
       const profile: CatalogProfile = {
         id: profileId,
-        name: "New Profile",
+        name: "新配置文件",
         binding: activeService === "search" ? undefined : "openai",
         provider: activeService === "search" ? "brave" : undefined,
         base_url: "",
@@ -795,7 +805,7 @@ function SettingsPageContent() {
         const modelId = `${activeService}-model-${Date.now()}`;
         profile.models.push({
           id: modelId,
-          name: "New Model",
+          name: "新模型",
           model: "",
           ...(activeService === "embedding"
             ? { dimension: embeddingDefaultDim(), send_dimensions: true }
@@ -833,7 +843,7 @@ function SettingsPageContent() {
       const modelId = `${activeService}-model-${Date.now()}`;
       profile.models.push({
         id: modelId,
-        name: "New Model",
+        name: "新模型",
         model: "",
         ...(activeService === "embedding"
           ? {
@@ -918,8 +928,9 @@ function SettingsPageContent() {
         body: JSON.stringify({ catalog: draft }),
       });
       const payload = await response.json();
-      setCatalog(payload.catalog);
-      setDraft(cloneCatalog(payload.catalog));
+      const localizedCatalog = localizeCatalogLabels(payload.catalog);
+      setCatalog(localizedCatalog);
+      setDraft(cloneCatalog(localizedCatalog));
       setToast(t("Draft saved"));
     } finally {
       setSaving(false);
@@ -936,8 +947,9 @@ function SettingsPageContent() {
         body: JSON.stringify({ catalog: draft }),
       });
       const payload = await response.json();
-      setCatalog(payload.catalog);
-      setDraft(cloneCatalog(payload.catalog));
+      const localizedCatalog = localizeCatalogLabels(payload.catalog);
+      setCatalog(localizedCatalog);
+      setDraft(cloneCatalog(localizedCatalog));
       setToast(t("Applied to .env"));
       const statusResponse = await apiFetch(apiUrl("/api/v1/system/status"));
       setStatus((await statusResponse.json()) as SystemStatus);
@@ -1007,8 +1019,9 @@ function SettingsPageContent() {
           });
         }
         if (entry.catalog) {
-          setCatalog(entry.catalog);
-          setDraft(cloneCatalog(entry.catalog));
+          const localizedCatalog = localizeCatalogLabels(entry.catalog);
+          setCatalog(localizedCatalog);
+          setDraft(cloneCatalog(localizedCatalog));
         }
         if (entry.type === "completed" || entry.type === "failed") {
           source.close();
@@ -1107,57 +1120,6 @@ function SettingsPageContent() {
           </div>
         </div>
 
-        {/* ── Preferences ── */}
-        <div className="mb-5 flex flex-wrap items-center gap-x-8 gap-y-3">
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] text-[var(--muted-foreground)]">
-              {t("Theme")}
-            </span>
-            <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
-              {(["snow", "light", "dark", "glass"] as const).map((v) => (
-                <button
-                  key={v}
-                  onClick={() => updateTheme(v)}
-                  className={`rounded-md px-2.5 py-1 text-[12px] transition-all ${
-                    theme === v
-                      ? "bg-[var(--card)] font-medium text-[var(--foreground)] shadow-sm"
-                      : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                  }`}
-                >
-                  {v === "snow"
-                    ? t("Snow")
-                    : v === "light"
-                      ? t("Light")
-                      : v === "dark"
-                        ? t("Dark")
-                        : t("Glass")}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] text-[var(--muted-foreground)]">
-              {t("Language")}
-            </span>
-            <div className="flex gap-0.5 rounded-lg bg-[var(--muted)] p-0.5">
-              {(["en", "zh"] as const).map((v) => (
-                <button
-                  key={v}
-                  onClick={() => updateLanguage(v)}
-                  className={`rounded-md px-2.5 py-1 text-[12px] transition-all ${
-                    language === v
-                      ? "bg-[var(--card)] font-medium text-[var(--foreground)] shadow-sm"
-                      : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
-                  }`}
-                >
-                  {v === "en" ? t("language.english") : t("language.chinese")}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
         {settingsLoading && (
           <div className="mt-5 rounded-2xl border border-[var(--border)]/50 bg-[var(--card)] p-5 animate-pulse">
             <div className="h-4 w-32 rounded bg-[var(--muted)]/60" />
@@ -1177,7 +1139,7 @@ function SettingsPageContent() {
             {modelAccess && <ModelAccessSummary access={modelAccess} />}
             <p className="mt-5 text-[12px] leading-relaxed text-[var(--muted-foreground)]">
               {t(
-                "Model endpoints are assigned by your administrator. You can still personalize theme and language here.",
+                "Model endpoints are assigned by your administrator.",
               )}
             </p>
           </>
@@ -1281,7 +1243,7 @@ function SettingsPageContent() {
                         {serviceLabel(service, t)}
                       </span>
                       {pendingApply && (
-                        <span className="ml-auto shrink-0 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                        <span className="ml-auto shrink-0 text-[10px] font-medium text-amber-600">
                           {t("Pending")}
                         </span>
                       )}
@@ -1313,7 +1275,7 @@ function SettingsPageContent() {
                       }`}
                     >
                       {serviceIcon(service)}
-                      {service.toUpperCase()}
+                      {serviceLabel(service, t)}
                       <span className="text-[11px] text-[var(--muted-foreground)]/60">
                         {draft.services[service].profiles.length}
                       </span>
@@ -1509,9 +1471,9 @@ function SettingsPageContent() {
                             <p
                               className={`mt-1.5 text-[11px] ${
                                 isSupportedSearchProvider
-                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  ? "text-emerald-600"
                                   : isDeprecatedSearchProvider
-                                    ? "text-amber-600 dark:text-amber-400"
+                                    ? "text-amber-600"
                                     : "text-red-500"
                               }`}
                             >
@@ -1898,7 +1860,7 @@ function SettingsPageContent() {
                       { service: activeService },
                     )}
                   </p>
-                  <pre className="max-h-[360px] overflow-y-auto rounded-lg bg-[#0f0f0f] p-4 font-mono text-[12px] leading-6 text-[#777] dark:bg-[#0a0a0a]">
+                  <pre className="max-h-[360px] overflow-y-auto rounded-lg bg-[#0f0f0f] p-4 font-mono text-[12px] leading-6 text-[#777]">
                     {logs}
                   </pre>
                 </div>

@@ -43,19 +43,19 @@ const TABS: {
 }[] = [
   {
     key: "summary",
-    label: "Summary",
+    label: "摘要",
     icon: BookOpen,
-    hint: "Running summary of the learning journey. Auto-updated after conversations.",
+    hint: "学习过程的动态摘要，会在对话后自动更新。",
     placeholder:
-      "## Current Focus\n- ...\n\n## Accomplishments\n- ...\n\n## Open Questions\n- ...",
+      "## 当前重点\n- ...\n\n## 已完成内容\n- ...\n\n## 待解决问题\n- ...",
   },
   {
     key: "profile",
-    label: "Profile",
+    label: "画像",
     icon: User,
-    hint: "User identity, preferences, and knowledge levels. Auto-updated after conversations.",
+    hint: "用户身份、偏好与知识水平，会在对话后自动更新。",
     placeholder:
-      "## Identity\n- ...\n\n## Learning Style\n- ...\n\n## Knowledge Level\n- ...\n\n## Preferences\n- ...",
+      "## 身份信息\n- ...\n\n## 学习方式\n- ...\n\n## 知识水平\n- ...\n\n## 偏好\n- ...",
   },
 ];
 

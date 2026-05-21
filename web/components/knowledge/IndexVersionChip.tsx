@@ -29,9 +29,9 @@ export default function IndexVersionChip({
       : (version.signature ?? t("Unknown"));
 
   const className = isActive
-    ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
+    ? "border-emerald-300 bg-emerald-50 text-emerald-700"
     : isPhantomActive
-      ? "border-amber-300 bg-amber-50 text-amber-700 line-through decoration-amber-400/70 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"
+      ? "border-amber-300 bg-amber-50 text-amber-700 line-through decoration-amber-400/70"
       : "border-[var(--border)] text-[var(--muted-foreground)]";
 
   const title = isPhantomActive

@@ -1,9 +1,9 @@
 /**
  * Theme persistence utilities
- * Handles light/dark theme with localStorage fallback and system preference detection
+ * DeepTutor now ships with a single light theme.
  */
 
-export type Theme = "light" | "dark" | "glass" | "snow";
+export type Theme = "light";
 
 export const THEME_STORAGE_KEY = "deeptutor-theme";
 
@@ -31,33 +31,17 @@ function notifyThemeChange(theme: Theme): void {
  * Get the stored theme from localStorage
  */
 export function getStoredTheme(): Theme | null {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    if (
-      stored === "light" ||
-      stored === "dark" ||
-      stored === "glass" ||
-      stored === "snow"
-    ) {
-      return stored;
-    }
-  } catch (e) {
-    // Silently fail - localStorage may be disabled
-  }
-
-  return null;
+  return "light";
 }
 
 /**
  * Save theme to localStorage
  */
-export function saveThemeToStorage(theme: Theme): boolean {
+export function saveThemeToStorage(_theme: Theme): boolean {
   if (typeof window === "undefined") return false;
 
   try {
-    localStorage.setItem(THEME_STORAGE_KEY, theme);
+    localStorage.setItem(THEME_STORAGE_KEY, "light");
     return true;
   } catch (e) {
     // Silently fail - localStorage may be disabled or full
@@ -69,30 +53,17 @@ export function saveThemeToStorage(theme: Theme): boolean {
  * Get system preference for theme
  */
 export function getSystemTheme(): Theme {
-  if (typeof window === "undefined") return "light";
-
-  return window.matchMedia("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+  return "light";
 }
 
 /**
  * Apply theme to document
  */
-export function applyThemeToDocument(theme: Theme): void {
+export function applyThemeToDocument(_theme: Theme): void {
   if (typeof document === "undefined") return;
 
   const html = document.documentElement;
-
   html.classList.remove("dark", "theme-glass", "theme-snow");
-
-  if (theme === "dark") {
-    html.classList.add("dark");
-  } else if (theme === "glass") {
-    html.classList.add("dark", "theme-glass");
-  } else if (theme === "snow") {
-    html.classList.add("theme-snow");
-  }
 }
 
 /**
@@ -100,25 +71,16 @@ export function applyThemeToDocument(theme: Theme): void {
  * Priority: localStorage > system preference > default (light)
  */
 export function initializeTheme(): Theme {
-  // Check localStorage first
-  const stored = getStoredTheme();
-  if (stored) {
-    applyThemeToDocument(stored);
-    return stored;
-  }
-
-  // Fall back to system preference
-  const systemTheme = getSystemTheme();
-  applyThemeToDocument(systemTheme);
-  saveThemeToStorage(systemTheme);
-  return systemTheme;
+  applyThemeToDocument("light");
+  saveThemeToStorage("light");
+  return "light";
 }
 
 /**
  * Set theme and persist it
  */
-export function setTheme(theme: Theme): void {
-  applyThemeToDocument(theme);
-  saveThemeToStorage(theme);
-  notifyThemeChange(theme);
+export function setTheme(_theme: Theme): void {
+  applyThemeToDocument("light");
+  saveThemeToStorage("light");
+  notifyThemeChange("light");
 }
