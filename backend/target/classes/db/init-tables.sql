@@ -1,5 +1,119 @@
--- 应用启动时自动执行（CREATE IF NOT EXISTS，可重复运行）
--- 补全 schema.sql 中定义、但 JPA 尚未映射的全部业务表
+-- 应用启动时自动执行（可重复运行）
+-- JPA 只为 @Entity 建表；其余业务表由此脚本补全
+
+-- ========== 旧库增量补丁（新库多为 no-op）==========
+
+-- 规避 MySQL 保留字：user → sys_user
+SET @rename_user := (
+    SELECT COUNT(*) = 0 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'sys_user'
+) AND (
+    SELECT COUNT(*) = 1 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'user'
+);
+SET @sql_rename_user := IF(
+    @rename_user,
+    'RENAME TABLE `user` TO `sys_user`',
+    'SELECT ''skip: sys_user already exists or user missing'''
+);
+PREPARE stmt_rename_user FROM @sql_rename_user;
+EXECUTE stmt_rename_user;
+DEALLOCATE PREPARE stmt_rename_user;
+
+-- learning_path_step.status
+SET @add_step_status := (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'learning_path_step'
+      AND column_name = 'status'
+);
+SET @sql_add_step_status := IF(
+    @add_step_status,
+    'ALTER TABLE `learning_path_step` ADD COLUMN `status` VARCHAR(32) DEFAULT ''PENDING'' COMMENT ''步骤状态：PENDING/ACTIVE/COMPLETED/SKIPPED'' AFTER `completed`',
+    'SELECT ''skip: learning_path_step.status exists'''
+);
+PREPARE stmt_add_step_status FROM @sql_add_step_status;
+EXECUTE stmt_add_step_status;
+DEALLOCATE PREPARE stmt_add_step_status;
+
+-- kb_upload_task：内容分析结果（旧表缺列时追加）
+SET @add_analysis_result := (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'kb_upload_task'
+      AND column_name = 'analysis_result'
+);
+SET @sql_add_analysis_result := IF(
+    @add_analysis_result,
+    'ALTER TABLE `kb_upload_task` ADD COLUMN `analysis_result` TEXT NULL COMMENT ''内容分析智能体输出（JSON）'' AFTER `error_message`',
+    'SELECT ''skip: kb_upload_task.analysis_result exists'''
+);
+PREPARE stmt_add_analysis_result FROM @sql_add_analysis_result;
+EXECUTE stmt_add_analysis_result;
+DEALLOCATE PREPARE stmt_add_analysis_result;
+
+SET @add_mapped_kp_ids := (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'kb_upload_task'
+      AND column_name = 'mapped_kp_ids'
+);
+SET @sql_add_mapped_kp_ids := IF(
+    @add_mapped_kp_ids,
+    'ALTER TABLE `kb_upload_task` ADD COLUMN `mapped_kp_ids` TEXT NULL COMMENT ''映射到的知识点ID列表（JSON数组）'' AFTER `analysis_result`',
+    'SELECT ''skip: kb_upload_task.mapped_kp_ids exists'''
+);
+PREPARE stmt_add_mapped_kp_ids FROM @sql_add_mapped_kp_ids;
+EXECUTE stmt_add_mapped_kp_ids;
+DEALLOCATE PREPARE stmt_add_mapped_kp_ids;
+
+-- resource_item：多模态媒体字段（生图/生视频结果 URL）
+SET @add_resource_media_url := (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'resource_item'
+      AND column_name = 'media_url'
+);
+SET @sql_add_resource_media_url := IF(
+    @add_resource_media_url,
+    'ALTER TABLE `resource_item` ADD COLUMN `media_url` VARCHAR(1024) NULL COMMENT ''媒体资源访问地址（图/视频，本地路径或对象存储 URL）'' AFTER `content`',
+    'SELECT ''skip: resource_item.media_url exists'''
+);
+PREPARE stmt_add_resource_media_url FROM @sql_add_resource_media_url;
+EXECUTE stmt_add_resource_media_url;
+DEALLOCATE PREPARE stmt_add_resource_media_url;
+
+SET @add_resource_media_mime := (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'resource_item'
+      AND column_name = 'media_mime'
+);
+SET @sql_add_resource_media_mime := IF(
+    @add_resource_media_mime,
+    'ALTER TABLE `resource_item` ADD COLUMN `media_mime` VARCHAR(64) NULL COMMENT ''媒体 MIME，如 image/png、video/mp4'' AFTER `media_url`',
+    'SELECT ''skip: resource_item.media_mime exists'''
+);
+PREPARE stmt_add_resource_media_mime FROM @sql_add_resource_media_mime;
+EXECUTE stmt_add_resource_media_mime;
+DEALLOCATE PREPARE stmt_add_resource_media_mime;
+
+SET @add_resource_prompt := (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'resource_item'
+      AND column_name = 'generation_prompt'
+);
+SET @sql_add_resource_prompt := IF(
+    @add_resource_prompt,
+    'ALTER TABLE `resource_item` ADD COLUMN `generation_prompt` TEXT NULL COMMENT ''用于生图/生视频的提示词（便于审计与重试）'' AFTER `media_mime`',
+    'SELECT ''skip: resource_item.generation_prompt exists'''
+);
+PREPARE stmt_add_resource_prompt FROM @sql_add_resource_prompt;
+EXECUTE stmt_add_resource_prompt;
+DEALLOCATE PREPARE stmt_add_resource_prompt;
+
+-- ========== 全量建表（CREATE IF NOT EXISTS）==========
 
 -- 1. 用户与系统配置
 CREATE TABLE IF NOT EXISTS `sys_user` (
@@ -95,15 +209,19 @@ CREATE TABLE IF NOT EXISTS `learning_path_step` (
 
 -- 5. 资源
 CREATE TABLE IF NOT EXISTS `resource_item` (
-    `id`            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
-    `kp_id`         VARCHAR(64)  NOT NULL COMMENT '关联知识点ID',
-    `resource_type` VARCHAR(32)  NOT NULL COMMENT '资源类型：LESSON/QUIZ/CODE_CASE/MIND_MAP/SUMMARY',
-    `title`         VARCHAR(256) COMMENT '资源标题',
-    `content`       LONGTEXT     COMMENT '资源内容（Markdown或JSON）',
-    `quality_score` TINYINT      COMMENT '质量评分：0-100',
-    `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `id`                 BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `kp_id`              VARCHAR(64)  NOT NULL COMMENT '关联知识点ID',
+    `resource_type`      VARCHAR(32)  NOT NULL COMMENT '资源类型：LESSON/QUIZ/CODE_CASE/MIND_MAP/SUMMARY/ILLUSTRATION/VIDEO_CLIP',
+    `title`              VARCHAR(256) COMMENT '资源标题',
+    `content`            LONGTEXT     COMMENT '文本资源内容（Markdown或JSON）；媒体类可存说明文案',
+    `media_url`          VARCHAR(1024) COMMENT '媒体资源地址（生图/生视频结果）',
+    `media_mime`         VARCHAR(64)  COMMENT '媒体 MIME：image/png、video/mp4 等',
+    `generation_prompt`  TEXT         COMMENT '生图/生视频所用提示词',
+    `quality_score`      TINYINT      COMMENT '质量评分：0-100',
+    `created_at`         DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (`id`),
-    KEY `idx_kp_id` (`kp_id`)
+    KEY `idx_kp_id` (`kp_id`),
+    KEY `idx_resource_type` (`resource_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学习资源内容表';
 
 -- 6. 答题记录
@@ -158,6 +276,8 @@ CREATE TABLE IF NOT EXISTS `kb_upload_task` (
     `status`        VARCHAR(16)   NOT NULL DEFAULT 'PENDING' COMMENT '任务状态：PENDING/PROCESSING/COMPLETED/FAILED',
     `priority`      INT           NOT NULL DEFAULT 0 COMMENT '优先级，数值越大越优先',
     `error_message` VARCHAR(1024) COMMENT '失败原因说明',
+    `analysis_result` TEXT         COMMENT '内容分析智能体输出（JSON）',
+    `mapped_kp_ids`   TEXT         COMMENT '映射到的知识点ID列表（JSON数组）',
     `created_at`    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '任务创建时间',
     `started_at`    DATETIME      COMMENT '开始处理时间',
     `finished_at`   DATETIME      COMMENT '处理完成时间',
@@ -178,3 +298,34 @@ CREATE TABLE IF NOT EXISTS `chat_message` (
     PRIMARY KEY (`id`),
     KEY `idx_user_session` (`user_id`, `session_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='智能体交互对话历史表';
+
+-- 11. 聊天会话
+CREATE TABLE IF NOT EXISTS `chat_session` (
+    `id`                   VARCHAR(64)  NOT NULL COMMENT '会话ID（UUID）',
+    `user_id`              BIGINT       NOT NULL COMMENT '学生用户ID',
+    `title`                VARCHAR(256) DEFAULT NULL COMMENT '会话标题',
+    `ai_server_session_id` VARCHAR(128) DEFAULT NULL COMMENT 'ai-server 侧会话ID',
+    `created_at`           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_user_updated` (`user_id`, `updated_at`),
+    CONSTRAINT `fk_chat_session_user` FOREIGN KEY (`user_id`) REFERENCES `sys_user` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='聊天会话表';
+
+-- 12. 智能体运行日志
+CREATE TABLE IF NOT EXISTS `agent_run_log` (
+    `id`            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `session_id`    VARCHAR(64)  DEFAULT NULL COMMENT '关联 chat_session.id',
+    `user_id`       BIGINT       NOT NULL COMMENT '学生用户ID',
+    `agent`         VARCHAR(32)  NOT NULL COMMENT '智能体标识',
+    `intent`        VARCHAR(64)  DEFAULT NULL COMMENT '协调智能体识别的意图',
+    `status`        VARCHAR(16)  NOT NULL DEFAULT 'RUNNING' COMMENT 'RUNNING/SUCCESS/FAILED',
+    `duration_ms`   INT          DEFAULT NULL COMMENT '执行耗时（毫秒）',
+    `detail`        TEXT         DEFAULT NULL COMMENT '步骤详情（JSON）',
+    `error_message` VARCHAR(1024) DEFAULT NULL COMMENT '失败原因',
+    `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_user_created` (`user_id`, `created_at`),
+    KEY `idx_session` (`session_id`),
+    KEY `idx_agent_status` (`agent`, `status`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='智能体运行日志表';

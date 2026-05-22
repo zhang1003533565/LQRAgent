@@ -1,0 +1,85 @@
+# =============================================================================
+# LQRAgent（Spring Boot + Vite/React + ai-server）
+# 与上级 Agent/.gitignore 保持一致；本仓库 Git 根目录在此。
+# =============================================================================
+
+# --- 密钥与本地配置 ---
+.env
+.env.*
+!.env.example
+!.env.example_*
+!**/.env.example
+!**/.env.example_*
+*.local
+application-local.properties
+application-local.yml
+
+# --- 日志 ---
+logs/
+**/logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- 前端 ---
+node_modules/
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+
+# --- Java / Maven ---
+target/
+**/target/
+*.class
+*.jar
+*.war
+hs_err_pid*
+replay_pid*
+
+# --- Python / ai-server ---
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+ENV/
+
+ai-server/data/
+ai-server/multi-user/
+ai-server/run_code_workspace/
+
+# --- 后端运行时 ---
+backend/logs/
+backend/storage/
+
+# --- IDE ---
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.cursor/
+
+# --- 系统 ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- 临时 / 测试 ---
+*.tmp
+*.bak
+*.swp
+*~
+coverage/
+test-results/
+playwright-report/
