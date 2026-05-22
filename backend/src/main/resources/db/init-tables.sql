@@ -1,7 +1,8 @@
 -- 应用启动时自动执行（可重复运行）
 -- JPA 只为 @Entity 建表；其余业务表由此脚本补全
+-- 顺序：先处理遗留表名 → 全量建表 → 旧库缺列补丁（须在 CREATE 之后）
 
--- ========== 旧库增量补丁（新库多为 no-op）==========
+-- ========== 遗留表名（须在 CREATE sys_user 之前）==========
 
 -- 规避 MySQL 保留字：user → sys_user
 SET @rename_user := (
@@ -19,99 +20,6 @@ SET @sql_rename_user := IF(
 PREPARE stmt_rename_user FROM @sql_rename_user;
 EXECUTE stmt_rename_user;
 DEALLOCATE PREPARE stmt_rename_user;
-
--- learning_path_step.status
-SET @add_step_status := (
-    SELECT COUNT(*) = 0 FROM information_schema.columns
-    WHERE table_schema = DATABASE()
-      AND table_name = 'learning_path_step'
-      AND column_name = 'status'
-);
-SET @sql_add_step_status := IF(
-    @add_step_status,
-    'ALTER TABLE `learning_path_step` ADD COLUMN `status` VARCHAR(32) DEFAULT ''PENDING'' COMMENT ''步骤状态：PENDING/ACTIVE/COMPLETED/SKIPPED'' AFTER `completed`',
-    'SELECT ''skip: learning_path_step.status exists'''
-);
-PREPARE stmt_add_step_status FROM @sql_add_step_status;
-EXECUTE stmt_add_step_status;
-DEALLOCATE PREPARE stmt_add_step_status;
-
--- kb_upload_task：内容分析结果（旧表缺列时追加）
-SET @add_analysis_result := (
-    SELECT COUNT(*) = 0 FROM information_schema.columns
-    WHERE table_schema = DATABASE()
-      AND table_name = 'kb_upload_task'
-      AND column_name = 'analysis_result'
-);
-SET @sql_add_analysis_result := IF(
-    @add_analysis_result,
-    'ALTER TABLE `kb_upload_task` ADD COLUMN `analysis_result` TEXT NULL COMMENT ''内容分析智能体输出（JSON）'' AFTER `error_message`',
-    'SELECT ''skip: kb_upload_task.analysis_result exists'''
-);
-PREPARE stmt_add_analysis_result FROM @sql_add_analysis_result;
-EXECUTE stmt_add_analysis_result;
-DEALLOCATE PREPARE stmt_add_analysis_result;
-
-SET @add_mapped_kp_ids := (
-    SELECT COUNT(*) = 0 FROM information_schema.columns
-    WHERE table_schema = DATABASE()
-      AND table_name = 'kb_upload_task'
-      AND column_name = 'mapped_kp_ids'
-);
-SET @sql_add_mapped_kp_ids := IF(
-    @add_mapped_kp_ids,
-    'ALTER TABLE `kb_upload_task` ADD COLUMN `mapped_kp_ids` TEXT NULL COMMENT ''映射到的知识点ID列表（JSON数组）'' AFTER `analysis_result`',
-    'SELECT ''skip: kb_upload_task.mapped_kp_ids exists'''
-);
-PREPARE stmt_add_mapped_kp_ids FROM @sql_add_mapped_kp_ids;
-EXECUTE stmt_add_mapped_kp_ids;
-DEALLOCATE PREPARE stmt_add_mapped_kp_ids;
-
--- resource_item：多模态媒体字段（生图/生视频结果 URL）
-SET @add_resource_media_url := (
-    SELECT COUNT(*) = 0 FROM information_schema.columns
-    WHERE table_schema = DATABASE()
-      AND table_name = 'resource_item'
-      AND column_name = 'media_url'
-);
-SET @sql_add_resource_media_url := IF(
-    @add_resource_media_url,
-    'ALTER TABLE `resource_item` ADD COLUMN `media_url` VARCHAR(1024) NULL COMMENT ''媒体资源访问地址（图/视频，本地路径或对象存储 URL）'' AFTER `content`',
-    'SELECT ''skip: resource_item.media_url exists'''
-);
-PREPARE stmt_add_resource_media_url FROM @sql_add_resource_media_url;
-EXECUTE stmt_add_resource_media_url;
-DEALLOCATE PREPARE stmt_add_resource_media_url;
-
-SET @add_resource_media_mime := (
-    SELECT COUNT(*) = 0 FROM information_schema.columns
-    WHERE table_schema = DATABASE()
-      AND table_name = 'resource_item'
-      AND column_name = 'media_mime'
-);
-SET @sql_add_resource_media_mime := IF(
-    @add_resource_media_mime,
-    'ALTER TABLE `resource_item` ADD COLUMN `media_mime` VARCHAR(64) NULL COMMENT ''媒体 MIME，如 image/png、video/mp4'' AFTER `media_url`',
-    'SELECT ''skip: resource_item.media_mime exists'''
-);
-PREPARE stmt_add_resource_media_mime FROM @sql_add_resource_media_mime;
-EXECUTE stmt_add_resource_media_mime;
-DEALLOCATE PREPARE stmt_add_resource_media_mime;
-
-SET @add_resource_prompt := (
-    SELECT COUNT(*) = 0 FROM information_schema.columns
-    WHERE table_schema = DATABASE()
-      AND table_name = 'resource_item'
-      AND column_name = 'generation_prompt'
-);
-SET @sql_add_resource_prompt := IF(
-    @add_resource_prompt,
-    'ALTER TABLE `resource_item` ADD COLUMN `generation_prompt` TEXT NULL COMMENT ''用于生图/生视频的提示词（便于审计与重试）'' AFTER `media_mime`',
-    'SELECT ''skip: resource_item.generation_prompt exists'''
-);
-PREPARE stmt_add_resource_prompt FROM @sql_add_resource_prompt;
-EXECUTE stmt_add_resource_prompt;
-DEALLOCATE PREPARE stmt_add_resource_prompt;
 
 -- ========== 全量建表（CREATE IF NOT EXISTS）==========
 
@@ -329,3 +237,116 @@ CREATE TABLE IF NOT EXISTS `agent_run_log` (
     KEY `idx_session` (`session_id`),
     KEY `idx_agent_status` (`agent`, `status`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='智能体运行日志表';
+
+-- ========== 旧库增量补丁（须在 CREATE 之后；新库多为 no-op）==========
+
+-- learning_path_step.status
+SET @add_step_status := (
+    SELECT COUNT(*) = 1 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'learning_path_step'
+) AND (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'learning_path_step'
+      AND column_name = 'status'
+);
+SET @sql_add_step_status := IF(
+    @add_step_status,
+    'ALTER TABLE `learning_path_step` ADD COLUMN `status` VARCHAR(32) DEFAULT ''PENDING'' COMMENT ''步骤状态：PENDING/ACTIVE/COMPLETED/SKIPPED'' AFTER `completed`',
+    'SELECT ''skip: learning_path_step.status exists or table missing'''
+);
+PREPARE stmt_add_step_status FROM @sql_add_step_status;
+EXECUTE stmt_add_step_status;
+DEALLOCATE PREPARE stmt_add_step_status;
+
+-- kb_upload_task：内容分析结果（旧表缺列时追加）
+SET @add_analysis_result := (
+    SELECT COUNT(*) = 1 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'kb_upload_task'
+) AND (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'kb_upload_task'
+      AND column_name = 'analysis_result'
+);
+SET @sql_add_analysis_result := IF(
+    @add_analysis_result,
+    'ALTER TABLE `kb_upload_task` ADD COLUMN `analysis_result` TEXT NULL COMMENT ''内容分析智能体输出（JSON）'' AFTER `error_message`',
+    'SELECT ''skip: kb_upload_task.analysis_result exists or table missing'''
+);
+PREPARE stmt_add_analysis_result FROM @sql_add_analysis_result;
+EXECUTE stmt_add_analysis_result;
+DEALLOCATE PREPARE stmt_add_analysis_result;
+
+SET @add_mapped_kp_ids := (
+    SELECT COUNT(*) = 1 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'kb_upload_task'
+) AND (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'kb_upload_task'
+      AND column_name = 'mapped_kp_ids'
+);
+SET @sql_add_mapped_kp_ids := IF(
+    @add_mapped_kp_ids,
+    'ALTER TABLE `kb_upload_task` ADD COLUMN `mapped_kp_ids` TEXT NULL COMMENT ''映射到的知识点ID列表（JSON数组）'' AFTER `analysis_result`',
+    'SELECT ''skip: kb_upload_task.mapped_kp_ids exists or table missing'''
+);
+PREPARE stmt_add_mapped_kp_ids FROM @sql_add_mapped_kp_ids;
+EXECUTE stmt_add_mapped_kp_ids;
+DEALLOCATE PREPARE stmt_add_mapped_kp_ids;
+
+-- resource_item：多模态媒体字段（生图/生视频结果 URL）
+SET @add_resource_media_url := (
+    SELECT COUNT(*) = 1 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'resource_item'
+) AND (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'resource_item'
+      AND column_name = 'media_url'
+);
+SET @sql_add_resource_media_url := IF(
+    @add_resource_media_url,
+    'ALTER TABLE `resource_item` ADD COLUMN `media_url` VARCHAR(1024) NULL COMMENT ''媒体资源访问地址（图/视频，本地路径或对象存储 URL）'' AFTER `content`',
+    'SELECT ''skip: resource_item.media_url exists or table missing'''
+);
+PREPARE stmt_add_resource_media_url FROM @sql_add_resource_media_url;
+EXECUTE stmt_add_resource_media_url;
+DEALLOCATE PREPARE stmt_add_resource_media_url;
+
+SET @add_resource_media_mime := (
+    SELECT COUNT(*) = 1 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'resource_item'
+) AND (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'resource_item'
+      AND column_name = 'media_mime'
+);
+SET @sql_add_resource_media_mime := IF(
+    @add_resource_media_mime,
+    'ALTER TABLE `resource_item` ADD COLUMN `media_mime` VARCHAR(64) NULL COMMENT ''媒体 MIME，如 image/png、video/mp4'' AFTER `media_url`',
+    'SELECT ''skip: resource_item.media_mime exists or table missing'''
+);
+PREPARE stmt_add_resource_media_mime FROM @sql_add_resource_media_mime;
+EXECUTE stmt_add_resource_media_mime;
+DEALLOCATE PREPARE stmt_add_resource_media_mime;
+
+SET @add_resource_prompt := (
+    SELECT COUNT(*) = 1 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'resource_item'
+) AND (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'resource_item'
+      AND column_name = 'generation_prompt'
+);
+SET @sql_add_resource_prompt := IF(
+    @add_resource_prompt,
+    'ALTER TABLE `resource_item` ADD COLUMN `generation_prompt` TEXT NULL COMMENT ''用于生图/生视频的提示词（便于审计与重试）'' AFTER `media_mime`',
+    'SELECT ''skip: resource_item.generation_prompt exists or table missing'''
+);
+PREPARE stmt_add_resource_prompt FROM @sql_add_resource_prompt;
+EXECUTE stmt_add_resource_prompt;
+DEALLOCATE PREPARE stmt_add_resource_prompt;

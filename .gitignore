@@ -16,9 +16,11 @@ application-local.yml
 **/application-local.properties
 **/application-local.yml
 
-# --- 日志 ---
+# --- 日志（运行时生成，勿提交）---
 logs/
 **/logs/
+backend/logs/
+**/*.log
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -36,9 +38,10 @@ build/
 out/
 *.tsbuildinfo
 
-# --- Java / Maven ---
+# --- Java / Maven（编译产物，勿提交）---
 target/
 **/target/
+backend/target/
 *.class
 *.jar
 *.war
@@ -71,8 +74,7 @@ ai-server/data/
 ai-server/multi-user/
 ai-server/run_code_workspace/
 
-# --- 后端运行时 ---
-backend/logs/
+# --- 后端运行时（本地目录，勿提交）---
 backend/storage/
 **/storage/media/
 
