@@ -1,0 +1,171 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.desc {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.6;
+  margin: 0;
+  max-width: 720px;
+}
+
+.desc code {
+  background: #f0f0f0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.msg {
+  font-size: 13px;
+  color: #667eea;
+  margin: 0;
+}
+
+.presetRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.presetBtn,
+.presetActive {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid #ddd;
+  background: #fff;
+  color: #444;
+}
+
+.presetActive {
+  border-color: #667eea;
+  background: #eef0ff;
+  color: #667eea;
+}
+
+.form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  padding: 20px;
+  background: #f8f9fc;
+  border-radius: 8px;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.row label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+}
+
+.row input {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.primaryBtn {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 10px 24px;
+  background: #667eea;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primaryBtn:disabled {
+  opacity: 0.6;
+}
+
+.secondaryBtn {
+  padding: 8px 16px;
+  border: 1px solid #667eea;
+  background: #fff;
+  color: #667eea;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.listTitle {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 8px 0 0;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 2px solid #e9ecef;
+  color: #555;
+}
+
+.table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  vertical-align: top;
+}
+
+.keyCell {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.valCell {
+  max-width: 280px;
+  word-break: break-all;
+}
+
+.linkBtn,
+.dangerBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  margin-right: 8px;
+}
+
+.linkBtn {
+  color: #667eea;
+}
+
+.dangerBtn {
+  color: #e53e3e;
+}
+
+.empty {
+  color: #aaa;
+  font-size: 14px;
+  text-align: center;
+  padding: 16px;
+}

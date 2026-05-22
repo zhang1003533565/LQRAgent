@@ -1,0 +1,30 @@
+WARNING: typer 0.25.1 does not provide the extra 'all'
+
+[notice] A new release of pip is available: 24.0 -> 26.1.1
+[notice] To update, run: python.exe -m pip install --upgrade pip
+INFO:     Will watch for changes in these directories: ['D:\\Project\\xuexiao\\Agent\\LQRAgent\\ai-server']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [40792] using WatchFiles
+INFO:     Started server process [42976]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING: typer 0.25.1 does not provide the extra 'all'
+
+[notice] A new release of pip is available: 24.0 -> 26.1.1
+[notice] To update, run: python.exe -m pip install --upgrade pip
+INFO:     Will watch for changes in these directories: ['D:\\Project\\xuexiao\\Agent\\LQRAgent\\ai-server']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [36080] using WatchFiles
+INFO:     Started server process [4688]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING: typer 0.25.1 does not provide the extra 'all'
+
+[notice] A new release of pip is available: 24.0 -> 26.1.1
+[notice] To update, run: python.exe -m pip install --upgrade pip
+INFO:     Will watch for changes in these directories: ['D:\\Project\\xuexiao\\Agent\\LQRAgent\\ai-server']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [41560] using WatchFiles
+INFO:     Started server process [31460]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.

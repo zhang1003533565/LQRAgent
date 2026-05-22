@@ -1,0 +1,3 @@
+# Mock AI Server 最小依赖 — 仅供 mock_app.py 使用
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
