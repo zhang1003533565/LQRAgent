@@ -1,13 +1,5 @@
 import { create } from 'zustand'
-
-export interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  /** 是否正在流式输出 */
-  streaming?: boolean
-  createdAt: Date
-}
+import type { ChatMessage } from '@/types/chat'
 
 interface ChatState {
   messages: ChatMessage[]
@@ -16,14 +8,12 @@ interface ChatState {
   addMessage: (msg: ChatMessage) => void
   appendToLastMessage: (chunk: string) => void
   setStreaming: (id: string, streaming: boolean) => void
+  updateMessage: (id: string, patch: Partial<ChatMessage>) => void
   setSessionId: (id: string) => void
   setConnected: (connected: boolean) => void
   clearMessages: () => void
 }
 
-/**
- * 聊天会话状态。
- */
 export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   sessionId: null,
@@ -46,6 +36,13 @@ export const useChatStore = create<ChatState>((set) => ({
     set((state) => ({
       messages: state.messages.map((m) =>
         m.id === id ? { ...m, streaming } : m,
+      ),
+    })),
+
+  updateMessage: (id, patch) =>
+    set((state) => ({
+      messages: state.messages.map((m) =>
+        m.id === id ? { ...m, ...patch } : m,
       ),
     })),
 

@@ -18,7 +18,8 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
-import java.nio.charset.Charset;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
@@ -59,10 +60,11 @@ public class ConsoleControlPanel implements ApplicationRunner {
 
     private void loop() {
         running.set(true);
+        useUtf8Console();
         printBanner();
         printHelp();
 
-        try (Scanner scanner = new Scanner(System.in, Charset.defaultCharset())) {
+        try (Scanner scanner = new Scanner(System.in, StandardCharsets.UTF_8)) {
             while (running.get()) {
                 System.out.print("\nLQRAgent> ");
                 if (!scanner.hasNextLine()) {
@@ -283,5 +285,15 @@ public class ConsoleControlPanel implements ApplicationRunner {
     private static String maskUrl(String url) {
         if (url == null || url.isBlank()) return "-";
         return url.replaceAll("password=[^&]*", "password=****");
+    }
+
+    /** Windows 下 System.out 默认常随 GBK 控制台；统一为 UTF-8 避免中文菜单乱码。 */
+    private static void useUtf8Console() {
+        try {
+            System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8));
+            System.setErr(new PrintStream(System.err, true, StandardCharsets.UTF_8));
+        } catch (Exception ignored) {
+            // 保持默认流
+        }
     }
 }

@@ -6,9 +6,11 @@ import {
   type AdminStatus,
 } from '@/api/admin'
 import type { UploadTask } from '@/api/upload'
-import ModelConfigPanel from '@/components/admin/ModelConfigPanel'
-import SystemConfigPanel from '@/components/admin/SystemConfigPanel'
-import UserListPanel from '@/components/admin/UserListPanel'
+import {
+  ModelConfigPanel,
+  SystemConfigPanel,
+  UserListPanel,
+} from '@/features/admin'
 import { useAuthStore } from '@/store/authStore'
 import styles from './AdminPage.module.css'
 

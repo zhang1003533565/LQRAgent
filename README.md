@@ -165,7 +165,13 @@ taskkill /PID <进程ID> /F
 
 **Windows 终端中文乱码**
 
-执行 `chcp 65001` 后重新启动后端。
+原因：Java 用 UTF-8 输出，PowerShell 默认常为 GBK（代码页 936），菜单和日志会显示成乱码。
+
+任选其一后**重新打开终端**再 `mvn spring-boot:run`：
+
+1. 使用项目自带终端配置（推荐）：仓库内 `.vscode/settings.json` 已配置 UTF-8 PowerShell，在 Cursor/VS Code 里 **新建终端** 即可。
+2. 手动执行：`chcp 65001`，再启动后端。
+3. 不需要中文菜单时：在 `application.properties` 设 `app.console.enabled=false`（只保留英文日志前缀）。
 
 ---
 

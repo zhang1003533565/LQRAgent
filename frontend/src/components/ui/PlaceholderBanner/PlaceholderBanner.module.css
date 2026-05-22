@@ -1,0 +1,21 @@
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: var(--ws-radius-sm);
+  background: rgba(217, 119, 6, 0.08);
+  border: 1px dashed rgba(217, 119, 6, 0.35);
+  font-size: 12px;
+}
+
+.label {
+  font-weight: 600;
+  color: var(--ws-warn);
+}
+
+.hint {
+  color: #64748b;
+}

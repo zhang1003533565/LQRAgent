@@ -1,0 +1,10 @@
+{
+  "terminal.integrated.defaultProfile.windows": "LQRAgent UTF-8",
+  "terminal.integrated.profiles.windows": {
+    "LQRAgent UTF-8": {
+      "source": "PowerShell",
+      "args": ["-NoExit", "-Command", "chcp 65001 > $null"]
+    }
+  },
+  "files.encoding": "utf8"
+}

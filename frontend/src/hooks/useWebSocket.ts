@@ -1,72 +1,164 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useChatStore } from '@/store/chatStore'
 import { useAuthStore } from '@/store/authStore'
+import { useAgentTraceStore } from '@/store/agentTraceStore'
+import { useArtifactStore } from '@/store/artifactStore'
+import { usePathStore } from '@/store/pathStore'
+import { useProfileStore } from '@/store/profileStore'
+import type { AgentId, AgentStepStatus } from '@/types/agent-events'
+import type { ArtifactKind } from '@/types/artifact'
+import type { WsRawMessage } from '@/types/agent-events'
+import type { LearningPathArtifactPayload } from '@/types/artifact'
+import type { MultiCardBlock } from '@/types/multi-card'
+import type { ProfileSummary } from '@/types/profile'
+
+function handleArtifact(kind: ArtifactKind, payload: unknown) {
+  const artifact = useArtifactStore.getState()
+  artifact.setLastKind(kind)
+
+  if (kind === 'learning_path') {
+    const p = payload as LearningPathArtifactPayload
+    if (p?.nodes) {
+      usePathStore.getState().setPath({
+        goal: p.goal ?? '',
+        nodes: p.nodes,
+        planDescription: p.planDescription ?? '',
+      })
+    }
+    return
+  }
+
+  if (kind === 'multi_card' && Array.isArray(payload)) {
+    artifact.setMultiCardBlocks(payload as MultiCardBlock[])
+    const msgs = useChatStore.getState().messages
+    const last = [...msgs].reverse().find((m) => m.role === 'assistant')
+    if (last) {
+      useChatStore.getState().updateMessage(last.id, {
+        contentType: 'multi_card',
+        cards: payload as MultiCardBlock[],
+        streaming: false,
+      })
+    }
+  }
+}
 
 /**
- * WebSocket 封装 Hook。
- * 连接到 /ws/chat，处理流式消息事件。
- *
- * 消息协议（与 ai-server unified_ws 对齐）：
- *   发送：{ type: 'message', content: string, session_id?: string }
- *   接收：{ type: 'chunk' | 'done' | 'error', content?: string, session_id?: string }
+ * WebSocket：chunk / agent_step / artifact / profile_patch / done / error
  */
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
-  const { addMessage, appendToLastMessage, setStreaming, setConnected, setSessionId } = useChatStore()
+  const {
+    appendToLastMessage,
+    setStreaming,
+    setConnected,
+    setSessionId,
+    addMessage,
+    updateMessage,
+  } = useChatStore()
+  const upsertStep = useAgentTraceStore((s) => s.upsertStep)
+  const clearSteps = useAgentTraceStore((s) => s.clearSteps)
+  const patchSummary = useProfileStore((s) => s.patchSummary)
   const token = useAuthStore((s) => s.user?.token)
+
+  const dispatch = useCallback(
+    (data: WsRawMessage) => {
+      if (data.session_id) setSessionId(data.session_id)
+
+      switch (data.type) {
+        case 'chunk':
+          appendToLastMessage(data.content ?? '')
+          break
+        case 'agent_step':
+          if (data.agent && data.label && data.status) {
+            upsertStep({
+              agent: data.agent as AgentId,
+              label: data.label,
+              status: data.status as AgentStepStatus,
+              detail: data.detail,
+            })
+          }
+          break
+        case 'artifact':
+          if (data.kind) {
+            handleArtifact(data.kind as ArtifactKind, data.payload)
+          }
+          break
+        case 'profile_patch':
+          if (data.payload && typeof data.payload === 'object') {
+            patchSummary(data.payload as Partial<ProfileSummary>)
+          }
+          break
+        case 'done': {
+          const msgs = useChatStore.getState().messages
+          const last = [...msgs].reverse().find((m) => m.role === 'assistant')
+          if (last) setStreaming(last.id, false)
+          break
+        }
+        case 'error': {
+          const msgs = useChatStore.getState().messages
+          const last = [...msgs].reverse().find((m) => m.role === 'assistant')
+          if (last) {
+            updateMessage(last.id, {
+              content: (last.content || '') + `\n\n⚠️ ${data.content ?? '发生错误'}`,
+              streaming: false,
+            })
+          } else {
+            addMessage({
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              content: data.content ?? '发生错误',
+              createdAt: new Date(),
+            })
+          }
+          break
+        }
+        default:
+          break
+      }
+    },
+    [
+      appendToLastMessage,
+      setStreaming,
+      setSessionId,
+      upsertStep,
+      patchSummary,
+      addMessage,
+      updateMessage,
+    ],
+  )
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
+    if (!token) return
 
     const url = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/chat?token=${token}`
     const ws = new WebSocket(url)
     wsRef.current = ws
 
-    ws.onopen = () => {
-      setConnected(true)
-    }
-
-    ws.onclose = () => {
-      setConnected(false)
-    }
-
-    ws.onerror = (e) => {
-      console.error('[WebSocket] error', e)
-      setConnected(false)
-    }
+    ws.onopen = () => setConnected(true)
+    ws.onclose = () => setConnected(false)
+    ws.onerror = () => setConnected(false)
 
     ws.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data as string)
-
-        if (data.session_id) {
-          setSessionId(data.session_id)
-        }
-
-        if (data.type === 'chunk') {
-          appendToLastMessage(data.content ?? '')
-        } else if (data.type === 'done') {
-          // 找到最后一条 assistant 消息，标记流式结束
-          const msgs = useChatStore.getState().messages
-          const last = [...msgs].reverse().find((m) => m.role === 'assistant')
-          if (last) setStreaming(last.id, false)
-        } else if (data.type === 'error') {
-          console.error('[WebSocket] server error:', data.content)
-        }
+        dispatch(JSON.parse(event.data as string) as WsRawMessage)
       } catch {
-        console.warn('[WebSocket] non-JSON message:', event.data)
+        console.warn('[WebSocket] non-JSON:', event.data)
       }
     }
-  }, [token, addMessage, appendToLastMessage, setStreaming, setConnected, setSessionId])
+  }, [token, dispatch, setConnected])
 
   const send = useCallback((content: string) => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) {
       console.warn('[WebSocket] not connected')
       return
     }
+    clearSteps()
     const sessionId = useChatStore.getState().sessionId
-    wsRef.current.send(JSON.stringify({ type: 'message', content, session_id: sessionId }))
-  }, [])
+    wsRef.current.send(
+      JSON.stringify({ type: 'message', content, session_id: sessionId }),
+    )
+  }, [clearSteps])
 
   const disconnect = useCallback(() => {
     wsRef.current?.close()

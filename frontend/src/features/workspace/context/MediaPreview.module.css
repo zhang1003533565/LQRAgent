@@ -1,0 +1,21 @@
+.wrap {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--ws-panel-bg);
+  border: 1px solid var(--ws-border);
+  border-radius: var(--ws-radius);
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.media {
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: var(--ws-radius-sm);
+  background: #f1f5f9;
+}

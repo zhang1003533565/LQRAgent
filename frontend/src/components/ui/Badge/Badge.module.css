@@ -1,0 +1,29 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.default {
+  background: var(--ws-accent-soft);
+  color: var(--ws-accent);
+}
+
+.success {
+  background: rgba(45, 157, 107, 0.15);
+  color: var(--ws-success);
+}
+
+.warn {
+  background: rgba(217, 119, 6, 0.15);
+  color: var(--ws-warn);
+}
+
+.muted {
+  background: rgba(0, 0, 0, 0.06);
+  color: #64748b;
+}

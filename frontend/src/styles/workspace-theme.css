@@ -1,0 +1,27 @@
+/**
+ * 学生工作台主题变量 — 深色侧栏 + 浅色主区
+ */
+:root {
+  --ws-sidebar-bg: #1e1e2e;
+  --ws-sidebar-text: #cdd6f4;
+  --ws-sidebar-muted: #a6adc8;
+  --ws-sidebar-hover: rgba(255, 255, 255, 0.08);
+  --ws-sidebar-active: rgba(137, 180, 250, 0.2);
+
+  --ws-main-bg: #f5f6f8;
+  --ws-panel-bg: #ffffff;
+  --ws-aside-bg: #f0f1f4;
+  --ws-border: #e2e4ea;
+
+  --ws-accent: #4568dc;
+  --ws-accent-soft: rgba(69, 104, 220, 0.12);
+  --ws-success: #2d9d6b;
+  --ws-warn: #d97706;
+  --ws-danger: #dc3545;
+
+  --ws-radius: 10px;
+  --ws-radius-sm: 6px;
+  --ws-font: 'Segoe UI', system-ui, sans-serif;
+  --ws-mono: ui-monospace, Consolas, monospace;
+  --ws-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
