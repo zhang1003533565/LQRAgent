@@ -1,9 +1,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import LoginPage from '@/pages/LoginPage'
-import RegisterPage from '@/pages/RegisterPage'
-import WorkspacePage from '@/pages/WorkspacePage'
-import AdminPage from '@/pages/AdminPage'
-import ProtectedRoute from '@/app/ProtectedRoute'
+import ProtectedRoute from '@/components/auth/ProtectedRoute'
+import AdminPage from '@/admin/pages/AdminPage'
+import LoginPage from '@/student/pages/LoginPage'
+import RegisterPage from '@/student/pages/RegisterPage'
+import WorkspacePage from '@/student/pages/WorkspacePage'
 import styles from './App.module.css'
 
 export default function App() {

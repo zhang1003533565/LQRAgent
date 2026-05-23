@@ -10,7 +10,7 @@ import {
   ModelConfigPanel,
   SystemConfigPanel,
   UserListPanel,
-} from '@/features/admin'
+} from '@/admin/components'
 import { useAuthStore } from '@/store/authStore'
 import styles from './AdminPage.module.css'
 

@@ -4,13 +4,13 @@ import {
   ChatView,
   UploadView,
   ProfileView,
-} from '@/features/workspace'
+} from '@/student/components/workspace'
 import {
   CoursesView,
   RecordsView,
   KnowledgeView,
   NotesView,
-} from '@/features/workspace/placeholder'
+} from '@/student/components/workspace/placeholder'
 
 export default function WorkspacePage() {
   return (
