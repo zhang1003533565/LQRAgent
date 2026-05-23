@@ -4,7 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Data;
 
-@Schema(description = "登录响应")
+@Schema(description = "登录/注册响应，注册成功也会自动返回 JWT token")
 @Data
 @Builder
 public class LoginResponse {
