@@ -1,19 +1,17 @@
 # LQRAgent
 
-面向《Python 高级语言程序设计》的个性化 AI 学习系统（软件杯）。
+面向《Python 高级语言程序设计》的个性化 AI 学习系统（第十五届软件杯 A3 赛题）。
+
+## 启动（只需两步）
 
 ```
-浏览器 → frontend:5173 → 代理 /api、/ws → backend:8080 → ai-server:8001
+终端 1:  cd backend && mvn spring-boot:run    # 后端 + ai-server 自动拉起
+终端 2:  cd frontend && npm run dev            # 前端开发服务器
 ```
 
-| 服务 | 地址 |
-|------|------|
-| 前端 | http://localhost:5173 |
-| 后端 API | http://localhost:8080/api/... |
-| AI Server | http://localhost:8001 |
-| 管理后台 | 登录 `admin` → `/admin` |
+打开 **http://localhost:5173**，用 `admin` / `123456` 登录 → 在管理后台配置大模型 Key → 开始使用。
 
-默认账号（密码均为 **123456**）：`admin`（管理员）、`student1`（学生）。
+**不需要手动启动 ai-server，不需要手动编辑 .env 文件。** 所有模型配置通过浏览器完成。
 
 ---
 
@@ -58,9 +56,12 @@ cd backend
 mvn spring-boot:run
 ```
 
-成功标志：日志出现 `Started BackendApplication`，监听 **http://localhost:8080**。首次启动会自动执行 `backend/src/main/resources/db/init-tables.sql` 建齐约 14 张业务表，并创建测试账号。
+成功标志：日志出现 `Started BackendApplication`，监听 **http://localhost:8080**。首次启动会自动：
+- 执行 `init-tables.sql` 建 14 张业务表
+- 创建测试账号 `admin` / `student1`（密码 `123456`）
+- pip install ai-server 依赖 + 自动拉起 ai-server 进程（日志在 `backend/logs/ai-server.log`）
 
-可选：同一终端出现 `LQRAgent>` 时可输入 `help` 管理配置；关闭菜单输入 `quit` 不会停止 Web。禁用控制台：`app.console.enabled=false`。
+> 控制台菜单可忽略（输入 `quit` 不会停 Web 服务）。禁用：`app.console.enabled=false`。
 
 ### 4. 启动前端
 
@@ -72,36 +73,20 @@ npm run dev
 
 浏览器访问 **http://localhost:5173**。开发模式下 `/api`、`/ws` 代理到 `http://localhost:8080`。
 
-### 5. 配置大模型 API（必做）
+### 5. 配置大模型 API Key（必做，启动后浏览器操作）
 
-对话、RAG、资源生成依赖 ai-server 中的大模型配置。
+**ai-server 已自动拉起，只需配 Key：**
 
-**方式 A — 管理后台（推荐）**
+1. 浏览器打开 http://localhost:5173
+2. 使用 `admin` / `123456` 登录 → 管理后台 → **系统配置**
+3. 填写大模型提供商、模型名、API Key、API 地址
+4. 勾选 **同步到 ai-server/.env**，保存
+5. 点击 **测试大模型 API** 确认连通
+6. 重启后端使 ai-server 加载新配置（或等热加载）
 
-1. 使用 `admin` / `123456` 登录 → **系统配置**
-2. 填写大模型提供商、模型名、API Key、API 地址
-3. 勾选 **同步到 ai-server/.env**，保存并 **测试大模型 API**
-4. **重启后端**（或 AI 进程）使 `.env` 生效
+**完成**。现在用 `student1` / `123456` 登录就可以开始对话学习了。
 
-**方式 B — 直接编辑 `ai-server/.env`**
-
-```powershell
-cd ai-server
-copy .env.example .env    # Windows
-# cp .env.example .env    # macOS / Linux
-```
-
-至少配置 `LLM_BINDING`、`LLM_MODEL`、`LLM_API_KEY`、`LLM_HOST` 及对应的 `EMBEDDING_*`。
-
-### 6. 单独启动 AI Server（可选）
-
-若 `ai-server.auto-start=false`：
-
-```powershell
-cd ai-server
-python -m pip install -e ".[server]"
-python -m deeptutor.api.run_server
-```
+> 不需要手动创建或编辑 ai-server/.env，后端会自动同步。
 
 ---
 
@@ -127,6 +112,7 @@ JPA 会为 `sys_user`、`kb_upload_task` 等实体同步字段；其余表由上
 | 运行时覆盖 | MySQL `sys_config`（管理后台保存后优先） |
 | 大模型 API | 管理后台 → 同步到 `ai-server/.env` |
 | AI 服务地址 | `ai-server.base-url`（默认 `http://localhost:8001`） |
+| **接口文档** | **http://localhost:8080/swagger-ui.html** |
 
 常用 `sys_config` 键：`ai-server.base-url`、`ai-server.auto-start`、`llm.*`、`embedding.*`。
 
@@ -177,18 +163,21 @@ taskkill /PID <进程ID> /F
 
 ## 当前功能完成度（简要）
 
-| 模块 | 状态 |
-|------|------|
-| 登录 / 角色分流 | ✅ |
-| 管理后台 / 系统配置 / 模型 API | ✅ |
-| 数据库表结构 | ✅ |
-| 学生工作台 UI | ✅ 页面可用 |
-| 流式对话 | ⏳ WebSocket 待实现 |
-| 学习路径 / 知识图谱 | ⏳ 占位数据 |
-| 上传进知识库 | ⏳ 队列有，对接 AI 待实现 |
-| 多模态资源（生图 / 生视频） | ⏳ 已纳入规划（P1 示意图，P4 短视频） |
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| 登录 / 角色分流 | ✅ | admin→/admin, student1→/workspace |
+| 管理后台 / 模型 API 配置 | ✅ | 浏览器配 Key，自动同步 ai-server/.env |
+| 数据库表结构 | ✅ | 14 张业务表，启动时自动执行 DDL |
+| ai-server 自动拉起 | ✅ | 后端启动时自动 pip install + 启动进程 |
+| 学生工作台 UI 框架 | ✅ | 页面、路由、组件壳子、类型定义就绪 |
+| 流式对话（WebSocket） | ❌ | P0 最高优先级，后端待开发 |
+| 学习路径 / 知识图谱 | ❌ | 仅占位数据，待填写图谱+真逻辑 |
+| 资源生成（讲义/题目/示意图） | ❌ | P1 待开发 |
+| 答题 / 学习画像 | ❌ | P2 待开发 |
+| 上传进知识库 | ❌ | 队列有，AI 对接待开发（P3） |
+| 多模态（生图 / 生视频） | ❌ | P1 示意图 / P4 短视频 |
 
-多模态设计见 [docs/项目精简开发指南.md §8.1](./docs/项目精简开发指南.md)。
+详细开发计划见 [docs/项目精简开发指南.md](./docs/项目精简开发指南.md)。
 
 ---
 
@@ -206,8 +195,9 @@ taskkill /PID <进程ID> /F
 |------|------|
 | [docs/文档索引.md](./docs/文档索引.md) | 文档入口 |
 | [docs/前端功能模块.md](./docs/前端功能模块.md) | **学生工作台**功能模块（管理后台 UI 自研，见后端进度） |
-| [docs/前端可对接API.md](./docs/前端可对接API.md) | 已写通接口速查（给前端） |
-| [docs/项目精简开发指南.md](./docs/项目精简开发指南.md) | 架构、事件协议、P0～P4 |
-| [docs/后端开发进度.md](./docs/后端开发进度.md) | 后端 ✅/🟡/❌ 对照 |
+| [docs/项目精简开发指南.md](./docs/项目精简开发指南.md) | 架构、事件协议、P0～P4 详细开发流程 |
+| [docs/后端开发进度.md](./docs/后端开发进度.md) | 后端 ✅/🟡/❌ 对照 + 任务清单 |
+
+**接口文档**：启动后端后访问 **http://localhost:8080/swagger-ui.html**，所有接口在线可查可测。
 
 数据库脚本唯一来源：`backend/src/main/resources/db/init-tables.sql`。

@@ -46,6 +46,13 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/**").permitAll()
                 // WebSocket 握手
                 .requestMatchers("/ws/**").permitAll()
+                // Swagger / SpringDoc
+                .requestMatchers(
+                    "/swagger-ui.html",
+                    "/swagger-ui/**",
+                    "/api-docs/**",
+                    "/v3/api-docs/**"
+                ).permitAll()
                 // 其余接口需要认证
                 .anyRequest().authenticated()
             )

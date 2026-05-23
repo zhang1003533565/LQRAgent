@@ -1,19 +1,24 @@
 package com.lqragent.backend.common.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;
 
 /**
  * 统一 API 响应包装。
- * 成功：ApiResponse.ok(data)
- * 失败：ApiResponse.fail(code, message)
  */
 @Getter
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@Schema(description = "统一响应包装")
 public class ApiResponse<T> {
 
+    @Schema(description = "状态码，200 表示成功")
     private final int code;
+
+    @Schema(description = "提示信息")
     private final String message;
+
+    @Schema(description = "响应数据")
     private final T data;
 
     private ApiResponse(int code, String message, T data) {
