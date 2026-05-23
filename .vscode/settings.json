@@ -1,10 +1,19 @@
 {
-  "terminal.integrated.defaultProfile.windows": "LQRAgent UTF-8",
+  "terminal.integrated.defaultProfile.windows": "Git Bash (UTF-8)",
   "terminal.integrated.profiles.windows": {
     "LQRAgent UTF-8": {
       "source": "PowerShell",
       "args": ["-NoExit", "-Command", "chcp 65001 > $null"]
+    },
+    "Git Bash (UTF-8)": {
+      "source": "Git Bash",
+      "args": []
     }
+  },
+  "terminal.integrated.env.windows": {
+    "LANG": "zh_CN.UTF-8",
+    "JAVA_TOOL_OPTIONS": "-Dfile.encoding=UTF-8",
+    "MAVEN_OPTS": "-Dfile.encoding=UTF-8"
   },
   "files.encoding": "utf8"
 }
