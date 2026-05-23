@@ -2,6 +2,7 @@ package com.lqragent.backend.auth.service;
 
 import com.lqragent.backend.auth.dto.LoginRequest;
 import com.lqragent.backend.auth.dto.LoginResponse;
+import com.lqragent.backend.auth.dto.RegisterRequest;
 import com.lqragent.backend.common.exception.BusinessException;
 import com.lqragent.backend.security.JwtUtil;
 import com.lqragent.backend.user.entity.User;
@@ -11,7 +12,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 /**
- * 登录业务逻辑：校验账密 → 生成 JWT → 返回角色和跳转路由。
+ * 登录、注册业务逻辑。
  */
 @Service
 @RequiredArgsConstructor
@@ -33,6 +34,32 @@ public class AuthService {
             throw BusinessException.unauthorized("用户名或密码错误");
         }
 
+        return toLoginResponse(user);
+    }
+
+    public LoginResponse register(RegisterRequest request) {
+        if (userRepository.existsByUsername(request.getUsername())) {
+            throw BusinessException.of("用户名已被占用");
+        }
+
+        String displayName = request.getDisplayName() != null && !request.getDisplayName().isBlank()
+                ? request.getDisplayName()
+                : request.getUsername();
+
+        User user = User.builder()
+                .username(request.getUsername())
+                .password(passwordEncoder.encode(request.getPassword()))
+                .displayName(displayName)
+                .role(User.Role.STUDENT)
+                .enabled(true)
+                .build();
+
+        userRepository.save(user);
+
+        return toLoginResponse(user);
+    }
+
+    private LoginResponse toLoginResponse(User user) {
         String token = jwtUtil.generateToken(user.getId(), user.getUsername(), user.getRole().name());
 
         return LoginResponse.builder()
