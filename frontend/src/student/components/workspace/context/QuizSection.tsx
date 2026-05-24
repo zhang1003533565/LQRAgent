@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { PlaceholderBanner } from '@/components/ui'
+﻿import { useState } from 'react'
+import { PlaceholderBanner } from '@/shared/components/ui'
 import styles from './QuizSection.module.css'
 
 const MOCK = {

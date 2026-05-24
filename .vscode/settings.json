@@ -15,5 +15,6 @@
     "JAVA_TOOL_OPTIONS": "-Dfile.encoding=UTF-8",
     "MAVEN_OPTS": "-Dfile.encoding=UTF-8"
   },
-  "files.encoding": "utf8"
+  "files.encoding": "utf8",
+  "typescript.tsconfig": "frontend/tsconfig.app.json"
 }

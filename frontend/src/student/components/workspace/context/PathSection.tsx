@@ -1,9 +1,9 @@
-import { useState } from 'react'
-import { getLearningPath } from '@/api/learningPath'
-import { usePathStore } from '@/store/pathStore'
-import { useArtifactStore } from '@/store/artifactStore'
-import { generateResource } from '@/api/resources'
-import { PlaceholderBanner } from '@/components/ui'
+﻿import { useState } from 'react'
+import { getLearningPath } from '@/shared/api/learningPath'
+import { usePathStore } from '@/student/store/pathStore'
+import { useArtifactStore } from '@/student/store/artifactStore'
+import { generateResource } from '@/shared/api/resources'
+import { PlaceholderBanner } from '@/shared/components/ui'
 import styles from './PathSection.module.css'
 
 export default function PathSection() {

@@ -74,7 +74,7 @@ public class AuthService {
     private String resolveRedirectPath(String role) {
         return switch (role) {
             case "STUDENT" -> "/workspace";
-            case "ADMIN"   -> "/admin";
+            case "ADMIN"   -> "/admin/console";
             default        -> "/";
         };
     }

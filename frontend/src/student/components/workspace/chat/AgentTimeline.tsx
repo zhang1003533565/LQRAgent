@@ -1,6 +1,6 @@
-import { useAgentTraceStore } from '@/store/agentTraceStore'
-import { AGENT_LABELS } from '@/constants/agent-labels'
-import { EmptyState } from '@/components/ui'
+﻿import { useAgentTraceStore } from '@/student/store/agentTraceStore'
+import { AGENT_LABELS } from '@/shared/constants/agent-labels'
+import { EmptyState } from '@/shared/components/ui'
 import styles from './AgentTimeline.module.css'
 
 export default function AgentTimeline() {

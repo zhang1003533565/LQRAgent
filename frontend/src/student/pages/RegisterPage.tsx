@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from 'react'
+﻿import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { register } from '@/api/auth'
-import { useAuthStore } from '@/store/authStore'
+import { register } from '@/shared/api/auth'
+import { useAuthStore } from '@/shared/store/authStore'
 import styles from './RegisterPage.module.css'
 
 export default function RegisterPage() {

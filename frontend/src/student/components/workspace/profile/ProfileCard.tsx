@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
-import { getMe, type UserProfileDto } from '@/api/user'
-import { getProfileSummary } from '@/api/profile'
-import { useAuthStore } from '@/store/authStore'
-import { useProfileStore } from '@/store/profileStore'
-import { Badge } from '@/components/ui'
+﻿import { useEffect, useState } from 'react'
+import { getMe, type UserProfileDto } from '@/shared/api/user'
+import { getProfileSummary } from '@/shared/api/profile'
+import { useAuthStore } from '@/shared/store/authStore'
+import { useProfileStore } from '@/student/store/profileStore'
+import { Badge } from '@/shared/components/ui'
 import styles from './ProfileCard.module.css'
 
 const ROLE_LABEL: Record<string, string> = {

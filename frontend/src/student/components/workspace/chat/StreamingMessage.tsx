@@ -1,6 +1,6 @@
-import ReactMarkdown from 'react-markdown'
+﻿import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { ChatMessage } from '@/types/chat'
+import type { ChatMessage } from '@/shared/types/chat'
 import MultiCardMessage from './MultiCardMessage'
 import styles from './StreamingMessage.module.css'
 

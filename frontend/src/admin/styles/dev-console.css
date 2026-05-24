@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  .dev-console-root {
+    @apply bg-console-bg text-console-text font-sans antialiased;
+  }
+}
+
+/* React Flow — Dev Console 局部样式 */
+.dev-console-root .react-flow__background {
+  background: transparent !important;
+}
+.dev-console-root .react-flow__edge-path {
+  stroke: #334155;
+  stroke-width: 2;
+}
+.dev-console-root .react-flow__controls button {
+  background: #121a2b;
+  border-color: #1e293b;
+  color: #e2e8f0;
+}
+.dev-console-root .react-flow__controls button:hover {
+  background: #1e293b;
+}

@@ -1,13 +1,13 @@
-# 学生工作台 (`features/workspace`)
+# 学生工作台（`student/components/workspace`）
 
-与 DeepTutor `ai-server/web` 一致：**侧栏 + 主区** 两栏，无第三栏。
+侧栏 + 主区两栏布局，无第三栏。
 
 | 目录 | 职责 |
 |------|------|
-| `shell/` | 布局壳、侧栏导航 |
-| `chat/` | 对话流、Composer、Agent 步骤条 |
-| `context/` | 主区 Tab：路径、资源、练习 |
-| `upload/` | 上传资料页 |
-| `profile/` | 侧栏用户卡、画像详情页 |
+| `shell/` | WorkspaceShell、WorkspaceSidebar |
+| `chat/` | 对话、Composer、AgentTimeline |
+| `context/` | 路径、资源、练习 Tab |
+| `upload/` | 上传资料 |
+| `profile/` | 学习画像 |
 
-入口：`pages/WorkspacePage.tsx` → `WorkspaceShell` + 子路由。
+入口：`student/pages/WorkspacePage.tsx`。

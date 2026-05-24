@@ -1,5 +1,5 @@
-import { useChatStore } from '@/store/chatStore'
-import { useChatAutoScroll } from '@/hooks/useChatAutoScroll'
+﻿import { useChatStore } from '@/student/store/chatStore'
+import { useChatAutoScroll } from '@/student/hooks/useChatAutoScroll'
 import StreamingMessage from './StreamingMessage'
 import styles from './ChatPanel.module.css'
 

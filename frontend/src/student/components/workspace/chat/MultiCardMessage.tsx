@@ -1,4 +1,4 @@
-import type { MultiCardBlock } from '@/types/multi-card'
+﻿import type { MultiCardBlock } from '@/shared/types/multi-card'
 import styles from './MultiCardMessage.module.css'
 
 interface Props {

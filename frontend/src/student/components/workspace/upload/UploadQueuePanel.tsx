@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { uploadFile, listUploadTasks, type UploadTask, type KbScope } from '@/api/upload'
+﻿import { useState, useEffect, useRef } from 'react'
+import { uploadFile, listUploadTasks, type UploadTask, type KbScope } from '@/shared/api/upload'
 import UploadAnalysisCard from './UploadAnalysisCard'
 import styles from './UploadQueuePanel.module.css'
 

@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
-import { getProfileDetail } from '@/api/profile'
-import type { ProfileDetail } from '@/types/profile'
-import { Badge, PlaceholderBanner } from '@/components/ui'
+﻿import { useEffect, useState } from 'react'
+import { getProfileDetail } from '@/shared/api/profile'
+import type { ProfileDetail } from '@/shared/types/profile'
+import { Badge, PlaceholderBanner } from '@/shared/components/ui'
 import styles from './ProfileDetailView.module.css'
 
 export default function ProfileDetailView() {

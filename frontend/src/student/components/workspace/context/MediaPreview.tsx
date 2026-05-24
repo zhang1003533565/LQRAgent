@@ -1,5 +1,5 @@
-import type { LearningResource } from '@/types/media-resource'
-import { EmptyState } from '@/components/ui'
+﻿import type { LearningResource } from '@/shared/types/media-resource'
+import { EmptyState } from '@/shared/components/ui'
 import styles from './MediaPreview.module.css'
 
 interface Props {

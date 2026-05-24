@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react'
-import { useChatStore } from '@/store/chatStore'
+﻿import { useState, type FormEvent } from 'react'
+import { useChatStore } from '@/student/store/chatStore'
 import styles from './ChatPanel.module.css'
 
 interface Props {

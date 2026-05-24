@@ -1,4 +1,4 @@
-import { PlaceholderBanner } from '@/components/ui'
+﻿import { PlaceholderBanner } from '@/shared/components/ui'
 import styles from './UploadAnalysisCard.module.css'
 
 /** P3：上传完成后的知识点映射与分析摘要（占位） */
