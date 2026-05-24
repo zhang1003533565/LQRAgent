@@ -7,6 +7,8 @@ import com.lqragent.backend.chat.entity.ChatSession;
 import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import com.lqragent.backend.chat.repository.ChatMessageRepository;
 import com.lqragent.backend.chat.service.ChatSessionService;
+import com.lqragent.backend.orchestrator.dto.IntentResult;
+import com.lqragent.backend.orchestrator.service.OrchestratorService;
 import com.lqragent.backend.qaagent.service.QaAgentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,9 +26,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * /ws/chat WebSocket 端点处理器。
  * <p>
  * 职责：
- * - 管理前端 WebSocket 连接（ConcurrentHashMap）
- * - 接收前端消息，委托 QaAgent 处理（P0 仅答疑通道）
- * - 将 ai-server 的流式响应转换为 WS 事件推给前端
+ * - 管理前端 WebSocket 连接
+ * - Orchestrator 意图识别 → 路由到对应智能体
+ * - 流式响应转发给前端
  * </p>
  */
 @Slf4j
@@ -36,6 +38,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private final ChatSessionService chatSessionService;
     private final QaAgentService qaAgentService;
+    private final OrchestratorService orchestratorService;
     private final ChatMessageRepository chatMessageRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -108,59 +111,132 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 .build();
         chatMessageRepository.save(userMsg);
 
-        // Push agent_step: qa_agent running
+        // Orchestrator: 识别意图
+        IntentResult intent = orchestratorService.determineIntent(content);
+        log.info("[WS] intent={} label={} confidence={}", intent.getIntent(), intent.getLabel(), intent.getConfidence());
+
+        // 推送 agent_step: orchestrator routing
         sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                .put("agent", "qa_agent")
-                .put("label", "正在理解问题...")
+                .put("agent", "orchestrator")
+                .put("label", "正在分析问题...")
+                .put("intent", intent.getIntent())
                 .put("status", "running")
                 .toString());
 
         final String finalSessionId = sessionId;
-        StringBuilder fullResponse = new StringBuilder();
 
-        // Delegate to QaAgent → ai-server
-        qaAgentService.handleMessage(userInfo.userId, finalSessionId, content, new AiServerWsProxy.StreamCallback() {
-            @Override
-            public void onChunk(String chunk) {
-                fullResponse.append(chunk);
-                sendEvent(session, "chunk", chunk);
-            }
-
-            @Override
-            public void onDone(String aiServerSessionId) {
+        // 按意图路由
+        switch (intent.getIntent()) {
+            case IntentResult.LEARNING_PATH -> {
                 sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                        .put("agent", "qa_agent")
-                        .put("label", "回答完成")
+                        .put("agent", "orchestrator")
+                        .put("label", "已识别" + intent.getLabel())
+                        .put("intent", intent.getIntent())
                         .put("status", "done")
                         .toString());
-
+                sendEvent(session, "chunk", "已为您跳转到学习路径规划。请使用 GET /api/learning-path?goal=xxx 获取学习路线。");
                 sendEvent(session, "done", objectMapper.createObjectNode()
                         .put("session_id", finalSessionId)
                         .toString());
-
-                // Persist AI response
-                ChatMessage aiMsg = ChatMessage.builder()
-                        .userId(userInfo.userId)
-                        .sessionId(finalSessionId)
-                        .sender(ChatMessage.Sender.AI)
-                        .contentType(ChatMessage.ContentType.TEXT)
-                        .body(fullResponse.toString())
-                        .build();
-                chatMessageRepository.save(aiMsg);
             }
-
-            @Override
-            public void onError(String error) {
+            case IntentResult.RESOURCE_GENERATE -> {
+                sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                        .put("agent", "orchestrator")
+                        .put("label", "已识别" + intent.getLabel())
+                        .put("intent", intent.getIntent())
+                        .put("status", "done")
+                        .toString());
+                sendEvent(session, "chunk", "资源生成功能已就绪。请使用 POST /api/resources/generate 来生成讲义、题目或代码示例。");
+                sendEvent(session, "done", objectMapper.createObjectNode()
+                        .put("session_id", finalSessionId)
+                        .toString());
+            }
+            case IntentResult.MEDIA_GENERATE -> {
+                sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                        .put("agent", "orchestrator")
+                        .put("label", "已识别" + intent.getLabel())
+                        .put("intent", intent.getIntent())
+                        .put("status", "done")
+                        .toString());
+                sendEvent(session, "chunk", "媒体生成功能已就绪。请使用 POST /api/resources/generate?type=ILLUSTRATION 生成示意图。");
+                sendEvent(session, "done", objectMapper.createObjectNode()
+                        .put("session_id", finalSessionId)
+                        .toString());
+            }
+            case IntentResult.GREETING -> {
+                sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                        .put("agent", "orchestrator")
+                        .put("label", "已识别" + intent.getLabel())
+                        .put("intent", intent.getIntent())
+                        .put("status", "done")
+                        .toString());
+                sendEvent(session, "chunk", "你好！我是 LQRAgent 智能学习助手，可以帮你解答问题、规划学习路径、生成学习资源。请问有什么可以帮助你的？");
+                sendEvent(session, "done", objectMapper.createObjectNode()
+                        .put("session_id", finalSessionId)
+                        .toString());
+            }
+            case IntentResult.HELP -> {
+                sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                        .put("agent", "orchestrator")
+                        .put("label", "已识别" + intent.getLabel())
+                        .put("intent", intent.getIntent())
+                        .put("status", "done")
+                        .toString());
+                sendEvent(session, "chunk", """
+                        我可以帮你做这些事情：
+                        1. 📖 解答问题 — 发送任何 Python 相关问题
+                        2. 🗺️ 规划学习路径 — GET /api/learning-path?goal=xxx
+                        3. 📝 生成学习资源 — POST /api/resources/generate
+                        4. 🎨 生成示意图 — POST /api/resources/generate?type=ILLUSTRATION
+                        5. ⚙️ 管理配置 — 管理员可通过 Admin 面板配置
+                        
+                        直接输入问题开始学习吧！""");
+                sendEvent(session, "done", objectMapper.createObjectNode()
+                        .put("session_id", finalSessionId)
+                        .toString());
+            }
+            default -> {
+                // qa_question + unknown → 走答疑通道
                 sendEvent(session, "agent_step", objectMapper.createObjectNode()
                         .put("agent", "qa_agent")
-                        .put("label", "处理失败")
-                        .put("status", "failed")
-                        .put("detail", error)
+                        .put("label", "正在理解问题...")
+                        .put("status", "running")
                         .toString());
 
-                sendEvent(session, "error", error);
+                StringBuilder fullResponse = new StringBuilder();
+                qaAgentService.handleMessage(userInfo.userId, finalSessionId, content, new AiServerWsProxy.StreamCallback() {
+                    @Override
+                    public void onChunk(String chunk) {
+                        fullResponse.append(chunk);
+                        sendEvent(session, "chunk", chunk);
+                    }
+
+                    @Override
+                    public void onDone(String aiServerSessionId) {
+                        sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                                .put("agent", "qa_agent")
+                                .put("label", "回答完成")
+                                .put("status", "done")
+                                .toString());
+                        sendEvent(session, "done", objectMapper.createObjectNode()
+                                .put("session_id", finalSessionId)
+                                .toString());
+                        persistAiMessage(userInfo.userId, finalSessionId, fullResponse.toString());
+                    }
+
+                    @Override
+                    public void onError(String error) {
+                        sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                                .put("agent", "qa_agent")
+                                .put("label", "处理失败")
+                                .put("status", "failed")
+                                .put("detail", error)
+                                .toString());
+                        sendEvent(session, "error", error);
+                    }
+                });
             }
-        });
+        }
     }
 
     @Override
@@ -181,13 +257,11 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         try {
             String payload;
             if (type.equals("chunk")) {
-                // Simple chunk format: just the text content as JSON with type
                 payload = objectMapper.createObjectNode()
                         .put("type", type)
                         .put("content", content)
                         .toString();
             } else {
-                // Other events: content is already a JSON string or plain text
                 try {
                     JsonNode contentNode = objectMapper.readTree(content);
                     payload = objectMapper.createObjectNode()
@@ -207,6 +281,17 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         } catch (IOException e) {
             log.error("[WS] send error: sessionId={}, type={}, msg={}", session.getId(), type, e.getMessage());
         }
+    }
+
+    private void persistAiMessage(Long userId, String sessionId, String body) {
+        ChatMessage aiMsg = ChatMessage.builder()
+                .userId(userId)
+                .sessionId(sessionId)
+                .sender(ChatMessage.Sender.AI)
+                .contentType(ChatMessage.ContentType.TEXT)
+                .body(body)
+                .build();
+        chatMessageRepository.save(aiMsg);
     }
 
     private String generateTitle(String content) {

@@ -40,7 +40,7 @@ export default function PathSection() {
   async function handleNodeClick(kpId: string) {
     selectNode(kpId)
     setActiveKpId(kpId)
-    await generateResource({ kpId, type: 'LESSON' }).catch(() => {})
+    await generateResource({ kpId, resourceType: 'LESSON' }).catch(() => {})
   }
 
   return (

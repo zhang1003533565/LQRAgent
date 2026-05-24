@@ -31,7 +31,7 @@ export default function ResourceSection() {
     if (!selectedKpId) return
     setLoading(true)
     try {
-      const res = await generateResource({ kpId: selectedKpId, type: activeType })
+      const res = await generateResource({ kpId: selectedKpId, resourceType: activeType })
       const others = resources.filter(
         (r) => !(r.kpId === res.kpId && r.resourceType === res.resourceType),
       )

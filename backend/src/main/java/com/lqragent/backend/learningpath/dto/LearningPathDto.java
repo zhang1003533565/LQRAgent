@@ -11,6 +11,9 @@ import java.util.List;
 @Builder
 public class LearningPathDto {
 
+    @Schema(description = "路径 ID")
+    private Long pathId;
+
     @Schema(description = "学习目标")
     private String goal;
 
@@ -39,5 +42,8 @@ public class LearningPathDto {
 
         @Schema(description = "是否已完成学习")
         private boolean completed;
+
+        @Schema(description = "步骤状态：PENDING/ACTIVE/COMPLETED/SKIPPED")
+        private String status;
     }
 }

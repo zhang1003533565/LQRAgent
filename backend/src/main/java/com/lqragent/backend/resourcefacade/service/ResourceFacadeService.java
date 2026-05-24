@@ -1,0 +1,205 @@
+package com.lqragent.backend.resourcefacade.service;
+
+import com.lqragent.backend.aiserver.AiServerClient;
+import com.lqragent.backend.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.knowledgegraph.service.KnowledgeGraphService;
+import com.lqragent.backend.resourcefacade.dto.ResourceGenerateRequest;
+import com.lqragent.backend.resourcefacade.dto.ResourceGenerateResponse;
+import com.lqragent.backend.resourcefacade.entity.ResourceItem;
+import com.lqragent.backend.resourcefacade.repository.ResourceItemRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * 资源生成门面服务。
+ * 聚合 4 种资源类型（LESSON/QUIZ/CODE_CASE/ILLUSTRATION）的生成入口。
+ * P1 实现：优先调 AiServer，失败或不可用时降级为模板内容。
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class ResourceFacadeService {
+
+    private final ResourceItemRepository resourceRepo;
+    private final KnowledgeGraphService kgService;
+    private final AiServerClient aiServerClient;
+
+    /**
+     * 为某知识点生成指定类型的资源。
+     */
+    @Transactional
+    public ResourceGenerateResponse generate(ResourceGenerateRequest request) {
+        String kpId = request.getKpId();
+        String type = request.getResourceType();
+
+        KnowledgePoint kp = kgService.getByKpId(kpId)
+                .orElseThrow(() -> new IllegalArgumentException("知识点不存在: " + kpId));
+
+        log.info("[ResourceFacade] generate: kp={}, type={}", kpId, type);
+
+        // 查询已有资源数量
+        List<ResourceItem> existing = resourceRepo.findByKpIdAndResourceType(kpId, type);
+        int count = existing.size();
+
+        // 按类型生成
+        ResourceItem item = switch (type) {
+            case ResourceItem.TYPE_LESSON -> generateLesson(kp, request);
+            case ResourceItem.TYPE_QUIZ -> generateQuiz(kp, request);
+            case ResourceItem.TYPE_CODE_CASE -> generateCodeCase(kp, request);
+            case ResourceItem.TYPE_ILLUSTRATION -> generateIllustration(kp, request);
+            default -> throw new IllegalArgumentException("不支持的资源类型: " + type);
+        };
+
+        item = resourceRepo.save(item);
+        log.info("[ResourceFacade] 已保存: id={}, type={}, kp={}", item.getId(), type, kpId);
+
+        return ResourceGenerateResponse.builder()
+                .resourceId(item.getId())
+                .kpId(kpId)
+                .resourceType(type)
+                .title(item.getTitle())
+                .content(item.getContent())
+                .mediaUrl(item.getMediaUrl())
+                .existingCount(count)
+                .build();
+    }
+
+    /** 查询某知识点的所有资源 */
+    @Transactional(readOnly = true)
+    public List<ResourceItem> getByKpId(String kpId) {
+        return resourceRepo.findByKpId(kpId);
+    }
+
+    // ===== 各类型生成器 =====
+
+    private ResourceItem generateLesson(KnowledgePoint kp, ResourceGenerateRequest req) {
+        String title = kp.getTitle() + " — 讲义";
+        String content;
+
+        try {
+            Map<?, ?> result = aiServerClient.generateLesson("default", kp.getKpId());
+            content = result.containsKey("content") ? (String) result.get("content") : null;
+        } catch (Exception e) {
+            log.warn("[ResourceFacade] AiServer 不可用，使用模板内容: {}", e.getMessage());
+            content = null;
+        }
+
+        if (content == null) {
+            content = """
+## %s
+
+### 学习目标
+- 理解 %s 的核心概念
+- 掌握 %s 的基本用法
+- 能够独立完成相关练习
+
+### 内容要点
+1. **概念介绍**：%s
+2. **基本语法**：
+3. **示例代码**：
+4. **注意事项**：
+
+### 总结
+%s 是 Python 编程中的重要知识点，建议配合代码练习加深理解。
+""".formatted(kp.getTitle(), kp.getTitle(), kp.getTitle(), kp.getDescription(), kp.getTitle());
+        }
+
+        return ResourceItem.builder()
+                .kpId(kp.getKpId())
+                .resourceType(ResourceItem.TYPE_LESSON)
+                .title(title)
+                .content(content)
+                .build();
+    }
+
+    private ResourceItem generateQuiz(KnowledgePoint kp, ResourceGenerateRequest req) {
+        String title = kp.getTitle() + " — 练习题";
+        String content;
+
+        try {
+            Map<?, ?> result = aiServerClient.generateQuestion("default", kp.getKpId(), 3);
+            content = result.containsKey("content") ? (String) result.get("content") : null;
+        } catch (Exception e) {
+            log.warn("[ResourceFacade] AiServer 不可用，使用模板题目: {}", e.getMessage());
+            content = null;
+        }
+
+        if (content == null) {
+            content = """
+### %s — 练习题
+
+1. （选择题）关于 %s，以下说法正确的是？
+   A) ...
+   B) ...
+   C) ...
+   D) ...
+
+2. （填空题）%s 的关键语法是________。
+
+3. （编程题）请编写一段代码，演示 %s 的用法。
+
+---
+*提示：完成练习后可以对照参考资料检查答案。*
+""".formatted(kp.getTitle(), kp.getTitle(), kp.getTitle(), kp.getTitle());
+        }
+
+        return ResourceItem.builder()
+                .kpId(kp.getKpId())
+                .resourceType(ResourceItem.TYPE_QUIZ)
+                .title(title)
+                .content(content)
+                .build();
+    }
+
+    private ResourceItem generateCodeCase(KnowledgePoint kp, ResourceGenerateRequest req) {
+        String title = kp.getTitle() + " — 代码示例";
+        String content = """
+### %s — 示例代码
+
+```python
+# %s 用法演示
+# ===========================
+
+
+# 在此处编写示例代码
+
+
+if __name__ == "__main__":
+    # 运行示例
+    pass
+```
+
+### 运行说明
+1. 复制代码到 Python 环境
+2. 运行观察输出
+3. 修改参数体会不同行为
+""".formatted(kp.getTitle(), kp.getTitle());
+
+        return ResourceItem.builder()
+                .kpId(kp.getKpId())
+                .resourceType(ResourceItem.TYPE_CODE_CASE)
+                .title(title)
+                .content(content)
+                .build();
+    }
+
+    private ResourceItem generateIllustration(KnowledgePoint kp, ResourceGenerateRequest req) {
+        String title = kp.getTitle() + " — 示意图";
+        // P1: 返回占位内容，P1-8 的 MediaGenerationService 会替换这里的实现
+        String content = "### " + kp.getTitle() + " — 示意图\n\n<!-- 示意图占位，后续由 MediaGenerationService 生成 -->\n\n![占位示意图](PLACEHOLDER)";
+
+        return ResourceItem.builder()
+                .kpId(kp.getKpId())
+                .resourceType(ResourceItem.TYPE_ILLUSTRATION)
+                .title(title)
+                .content(content)
+                .generationPrompt(req.getCustomPrompt())
+                .build();
+    }
+}

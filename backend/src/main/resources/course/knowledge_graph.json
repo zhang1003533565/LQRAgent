@@ -1,0 +1,259 @@
+{
+  "course_id": "python_course",
+  "course_name": "高级语言程序设计Python",
+  "chapters": [
+    {
+      "chapter_id": "ch01",
+      "title": "Python基础语法",
+      "knowledge_points": [
+        {
+          "kp_id": "kp_intro",
+          "name": "Python简介与环境搭建",
+          "prerequisites": [],
+          "difficulty": 1,
+          "resource_tags": ["lesson"]
+        },
+        {
+          "kp_id": "kp_input_output",
+          "name": "输入输出",
+          "prerequisites": ["kp_intro"],
+          "difficulty": 1,
+          "resource_tags": ["lesson", "quiz"]
+        },
+        {
+          "kp_id": "kp_variables",
+          "name": "变量与数据类型",
+          "prerequisites": ["kp_input_output"],
+          "difficulty": 1,
+          "resource_tags": ["lesson", "code", "quiz"]
+        },
+        {
+          "kp_id": "kp_operators",
+          "name": "运算符",
+          "prerequisites": ["kp_variables"],
+          "difficulty": 1,
+          "resource_tags": ["lesson", "quiz"]
+        },
+        {
+          "kp_id": "kp_string",
+          "name": "字符串操作",
+          "prerequisites": ["kp_variables"],
+          "difficulty": 2,
+          "resource_tags": ["lesson", "code", "quiz"]
+        }
+      ]
+    },
+    {
+      "chapter_id": "ch02",
+      "title": "控制流",
+      "knowledge_points": [
+        {
+          "kp_id": "kp_if",
+          "name": "条件判断 if/elif/else",
+          "prerequisites": ["kp_operators"],
+          "difficulty": 2,
+          "resource_tags": ["lesson", "code", "quiz"]
+        },
+        {
+          "kp_id": "kp_for",
+          "name": "for循环与range",
+          "prerequisites": ["kp_if"],
+          "difficulty": 2,
+          "resource_tags": ["lesson", "code", "quiz"]
+        },
+        {
+          "kp_id": "kp_while",
+          "name": "while循环",
+          "prerequisites": ["kp_if"],
+          "difficulty": 2,
+          "resource_tags": ["lesson", "quiz"]
+        },
+        {
+          "kp_id": "kp_break_continue",
+          "name": "break与continue",
+          "prerequisites": ["kp_for", "kp_while"],
+          "difficulty": 2,
+          "resource_tags": ["lesson", "quiz"]
+        }
+      ]
+    },
+    {
+      "chapter_id": "ch03",
+      "title": "数据结构",
+      "knowledge_points": [
+        {
+          "kp_id": "kp_list",
+          "name": "列表",
+          "prerequisites": ["kp_variables"],
+          "difficulty": 2,
+          "resource_tags": ["lesson", "code", "quiz"]
+        },
+        {
+          "kp_id": "kp_tuple",
+          "name": "元组",
+          "prerequisites": ["kp_list"],
+          "difficulty": 2,
+          "resource_tags": ["lesson", "quiz"]
+        },
+        {
+          "kp_id": "kp_dict",
+          "name": "字典",
+          "prerequisites": ["kp_variables"],
+          "difficulty": 2,
+          "resource_tags": ["lesson", "code", "quiz"]
+        },
+        {
+          "kp_id": "kp_set",
+          "name": "集合",
+          "prerequisites": ["kp_variables"],
+          "difficulty": 2,
+          "resource_tags": ["lesson", "quiz"]
+        },
+        {
+          "kp_id": "kp_slice",
+          "name": "切片操作",
+          "prerequisites": ["kp_list", "kp_string"],
+          "difficulty": 2,
+          "resource_tags": ["lesson", "code", "quiz"]
+        },
+        {
+          "kp_id": "kp_comprehension",
+          "name": "推导式（列表/字典/集合）",
+          "prerequisites": ["kp_list", "kp_dict"],
+          "difficulty": 3,
+          "resource_tags": ["lesson", "code", "quiz"]
+        }
+      ]
+    },
+    {
+      "chapter_id": "ch04",
+      "title": "函数与模块",
+      "knowledge_points": [
+        {
+          "kp_id": "kp_function",
+          "name": "函数定义与调用",
+          "prerequisites": ["kp_for", "kp_while"],
+          "difficulty": 2,
+          "resource_tags": ["lesson", "code", "quiz"]
+        },
+        {
+          "kp_id": "kp_params",
+          "name": "函数参数（默认/可变/关键字）",
+          "prerequisites": ["kp_function"],
+          "difficulty": 3,
+          "resource_tags": ["lesson", "code", "quiz"]
+        },
+        {
+          "kp_id": "kp_scope",
+          "name": "变量作用域与global",
+          "prerequisites": ["kp_function"],
+          "difficulty": 3,
+          "resource_tags": ["lesson", "quiz"]
+        },
+        {
+          "kp_id": "kp_lambda",
+          "name": "lambda表达式",
+          "prerequisites": ["kp_function"],
+          "difficulty": 3,
+          "resource_tags": ["lesson", "code", "quiz"]
+        },
+        {
+          "kp_id": "kp_module",
+          "name": "模块与包导入",
+          "prerequisites": ["kp_function"],
+          "difficulty": 2,
+          "resource_tags": ["lesson", "code"]
+        }
+      ]
+    },
+    {
+      "chapter_id": "ch05",
+      "title": "面向对象程序设计",
+      "knowledge_points": [
+        {
+          "kp_id": "kp_class",
+          "name": "类与对象",
+          "prerequisites": ["kp_function"],
+          "difficulty": 3,
+          "resource_tags": ["lesson", "code", "quiz"]
+        },
+        {
+          "kp_id": "kp_inheritance",
+          "name": "继承与方法重写",
+          "prerequisites": ["kp_class"],
+          "difficulty": 3,
+          "resource_tags": ["lesson", "code", "quiz"]
+        },
+        {
+          "kp_id": "kp_encapsulation",
+          "name": "封装与@property",
+          "prerequisites": ["kp_class"],
+          "difficulty": 3,
+          "resource_tags": ["lesson", "code"]
+        },
+        {
+          "kp_id": "kp_polymorphism",
+          "name": "多态与鸭子类型",
+          "prerequisites": ["kp_inheritance"],
+          "difficulty": 3,
+          "resource_tags": ["lesson", "quiz"]
+        },
+        {
+          "kp_id": "kp_special_methods",
+          "name": "魔术方法",
+          "prerequisites": ["kp_class"],
+          "difficulty": 4,
+          "resource_tags": ["lesson", "code"]
+        }
+      ]
+    },
+    {
+      "chapter_id": "ch06",
+      "title": "进阶主题",
+      "knowledge_points": [
+        {
+          "kp_id": "kp_exception",
+          "name": "异常处理 try/except",
+          "prerequisites": ["kp_if", "kp_function"],
+          "difficulty": 2,
+          "resource_tags": ["lesson", "code", "quiz"]
+        },
+        {
+          "kp_id": "kp_file_io",
+          "name": "文件读写",
+          "prerequisites": ["kp_exception"],
+          "difficulty": 3,
+          "resource_tags": ["lesson", "code", "quiz"]
+        },
+        {
+          "kp_id": "kp_decorator",
+          "name": "装饰器",
+          "prerequisites": ["kp_scope", "kp_function"],
+          "difficulty": 4,
+          "resource_tags": ["lesson", "code"]
+        },
+        {
+          "kp_id": "kp_generator",
+          "name": "生成器与迭代器",
+          "prerequisites": ["kp_function", "kp_list"],
+          "difficulty": 4,
+          "resource_tags": ["lesson", "code", "quiz"]
+        },
+        {
+          "kp_id": "kp_context_manager",
+          "name": "上下文管理器 with",
+          "prerequisites": ["kp_exception"],
+          "difficulty": 3,
+          "resource_tags": ["lesson", "code"]
+        },
+        {
+          "kp_id": "kp_stdlib",
+          "name": "标准库常用模块",
+          "prerequisites": ["kp_module", "kp_file_io"],
+          "difficulty": 3,
+          "resource_tags": ["lesson", "code"]
+        }
+      ]
+    }
+  ]
+}

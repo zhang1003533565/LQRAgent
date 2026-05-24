@@ -3,7 +3,7 @@ import type { LearningResource, ResourceType } from '@/shared/types/media-resour
 
 export interface GenerateResourceRequest {
   kpId: string
-  type: ResourceType
+  resourceType: ResourceType
   prompt?: string
 }
 
@@ -33,8 +33,8 @@ function buildPlaceholderResource(req: GenerateResourceRequest): LearningResourc
     id: 0,
     kpId: req.kpId,
     resourceType: req.type,
-    title: titles[req.type],
-    content: `【待对接】${req.kpId} 的 ${req.type} 资源将在后端 \`POST /api/resources/generate\` 就绪后自动加载。`,
-    mediaUrl: req.type === 'ILLUSTRATION' ? undefined : undefined,
+    title: titles[req.resourceType],
+    content: `【待对接】${req.kpId} 的 ${req.resourceType} 资源将在后端 \`POST /api/resources/generate\` 就绪后自动加载。`,
+    mediaUrl: req.resourceType === 'ILLUSTRATION' ? undefined : undefined,
   }
 }
