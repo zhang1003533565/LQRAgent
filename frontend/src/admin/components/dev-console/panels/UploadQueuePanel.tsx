@@ -71,6 +71,7 @@ export default function UploadQueuePanel() {
                   <th className={panel.th}>文件</th>
                   <th className={panel.th}>范围</th>
                   <th className={panel.th}>状态</th>
+                  <th className={panel.th}>映射知识点</th>
                   <th className={panel.th}>创建</th>
                   <th className={panel.th}>完成</th>
                   <th className={panel.th}>错误</th>
@@ -87,6 +88,9 @@ export default function UploadQueuePanel() {
                       <ConsoleBadge variant={STATUS_VARIANT[t.status] ?? 'muted'}>
                         {STATUS_LABEL[t.status] ?? t.status}
                       </ConsoleBadge>
+                    </td>
+                    <td className={`${panel.td} max-w-[120px] truncate`}>
+                      {t.mappedKpIds || '—'}
                     </td>
                     <td className={`${panel.td} whitespace-nowrap text-xs`}>
                       {new Date(t.createdAt).toLocaleString('zh-CN')}

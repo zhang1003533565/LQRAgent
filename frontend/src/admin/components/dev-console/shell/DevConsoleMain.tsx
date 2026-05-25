@@ -1,8 +1,8 @@
 ﻿import { DashboardView } from '@/admin/components/dev-console/dashboard'
-import AgentStatusPanel from '@/admin/components/dev-console/dashboard/AgentStatusPanel'
 import TraceFlowPanel from '@/admin/components/dev-console/dashboard/TraceFlowPanel'
 import { DevConsolePlaceholder } from '@/admin/components/dev-console/placeholder'
 import {
+  AgentMonitorPanel,
   LearningPathPanel,
   ModelConfigPanel,
   ProfilePanel,
@@ -29,7 +29,7 @@ function resolveMainContent(activeNav: DevConsoleNavId, agents: AgentRuntimeStat
         </div>
       )
     case 'agent-debug':
-      return <AgentStatusPanel agents={agents} />
+      return <AgentMonitorPanel />
     case 'users':
       return <UserListPanel />
     case 'upload':

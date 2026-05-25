@@ -1,5 +1,6 @@
 package com.lqragent.backend.quiz.service;
 
+import com.lqragent.backend.effectassessment.service.EffectAssessmentService;
 import com.lqragent.backend.learnerprofile.service.LearnerProfileService;
 import com.lqragent.backend.quiz.dto.QuizResultDto;
 import com.lqragent.backend.quiz.dto.QuizSubmitRequest;
@@ -20,6 +21,7 @@ public class QuizService {
     private final QuizRecordRepository quizRecordRepo;
     private final StudyBehaviorRepository behaviorRepo;
     private final LearnerProfileService profileService;
+    private final EffectAssessmentService effectAssessmentService;
 
     /**
      * 判分规则：
@@ -66,6 +68,9 @@ public class QuizService {
 
         // 触发画像更新
         profileService.updateAfterQuiz(userId, correct, score, request.getKpId());
+
+        // 效果评估：低分→动态调整路径
+        effectAssessmentService.evaluateQuizResult(userId, request.getKpId(), score, correct);
 
         return QuizResultDto.builder()
                 .id(record.getId())

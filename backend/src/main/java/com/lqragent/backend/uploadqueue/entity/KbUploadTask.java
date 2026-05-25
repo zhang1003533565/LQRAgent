@@ -55,6 +55,14 @@ public class KbUploadTask {
     @Comment("失败原因说明")
     private String errorMessage;
 
+    @Column(name = "analysis_result", columnDefinition = "TEXT")
+    @Comment("内容分析智能体输出（JSON）")
+    private String analysisResult;
+
+    @Column(name = "mapped_kp_ids", columnDefinition = "TEXT")
+    @Comment("映射到的知识点ID列表（JSON数组）")
+    private String mappedKpIds;
+
     @CreationTimestamp
     @Comment("任务创建时间")
     private LocalDateTime createdAt;

@@ -206,3 +206,43 @@ export async function listAdminResources(type?: string, kpId?: string): Promise<
   const res = await http.get<{ data: AdminResourceItem[] }>('/admin/resources', { params })
   return res.data.data
 }
+
+// ===== 智能体监控 =====
+
+export interface AgentStatItem {
+  agent: string
+  total: number
+  success: number
+  failed: number
+  successRate: string
+  avgDurationMs: number
+}
+
+export interface AgentRunItem {
+  id: number
+  sessionId: string
+  userId: number
+  agent: string
+  intent: string
+  status: string
+  durationMs: number | null
+  errorMessage: string
+  createdAt: string
+}
+
+export interface AgentRunsData {
+  items: AgentRunItem[]
+  total: number
+  page: number
+  size: number
+}
+
+export async function getAgentStats(): Promise<AgentStatItem[]> {
+  const res = await http.get<{ data: AgentStatItem[] }>('/admin/agent-stats')
+  return res.data.data
+}
+
+export async function getAgentRuns(page = 1, size = 20): Promise<AgentRunsData> {
+  const res = await http.get<{ data: AgentRunsData }>('/admin/agent-runs', { params: { page, size } })
+  return res.data.data
+}

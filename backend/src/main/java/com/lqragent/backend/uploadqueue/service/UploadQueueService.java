@@ -1,5 +1,7 @@
 package com.lqragent.backend.uploadqueue.service;
 
+import com.lqragent.backend.aiserver.AiServerClient;
+import com.lqragent.backend.contentanalyzer.service.ContentAnalyzerService;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask.KbScope;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask.TaskStatus;
@@ -12,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import org.springframework.data.domain.PageRequest;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -28,6 +32,8 @@ import java.util.Map;
 public class UploadQueueService {
 
     private final KbUploadTaskRepository taskRepository;
+    private final AiServerClient aiServerClient;
+    private final ContentAnalyzerService contentAnalyzerService;
 
     /**
      * 将上传任务入队，立即返回，不阻塞前端。
@@ -93,11 +99,34 @@ public class UploadQueueService {
         taskRepository.save(task);
 
         try {
-            // TODO: 调用 AiServerClient.uploadDocument() 将文件送入 ai-server 知识库
-            // aiServerClient.uploadDocument(kbName, task.getFileName(), Files.readAllBytes(...));
+            // 1. 创建/获取 DeepTutor 知识库
+            String kbName = "lqragent-uploads";
+            try {
+                aiServerClient.createKnowledgeBase(kbName);
+            } catch (Exception e) {
+                log.warn("[UploadQueue] KB may already exist: {}", e.getMessage());
+            }
+
+            // 2. 读取文件并上传到 DeepTutor
+            Path filePath = Path.of(task.getFilePath());
+            if (Files.exists(filePath) && Files.isReadable(filePath)) {
+                byte[] content = Files.readAllBytes(filePath);
+                String mimeType = detectMimeType(task.getFileName());
+                try {
+                    aiServerClient.uploadDocument(kbName, task.getFileName(), content, mimeType);
+                    log.info("[UploadQueue] Uploaded to DeepTutor KB: {}", task.getFileName());
+                } catch (Exception e) {
+                    log.warn("[UploadQueue] DeepTutor upload failed (non-fatal): {}", e.getMessage());
+                }
+            }
+
+            // 3. 内容分析 → 映射知识点
+            var analysis = contentAnalyzerService.analyze(task.getFilePath(), task.getFileName());
+            task.setAnalysisResult(analysis.toJson());
+            task.setMappedKpIds(String.join(",", analysis.mappedKpIds()));
 
             task.setStatus(TaskStatus.COMPLETED);
-            log.info("[UploadQueue] Task {} completed", task.getId());
+            log.info("[UploadQueue] Task {} completed, mapped KPs: {}", task.getId(), analysis.mappedKpIds());
         } catch (Exception e) {
             task.setStatus(TaskStatus.FAILED);
             task.setErrorMessage(e.getMessage());
@@ -106,5 +135,16 @@ public class UploadQueueService {
             task.setFinishedAt(LocalDateTime.now());
             taskRepository.save(task);
         }
+    }
+
+    private String detectMimeType(String fileName) {
+        String lower = fileName.toLowerCase();
+        if (lower.endsWith(".pdf")) return "application/pdf";
+        if (lower.endsWith(".md")) return "text/markdown";
+        if (lower.endsWith(".txt")) return "text/plain";
+        if (lower.endsWith(".py")) return "text/x-python";
+        if (lower.endsWith(".json")) return "application/json";
+        if (lower.endsWith(".csv")) return "text/csv";
+        return "application/octet-stream";
     }
 }

@@ -22,6 +22,9 @@ import com.lqragent.backend.learningpath.repository.LearningPathRepository;
 import com.lqragent.backend.learningpath.repository.LearningPathStepRepository;
 import com.lqragent.backend.resourcefacade.entity.ResourceItem;
 import com.lqragent.backend.resourcefacade.repository.ResourceItemRepository;
+import com.lqragent.backend.observability.entity.AgentRunLog;
+import com.lqragent.backend.observability.repository.AgentRunLogRepository;
+import com.lqragent.backend.observability.service.AgentRunLogService;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask;
 import com.lqragent.backend.uploadqueue.service.UploadQueueService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -53,6 +56,7 @@ public class AdminController {
     private final LearningPathRepository learningPathRepo;
     private final LearningPathStepRepository learningPathStepRepo;
     private final ResourceItemRepository resourceItemRepo;
+    private final AgentRunLogRepository agentRunLogRepo;
 
     @Operation(summary = "系统状态总览", description = "返回后端端口、AI 服务连通性、用户/任务统计")
     @GetMapping("/status")
@@ -196,5 +200,49 @@ public class AdminController {
             items = resourceItemRepo.findAll();
         }
         return ApiResponse.ok(items);
+    }
+
+    @Operation(summary = "智能体调用统计", description = "各智能体调用次数/成功率/平均耗时")
+    @GetMapping("/agent-stats")
+    public ApiResponse<List<Map<String, Object>>> getAgentStats() {
+        List<AgentRunLog> all = agentRunLogRepo.findAll();
+        var byAgent = all.stream().collect(Collectors.groupingBy(AgentRunLog::getAgent));
+        var result = byAgent.entrySet().stream().map(entry -> {
+            String agent = entry.getKey();
+            var logs = entry.getValue();
+            long total = logs.size();
+            long success = logs.stream().filter(l -> l.getStatus() == AgentRunLog.RunStatus.SUCCESS).count();
+            long failed = logs.stream().filter(l -> l.getStatus() == AgentRunLog.RunStatus.FAILED).count();
+            double avgDuration = logs.stream()
+                    .filter(l -> l.getDurationMs() != null)
+                    .mapToInt(AgentRunLog::getDurationMs)
+                    .average().orElse(0);
+            Map<String, Object> m = new HashMap<>();
+            m.put("agent", agent);
+            m.put("total", total);
+            m.put("success", success);
+            m.put("failed", failed);
+            m.put("successRate", total > 0 ? String.format("%.1f%%", success * 100.0 / total) : "0%");
+            m.put("avgDurationMs", Math.round(avgDuration));
+            return m;
+        }).collect(Collectors.toList());
+        return ApiResponse.ok(result);
+    }
+
+    @Operation(summary = "智能体运行日志（分页）", description = "按时间倒序返回智能体运行记录")
+    @GetMapping("/agent-runs")
+    public ApiResponse<Map<String, Object>> getAgentRuns(
+            @Parameter(description = "页码，默认1") @RequestParam(defaultValue = "1") int page,
+            @Parameter(description = "每页条数，默认20") @RequestParam(defaultValue = "200") int size) {
+        var pageable = org.springframework.data.domain.PageRequest.of(
+                Math.max(page - 1, 0), Math.min(Math.max(size, 1), 100),
+                org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "createdAt"));
+        org.springframework.data.domain.Page<AgentRunLog> p = agentRunLogRepo.findAll(pageable);
+        Map<String, Object> result = new HashMap<>();
+        result.put("items", p.getContent());
+        result.put("total", p.getTotalElements());
+        result.put("page", page);
+        result.put("size", size);
+        return ApiResponse.ok(result);
     }
 }
