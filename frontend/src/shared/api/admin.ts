@@ -130,3 +130,79 @@ export async function processOneUpload(): Promise<boolean> {
   const res = await http.post<{ data: { processed: boolean } }>('/admin/upload/process')
   return res.data.data.processed
 }
+
+// ===== 画像 / 图谱 / 路径 / 资源 =====
+
+export interface AdminProfile {
+  id: number
+  userId: number
+  knowledgeLevel: string
+  learningGoal: string | null
+  cognitiveStyle: string | null
+  commonErrors: string | null
+  learningPace: string
+  interestDirection: string | null
+  preferredResourceType: string | null
+}
+
+export interface KnowledgeNode {
+  id: number
+  kpId: string
+  title: string
+  description: string
+  chapter: string
+}
+
+export interface KnowledgeEdge {
+  id: number
+  fromKpId: string
+  toKpId: string
+  relationType: string
+}
+
+export interface KnowledgeGraphData {
+  nodes: KnowledgeNode[]
+  edges: KnowledgeEdge[]
+  nodeCount: number
+  edgeCount: number
+}
+
+export interface LearningPathItem {
+  id: number
+  userId: number
+  goal: string
+  createdAt: string
+  stepCount: number
+  completedCount: number
+}
+
+export interface AdminResourceItem {
+  id: number
+  kpId: string
+  resourceType: string
+  title: string
+  content: string
+}
+
+export async function listAdminProfiles(): Promise<AdminProfile[]> {
+  const res = await http.get<{ data: AdminProfile[] }>('/admin/profiles')
+  return res.data.data
+}
+
+export async function getKnowledgeGraph(): Promise<KnowledgeGraphData> {
+  const res = await http.get<{ data: KnowledgeGraphData }>('/admin/knowledge-graph')
+  return res.data.data
+}
+
+export async function listAdminLearningPaths(): Promise<LearningPathItem[]> {
+  const res = await http.get<{ data: LearningPathItem[] }>('/admin/learning-paths')
+  return res.data.data
+}
+
+export async function listAdminResources(type?: string, kpId?: string): Promise<AdminResourceItem[]> {
+  const params: Record<string, string> = {}
+  if (type) params.type = type
+  if (kpId) params.kpId = kpId
+  const res = await http.get<{ data: AdminResourceItem[] }>('/admin/resources', { params })
+  return res.data.data
+}

@@ -11,8 +11,8 @@ import java.util.Map;
 
 /**
  * AI 服务 HTTP 调用封装。
- * 所有对 ai-server 的 REST 调用都经过这里，前端不直接访问 ai-server。
  * 基地址从 sys_config / application.properties 动态读取。
+ * 路径对齐 DeepTutor 实际 REST API。
  */
 @Slf4j
 @Component
@@ -24,70 +24,68 @@ public class AiServerClient {
     private RestClient client() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(5000);
-        factory.setReadTimeout(15000);
+        factory.setReadTimeout(30000);
         return RestClient.builder()
                 .baseUrl(runtimeConfig.getAiServerBaseUrl())
                 .requestFactory(factory)
                 .build();
     }
 
-    /**
-     * 探测 AI Server 是否可达。
-     */
+    /** 探测 AI Server 是否可达 */
     public boolean ping() {
-        String base = runtimeConfig.getAiServerBaseUrl();
         try {
-            client().get()
-                    .uri("/api/v1/knowledge/health")
-                    .retrieve()
-                    .toBodilessEntity();
+            client().get().uri("/api/v1/knowledge/health").retrieve().toBodilessEntity();
             return true;
         } catch (Exception e) {
-            log.warn("[AiServerClient] ping failed for {}: {}", base, e.getMessage());
+            log.warn("[AiServerClient] ping 失败: {}", e.getMessage());
             return false;
         }
     }
 
-    /**
-     * 创建知识库。
-     */
-    public Map<?, ?> createKnowledgeBase(String kbName) {
-        log.info("[AiServerClient] createKnowledgeBase: {}", kbName);
+    /** 列出知识库 */
+    @SuppressWarnings("unchecked")
+    public java.util.List<Map<String, Object>> listKnowledgeBases() {
+        return client().get()
+                .uri("/api/v1/knowledge/list")
+                .retrieve()
+                .body(java.util.List.class);
+    }
+
+    /** 创建知识库 */
+    public Map<?, ?> createKnowledgeBase(String name) {
+        log.info("[AiServerClient] createKnowledgeBase: {}", name);
         return client().post()
-                .uri("/api/v1/knowledge/kb")
-                .body(Map.of("name", kbName))
+                .uri("/api/v1/knowledge/create")
+                .body(Map.of("name", name, "files", java.util.Collections.emptyList()))
                 .retrieve()
                 .body(Map.class);
     }
 
-    /**
-     * 上传文档到知识库。
-     */
-    public Map<?, ?> uploadDocument(String kbName, String fileName, byte[] content) {
+    /** 上传文档到知识库 */
+    public Map<?, ?> uploadDocument(String kbName, String fileName, byte[] content, String mimeType) {
         log.info("[AiServerClient] uploadDocument: kb={}, file={}", kbName, fileName);
-        throw new UnsupportedOperationException("uploadDocument 待实现");
-    }
-
-    /**
-     * 生成题目。
-     */
-    public Map<?, ?> generateQuestion(String kbName, String topic, int count) {
-        log.info("[AiServerClient] generateQuestion: kb={}, topic={}, count={}", kbName, topic, count);
+        // DeepTutor 知识库上传走 multipart，这里用 RestClient 的 body 模拟
         return client().post()
-                .uri("/api/v1/question/generate")
-                .body(Map.of("kb_name", kbName, "topic", topic, "count", count))
+                .uri("/api/v1/knowledge/{kb_name}/upload", kbName)
+                .header("Content-Type", mimeType)
+                .body(content)
                 .retrieve()
                 .body(Map.class);
     }
 
-    /**
-     * 生成讲义资源。
-     */
-    public Map<?, ?> generateLesson(String kbName, String knowledgePointId) {
-        log.info("[AiServerClient] generateLesson: kb={}, kpId={}", kbName, knowledgePointId);
+    /** 获取画像记忆（DeepTutor Persistent Memory） */
+    public Map<?, ?> getMemory(Long userId) {
+        return client().get()
+                .uri("/api/v1/memory")
+                .retrieve()
+                .body(Map.class);
+    }
+
+    /** 更新画像记忆 */
+    public Map<?, ?> updateMemory(Long userId, Map<String, Object> payload) {
         return client().post()
-                .uri("/api/v1/book/generate")
-                .body(Map.of("kb_name", kbName, "topic", knowledgePointId))
+                .uri("/api/v1/memory")
+                .body(payload)
                 .retrieve()
                 .body(Map.class);
     }

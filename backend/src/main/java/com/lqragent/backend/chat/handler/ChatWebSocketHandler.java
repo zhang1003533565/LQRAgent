@@ -20,7 +20,7 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Map;
 
 /**
  * /ws/chat WebSocket 端点处理器。
@@ -40,12 +40,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final QaAgentService qaAgentService;
     private final OrchestratorService orchestratorService;
     private final ChatMessageRepository chatMessageRepository;
+    private final WebSocketSessionManager sessionManager;
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    /** wsSessionId → (userId, username) */
-    private final Map<String, UserInfo> sessionUsers = new ConcurrentHashMap<>();
-    /** wsSessionId → WebSocketSession */
-    private final Map<String, WebSocketSession> wsSessions = new ConcurrentHashMap<>();
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
@@ -59,14 +55,13 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        sessionUsers.put(session.getId(), new UserInfo(userId, username));
-        wsSessions.put(session.getId(), session);
+        sessionManager.register(session, userId, username);
         log.info("[WS] client connected: sessionId={}, userId={}, username={}", session.getId(), userId, username);
     }
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-        UserInfo userInfo = sessionUsers.get(session.getId());
+        var userInfo = sessionManager.getUserInfo(session.getId());
         if (userInfo == null) {
             sendEvent(session, "error", "未认证");
             return;
@@ -90,7 +85,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         // Resolve or create chat session
         if (sessionId == null || sessionId.isBlank()) {
-            ChatSession chatSession = chatSessionService.createSession(userInfo.userId, generateTitle(content));
+            ChatSession chatSession = chatSessionService.createSession(userInfo.userId(), generateTitle(content));
             sessionId = chatSession.getId();
             sendEvent(session, "session_created", objectMapper.createObjectNode()
                     .put("session_id", sessionId)
@@ -98,12 +93,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     .toString());
         } else {
             chatSessionService.findById(sessionId)
-                    .orElseGet(() -> chatSessionService.createSession(userInfo.userId, generateTitle(content)));
+                    .orElseGet(() -> chatSessionService.createSession(userInfo.userId(), generateTitle(content)));
         }
 
         // Persist user message
         ChatMessage userMsg = ChatMessage.builder()
-                .userId(userInfo.userId)
+                .userId(userInfo.userId())
                 .sessionId(sessionId)
                 .sender(ChatMessage.Sender.USER)
                 .contentType(ChatMessage.ContentType.TEXT)
@@ -204,7 +199,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                         .toString());
 
                 StringBuilder fullResponse = new StringBuilder();
-                qaAgentService.handleMessage(userInfo.userId, finalSessionId, content, new AiServerWsProxy.StreamCallback() {
+                final Long currentUserId = userInfo.userId();
+                qaAgentService.handleMessage(currentUserId, finalSessionId, content, new AiServerWsProxy.StreamCallback() {
                     @Override
                     public void onChunk(String chunk) {
                         fullResponse.append(chunk);
@@ -221,7 +217,24 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                         sendEvent(session, "done", objectMapper.createObjectNode()
                                 .put("session_id", finalSessionId)
                                 .toString());
-                        persistAiMessage(userInfo.userId, finalSessionId, fullResponse.toString());
+                        persistAiMessage(userInfo.userId(), finalSessionId, fullResponse.toString());
+
+                        // P2-5: artifact multi_card — 检测响应含媒体时推送
+                        try {
+                            var artifactPayload = buildMultiCardIfMedia(fullResponse.toString());
+                            if (artifactPayload != null) {
+                                var artifactMsg = objectMapper.createObjectNode()
+                                        .put("type", "artifact")
+                                        .put("kind", "multi_card")
+                                        .put("session_id", finalSessionId)
+                                        .set("payload", artifactPayload);
+                                synchronized (session) {
+                                    session.sendMessage(new TextMessage(artifactMsg.toString()));
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.warn("[WS] artifact push failed", e);
+                        }
                     }
 
                     @Override
@@ -241,16 +254,14 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        sessionUsers.remove(session.getId());
-        wsSessions.remove(session.getId());
+        sessionManager.unregister(session.getId());
         log.info("[WS] client disconnected: sessionId={}, status={}", session.getId(), status);
     }
 
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) {
         log.error("[WS] transport error: sessionId={}, msg={}", session.getId(), exception.getMessage());
-        sessionUsers.remove(session.getId());
-        wsSessions.remove(session.getId());
+        sessionManager.unregister(session.getId());
     }
 
     private void sendEvent(WebSocketSession session, String type, String content) {
@@ -299,5 +310,38 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         return cleaned.length() > 30 ? cleaned.substring(0, 30) + "..." : cleaned;
     }
 
-    private record UserInfo(Long userId, String username) {}
+    /**
+     * 检测 AI 响应是否含媒体内容，返回 multi_card payload 或 null。
+     * P2-5：简单检测 markdown 图片语法和 <img> 标签。
+     */
+    private com.fasterxml.jackson.databind.JsonNode buildMultiCardIfMedia(String response) {
+        if (response == null || response.isBlank()) return null;
+
+        java.util.regex.Matcher imgMatcher = java.util.regex.Pattern.compile(
+                "!\\[([^]]*)\\]\\(([^)]+)\\)"
+        ).matcher(response);
+
+        boolean hasImage = imgMatcher.find();
+        boolean hasHtmlImage = response.contains("<img") || response.contains("<video");
+
+        if (!hasImage && !hasHtmlImage) return null;
+
+        var cards = objectMapper.createArrayNode();
+        cards.add(objectMapper.createObjectNode()
+                .put("type", "text")
+                .put("content", response));
+
+        if (hasImage) {
+            imgMatcher.reset();
+            while (imgMatcher.find()) {
+                cards.add(objectMapper.createObjectNode()
+                        .put("type", "image")
+                        .put("alt", imgMatcher.group(1))
+                        .put("url", imgMatcher.group(2)));
+            }
+        }
+
+        return cards;
+    }
+
 }

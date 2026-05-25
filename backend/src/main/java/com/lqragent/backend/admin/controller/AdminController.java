@@ -9,6 +9,19 @@ import com.lqragent.backend.admin.dto.SysConfigSaveRequest;
 import com.lqragent.backend.admin.service.AdminService;
 import com.lqragent.backend.admin.service.ModelConfigService;
 import com.lqragent.backend.common.dto.ApiResponse;
+import com.lqragent.backend.knowledgegraph.entity.KnowledgeEdge;
+import com.lqragent.backend.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.knowledgegraph.repository.KnowledgeEdgeRepository;
+import com.lqragent.backend.knowledgegraph.repository.KnowledgePointRepository;
+import com.lqragent.backend.learnerprofile.dto.ProfileSummaryDto;
+import com.lqragent.backend.learnerprofile.entity.LearnerProfile;
+import com.lqragent.backend.learnerprofile.repository.LearnerProfileRepository;
+import com.lqragent.backend.learningpath.entity.LearningPath;
+import com.lqragent.backend.learningpath.entity.LearningPathStep;
+import com.lqragent.backend.learningpath.repository.LearningPathRepository;
+import com.lqragent.backend.learningpath.repository.LearningPathStepRepository;
+import com.lqragent.backend.resourcefacade.entity.ResourceItem;
+import com.lqragent.backend.resourcefacade.repository.ResourceItemRepository;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask;
 import com.lqragent.backend.uploadqueue.service.UploadQueueService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,8 +32,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Tag(name = "管理后台", description = "系统配置、模型管理、用户管理（仅 ADMIN 角色）")
 @RestController
@@ -32,6 +47,12 @@ public class AdminController {
     private final AdminService adminService;
     private final ModelConfigService modelConfigService;
     private final UploadQueueService uploadQueueService;
+    private final LearnerProfileRepository learnerProfileRepo;
+    private final KnowledgePointRepository knowledgePointRepo;
+    private final KnowledgeEdgeRepository knowledgeEdgeRepo;
+    private final LearningPathRepository learningPathRepo;
+    private final LearningPathStepRepository learningPathStepRepo;
+    private final ResourceItemRepository resourceItemRepo;
 
     @Operation(summary = "系统状态总览", description = "返回后端端口、AI 服务连通性、用户/任务统计")
     @GetMapping("/status")
@@ -106,5 +127,74 @@ public class AdminController {
     public ApiResponse<Map<String, Boolean>> processUpload() {
         boolean processed = adminService.processOneUpload();
         return ApiResponse.ok(Map.of("processed", processed));
+    }
+
+    // ===== 新增：画像 / 图谱 / 路径 / 资源 管理接口 =====
+
+    @Operation(summary = "学习画像列表", description = "查询所有学生的画像数据")
+    @GetMapping("/profiles")
+    public ApiResponse<List<ProfileSummaryDto>> listProfiles() {
+        List<ProfileSummaryDto> list = learnerProfileRepo.findAll().stream()
+                .map(p -> ProfileSummaryDto.builder()
+                        .id(p.getId()).userId(p.getUserId())
+                        .knowledgeLevel(p.getKnowledgeLevel())
+                        .learningGoal(p.getLearningGoal())
+                        .cognitiveStyle(p.getCognitiveStyle())
+                        .commonErrors(p.getCommonErrors())
+                        .learningPace(p.getLearningPace())
+                        .interestDirection(p.getInterestDirection())
+                        .preferredResourceType(p.getPreferredResourceType())
+                        .build())
+                .collect(Collectors.toList());
+        return ApiResponse.ok(list);
+    }
+
+    @Operation(summary = "知识图谱数据", description = "返回所有知识点节点 + 依赖边")
+    @GetMapping("/knowledge-graph")
+    public ApiResponse<Map<String, Object>> getKnowledgeGraph() {
+        List<KnowledgePoint> nodes = knowledgePointRepo.findAll();
+        List<KnowledgeEdge> edges = knowledgeEdgeRepo.findAll();
+        Map<String, Object> result = new HashMap<>();
+        result.put("nodes", nodes);
+        result.put("edges", edges);
+        result.put("nodeCount", nodes.size());
+        result.put("edgeCount", edges.size());
+        return ApiResponse.ok(result);
+    }
+
+    @Operation(summary = "学习路径列表", description = "查询所有已生成的个性化学习路径")
+    @GetMapping("/learning-paths")
+    public ApiResponse<List<Map<String, Object>>> listLearningPaths() {
+        List<LearningPath> paths = learningPathRepo.findAll();
+        var result = paths.stream().map(p -> {
+            List<LearningPathStep> steps = learningPathStepRepo.findByPathIdOrderByStepOrder(p.getId());
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", p.getId());
+            m.put("userId", p.getUserId());
+            m.put("goal", p.getGoal());
+            m.put("createdAt", p.getCreatedAt());
+            m.put("stepCount", steps.size());
+            m.put("completedCount", steps.stream().filter(s -> Boolean.TRUE.equals(s.getCompleted())).count());
+            return m;
+        }).collect(Collectors.toList());
+        return ApiResponse.ok(result);
+    }
+
+    @Operation(summary = "资源列表", description = "查询所有已生成的讲义/题目/代码/示意图")
+    @GetMapping("/resources")
+    public ApiResponse<List<ResourceItem>> listAllResources(
+            @Parameter(description = "按类型过滤：LESSON/QUIZ/CODE_CASE/ILLUSTRATION") @RequestParam(required = false) String type,
+            @Parameter(description = "按知识点过滤") @RequestParam(required = false) String kpId) {
+        List<ResourceItem> items;
+        if (kpId != null && type != null) {
+            items = resourceItemRepo.findByKpIdAndResourceType(kpId, type);
+        } else if (kpId != null) {
+            items = resourceItemRepo.findByKpId(kpId);
+        } else if (type != null) {
+            items = resourceItemRepo.findByResourceType(type);
+        } else {
+            items = resourceItemRepo.findAll();
+        }
+        return ApiResponse.ok(items);
     }
 }

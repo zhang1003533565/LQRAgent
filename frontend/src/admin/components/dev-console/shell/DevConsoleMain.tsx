@@ -3,7 +3,11 @@ import AgentStatusPanel from '@/admin/components/dev-console/dashboard/AgentStat
 import TraceFlowPanel from '@/admin/components/dev-console/dashboard/TraceFlowPanel'
 import { DevConsolePlaceholder } from '@/admin/components/dev-console/placeholder'
 import {
+  LearningPathPanel,
   ModelConfigPanel,
+  ProfilePanel,
+  KnowledgeGraphPanel,
+  ResourcePanel,
   SystemConfigPanel,
   UploadQueuePanel,
   UserListPanel,
@@ -34,6 +38,14 @@ function resolveMainContent(activeNav: DevConsoleNavId, agents: AgentRuntimeStat
       return <ModelConfigPanel />
     case 'system-config':
       return <SystemConfigPanel />
+    case 'profile':
+      return <ProfilePanel />
+    case 'knowledge':
+      return <KnowledgeGraphPanel />
+    case 'path':
+      return <LearningPathPanel />
+    case 'resources':
+      return <ResourcePanel />
     case 'logs':
       return <DevConsolePlaceholder navId="logs" />
     default:

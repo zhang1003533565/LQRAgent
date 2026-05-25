@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -80,14 +79,16 @@ public class ResourceFacadeService {
 
     private ResourceItem generateLesson(KnowledgePoint kp, ResourceGenerateRequest req) {
         String title = kp.getTitle() + " — 讲义";
-        String content;
+        String content = null;
 
+        // 尝试调 DeepTutor 优化内容（模板兜底）
         try {
-            Map<?, ?> result = aiServerClient.generateLesson("default", kp.getKpId());
-            content = result.containsKey("content") ? (String) result.get("content") : null;
+            if (aiServerClient.ping()) {
+                log.info("[ResourceFacade] DeepTutor 可用，尝试生成讲义");
+                // TODO P3: 对接 DeepTutor book engine 生成更丰富的讲义
+            }
         } catch (Exception e) {
-            log.warn("[ResourceFacade] AiServer 不可用，使用模板内容: {}", e.getMessage());
-            content = null;
+            log.warn("[ResourceFacade] DeepTutor 不可用: {}", e.getMessage());
         }
 
         if (content == null) {
@@ -120,14 +121,16 @@ public class ResourceFacadeService {
 
     private ResourceItem generateQuiz(KnowledgePoint kp, ResourceGenerateRequest req) {
         String title = kp.getTitle() + " — 练习题";
-        String content;
+        String content = null;
 
+        // 尝试调 DeepTutor 出题（模板兜底）
         try {
-            Map<?, ?> result = aiServerClient.generateQuestion("default", kp.getKpId(), 3);
-            content = result.containsKey("content") ? (String) result.get("content") : null;
+            if (aiServerClient.ping()) {
+                log.info("[ResourceFacade] DeepTutor 可用，尝试生成题目");
+                // TODO P3: 对接 DeepTutor question-notebook 出题
+            }
         } catch (Exception e) {
-            log.warn("[ResourceFacade] AiServer 不可用，使用模板题目: {}", e.getMessage());
-            content = null;
+            log.warn("[ResourceFacade] DeepTutor 不可用: {}", e.getMessage());
         }
 
         if (content == null) {

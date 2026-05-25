@@ -10,4 +10,6 @@ public interface ResourceItemRepository extends JpaRepository<ResourceItem, Long
     List<ResourceItem> findByKpId(String kpId);
 
     List<ResourceItem> findByKpIdAndResourceType(String kpId, String resourceType);
+
+    List<ResourceItem> findByResourceType(String resourceType);
 }
