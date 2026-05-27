@@ -11,13 +11,15 @@ const STATUS_VARIANT: Record<string, 'success' | 'danger' | 'warning'> = {
 
 export default function AgentMonitorPanel() {
   const [stats, setStats] = useState<AgentStatItem[]>([])
+  const [registeredAgents, setRegisteredAgents] = useState<string[]>([])
   const [runs, setRuns] = useState<AgentRunItem[]>([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
 
   async function load(p = 1) {
     const [s, r] = await Promise.all([getAgentStats(), getAgentRuns(p, 10)])
-    setStats(s)
+    setStats(s.stats)
+    setRegisteredAgents(s.registeredAgents)
     setRuns(r.items)
   }
 
@@ -35,6 +37,10 @@ export default function AgentMonitorPanel() {
           <p className={panel.desc}>GET /api/admin/agent-stats</p>
         </CardHeader>
         <CardContent>
+          <div className="mb-3 flex flex-wrap gap-2">
+            <ConsoleBadge variant="default" className="text-xs">已注册 {registeredAgents.length} 个智能体</ConsoleBadge>
+            {registeredAgents.map(a => <ConsoleBadge key={a} variant="muted" className="text-xs">{a}</ConsoleBadge>)}
+          </div>
           {loading ? (
             <p className={panel.hint}>加载中...</p>
           ) : stats.length === 0 ? (

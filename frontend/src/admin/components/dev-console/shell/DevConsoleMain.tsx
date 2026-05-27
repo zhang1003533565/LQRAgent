@@ -46,8 +46,6 @@ function resolveMainContent(activeNav: DevConsoleNavId, agents: AgentRuntimeStat
       return <LearningPathPanel />
     case 'resources':
       return <ResourcePanel />
-    case 'logs':
-      return <DevConsolePlaceholder navId="logs" />
     default:
       return <DevConsolePlaceholder navId={activeNav} />
   }

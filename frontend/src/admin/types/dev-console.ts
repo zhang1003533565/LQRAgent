@@ -69,7 +69,6 @@ export type DevConsoleNavId =
   | 'dashboard'
   | 'agent-debug'
   | 'trace'
-  | 'logs'
   | 'users'
   | 'profile'
   | 'knowledge'
@@ -78,5 +77,3 @@ export type DevConsoleNavId =
   | 'upload'
   | 'system-config'
   | 'model-config'
-  | 'prompts'
-  | 'params'

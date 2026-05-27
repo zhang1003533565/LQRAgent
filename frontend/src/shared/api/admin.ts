@@ -237,8 +237,14 @@ export interface AgentRunsData {
   size: number
 }
 
-export async function getAgentStats(): Promise<AgentStatItem[]> {
-  const res = await http.get<{ data: AgentStatItem[] }>('/admin/agent-stats')
+export interface AgentStatsResponse {
+  stats: AgentStatItem[]
+  registeredAgents: string[]
+  agentCount: number
+}
+
+export async function getAgentStats(): Promise<AgentStatsResponse> {
+  const res = await http.get<{ data: AgentStatsResponse }>('/admin/agent-stats')
   return res.data.data
 }
 

@@ -2,14 +2,11 @@
 import {
   Bot,
   BookOpen,
-  FileCode2,
   GitBranch,
   LayoutDashboard,
   Network,
   Route,
   Settings,
-  SlidersHorizontal,
-  Terminal,
   Upload,
   UserCog,
   Users,
@@ -34,9 +31,8 @@ export const DEV_CONSOLE_NAV: DevConsoleNavGroup[] = [
     title: '调试中心',
     items: [
       { id: 'dashboard', label: '概览 Dashboard', icon: LayoutDashboard },
-      { id: 'agent-debug', label: 'Agent 调试', icon: Bot },
+      { id: 'agent-debug', label: 'Agent 监控', icon: Bot },
       { id: 'trace', label: 'Trace 调用链', icon: GitBranch },
-      { id: 'logs', label: '实时日志', icon: Terminal },
     ],
   },
   {
@@ -55,17 +51,14 @@ export const DEV_CONSOLE_NAV: DevConsoleNavGroup[] = [
     items: [
       { id: 'system-config', label: '系统配置', icon: Settings },
       { id: 'model-config', label: '模型配置', icon: Wrench },
-      { id: 'prompts', label: 'Prompt 管理', icon: FileCode2 },
-      { id: 'params', label: '参数设置', icon: SlidersHorizontal },
     ],
   },
 ]
 
 export const DEV_CONSOLE_NAV_LABEL: Record<DevConsoleNavId, string> = {
   dashboard: '概览',
-  'agent-debug': 'Agent 调试',
+  'agent-debug': 'Agent 监控',
   trace: 'Trace 调用链',
-  logs: '实时日志',
   users: '用户管理',
   upload: '上传队列',
   profile: '学习画像',
@@ -74,6 +67,4 @@ export const DEV_CONSOLE_NAV_LABEL: Record<DevConsoleNavId, string> = {
   resources: '资源管理',
   'system-config': '系统配置',
   'model-config': '模型配置',
-  prompts: 'Prompt 管理',
-  params: '参数设置',
 }

@@ -22,9 +22,9 @@ import com.lqragent.backend.learningpath.repository.LearningPathRepository;
 import com.lqragent.backend.learningpath.repository.LearningPathStepRepository;
 import com.lqragent.backend.resourcefacade.entity.ResourceItem;
 import com.lqragent.backend.resourcefacade.repository.ResourceItemRepository;
+import com.lqragent.backend.agent.AgentBus;
 import com.lqragent.backend.observability.entity.AgentRunLog;
 import com.lqragent.backend.observability.repository.AgentRunLogRepository;
-import com.lqragent.backend.observability.service.AgentRunLogService;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask;
 import com.lqragent.backend.uploadqueue.service.UploadQueueService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -57,6 +57,7 @@ public class AdminController {
     private final LearningPathStepRepository learningPathStepRepo;
     private final ResourceItemRepository resourceItemRepo;
     private final AgentRunLogRepository agentRunLogRepo;
+    private final AgentBus agentBus;
 
     @Operation(summary = "系统状态总览", description = "返回后端端口、AI 服务连通性、用户/任务统计")
     @GetMapping("/status")
@@ -202,12 +203,12 @@ public class AdminController {
         return ApiResponse.ok(items);
     }
 
-    @Operation(summary = "智能体调用统计", description = "各智能体调用次数/成功率/平均耗时")
+    @Operation(summary = "智能体调用统计", description = "已注册智能体列表 + 调用次数/成功率/平均耗时")
     @GetMapping("/agent-stats")
-    public ApiResponse<List<Map<String, Object>>> getAgentStats() {
+    public ApiResponse<Map<String, Object>> getAgentStats() {
         List<AgentRunLog> all = agentRunLogRepo.findAll();
         var byAgent = all.stream().collect(Collectors.groupingBy(AgentRunLog::getAgent));
-        var result = byAgent.entrySet().stream().map(entry -> {
+        var stats = byAgent.entrySet().stream().map(entry -> {
             String agent = entry.getKey();
             var logs = entry.getValue();
             long total = logs.size();
@@ -226,6 +227,11 @@ public class AdminController {
             m.put("avgDurationMs", Math.round(avgDuration));
             return m;
         }).collect(Collectors.toList());
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("stats", stats);
+        result.put("registeredAgents", agentBus.listAgents());
+        result.put("agentCount", agentBus.agentCount());
         return ApiResponse.ok(result);
     }
 
