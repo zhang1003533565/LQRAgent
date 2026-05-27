@@ -1,5 +1,5 @@
 import http from '../http'
-import type { UploadTask } from '@/student/api/upload'
+import type { UploadTask } from '@/api/student/upload'
 
 export interface SysConfigItem {
   id: number

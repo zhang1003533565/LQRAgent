@@ -1,6 +1,5 @@
 package com.lqragent.backend.resourcefacade.service;
 
-import com.lqragent.backend.aiserver.AiServerClient;
 import com.lqragent.backend.knowledgegraph.entity.KnowledgePoint;
 import com.lqragent.backend.knowledgegraph.service.KnowledgeGraphService;
 import com.lqragent.backend.resourcefacade.dto.ResourceGenerateRequest;
@@ -27,7 +26,7 @@ public class ResourceFacadeService {
 
     private final ResourceItemRepository resourceRepo;
     private final KnowledgeGraphService kgService;
-    private final AiServerClient aiServerClient;
+    private final ResourceLlmGenerator llmGenerator;
 
     /**
      * 为某知识点生成指定类型的资源。
@@ -77,22 +76,20 @@ public class ResourceFacadeService {
 
     // ===== 各类型生成器 =====
 
+    /** 直接调 LLM API 生成，失败时返回模板 */
+    private String callGenerateOrFallback(String type, String title, String description, String fallback) {
+        String content = llmGenerator.generate(type, title, description);
+        if (content != null) {
+            log.info("[ResourceFacade] LLM 生成成功: type={}, title={}", type, title);
+            return content;
+        }
+        log.info("[ResourceFacade] 使用模板兜底: type={}", type);
+        return fallback;
+    }
+
     private ResourceItem generateLesson(KnowledgePoint kp, ResourceGenerateRequest req) {
         String title = kp.getTitle() + " — 讲义";
-        String content = null;
-
-        // 尝试调 DeepTutor 优化内容（模板兜底）
-        try {
-            if (aiServerClient.ping()) {
-                log.info("[ResourceFacade] DeepTutor 可用，尝试生成讲义");
-                // TODO P3: 对接 DeepTutor book engine 生成更丰富的讲义
-            }
-        } catch (Exception e) {
-            log.warn("[ResourceFacade] DeepTutor 不可用: {}", e.getMessage());
-        }
-
-        if (content == null) {
-            content = """
+        String template = """
 ## %s
 
 ### 学习目标
@@ -109,7 +106,7 @@ public class ResourceFacadeService {
 ### 总结
 %s 是 Python 编程中的重要知识点，建议配合代码练习加深理解。
 """.formatted(kp.getTitle(), kp.getTitle(), kp.getTitle(), kp.getDescription(), kp.getTitle());
-        }
+        String content = callGenerateOrFallback("lesson", kp.getTitle(), kp.getDescription(), template);
 
         return ResourceItem.builder()
                 .kpId(kp.getKpId())
@@ -121,20 +118,7 @@ public class ResourceFacadeService {
 
     private ResourceItem generateQuiz(KnowledgePoint kp, ResourceGenerateRequest req) {
         String title = kp.getTitle() + " — 练习题";
-        String content = null;
-
-        // 尝试调 DeepTutor 出题（模板兜底）
-        try {
-            if (aiServerClient.ping()) {
-                log.info("[ResourceFacade] DeepTutor 可用，尝试生成题目");
-                // TODO P3: 对接 DeepTutor question-notebook 出题
-            }
-        } catch (Exception e) {
-            log.warn("[ResourceFacade] DeepTutor 不可用: {}", e.getMessage());
-        }
-
-        if (content == null) {
-            content = """
+        String template = """
 ### %s — 练习题
 
 1. （选择题）关于 %s，以下说法正确的是？
@@ -150,7 +134,7 @@ public class ResourceFacadeService {
 ---
 *提示：完成练习后可以对照参考资料检查答案。*
 """.formatted(kp.getTitle(), kp.getTitle(), kp.getTitle(), kp.getTitle());
-        }
+        String content = callGenerateOrFallback("quiz", kp.getTitle(), kp.getDescription(), template);
 
         return ResourceItem.builder()
                 .kpId(kp.getKpId())
@@ -162,7 +146,7 @@ public class ResourceFacadeService {
 
     private ResourceItem generateCodeCase(KnowledgePoint kp, ResourceGenerateRequest req) {
         String title = kp.getTitle() + " — 代码示例";
-        String content = """
+        String template = """
 ### %s — 示例代码
 
 ```python
@@ -183,6 +167,7 @@ if __name__ == "__main__":
 2. 运行观察输出
 3. 修改参数体会不同行为
 """.formatted(kp.getTitle(), kp.getTitle());
+        String content = callGenerateOrFallback("code_case", kp.getTitle(), kp.getDescription(), template);
 
         return ResourceItem.builder()
                 .kpId(kp.getKpId())

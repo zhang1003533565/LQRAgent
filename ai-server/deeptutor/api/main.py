@@ -356,7 +356,6 @@ app.include_router(
     tags=["attachments"],
     dependencies=_auth,
 )
-
 # Unified WebSocket endpoint — auth is checked inside the handler (WebSockets
 # cannot use FastAPI dependencies in the standard way)
 app.include_router(unified_ws.router, prefix="/api/v1", tags=["unified-ws"])

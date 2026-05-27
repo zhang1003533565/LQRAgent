@@ -89,4 +89,5 @@ public class AiServerClient {
                 .retrieve()
                 .body(Map.class);
     }
+
 }

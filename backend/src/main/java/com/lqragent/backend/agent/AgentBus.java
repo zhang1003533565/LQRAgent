@@ -3,7 +3,6 @@ package com.lqragent.backend.agent;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -21,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class AgentBus {
 
-    private final @Lazy List<Agent> agentList;
+    private final List<Agent> agentList;
     private final Map<String, Agent> agentRegistry = new ConcurrentHashMap<>();
 
     /** 待完成任务追踪（用于异步场景） */

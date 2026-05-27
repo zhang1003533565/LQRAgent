@@ -1,6 +1,7 @@
 package com.lqragent.backend.orchestrator.service;
 
 import com.lqragent.backend.orchestrator.dto.IntentResult;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -9,11 +10,16 @@ import java.util.Map;
 
 /**
  * 意图识别与路由服务。
- * 基于关键词匹配识别用户意图（P1 关键词版本，后续可替换为 LLM 意图分类 P4-3）。
+ * <p>
+ * P5-2：优先调 LLM 意图分类，不可用时降级为关键词匹配。
+ * </p>
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class OrchestratorService {
+
+    private final LlmIntentClassifier llmClassifier;
 
     /** 意图 → 关键词列表（按优先级排列） */
     private static final Map<String, List<String>> INTENT_KEYWORDS = Map.of(
@@ -39,18 +45,28 @@ public class OrchestratorService {
 
     /**
      * 识别用户消息意图。
-     *
-     * @param message 用户输入文本
-     * @return 识别结果
+     * 优先调 LLM，失败时降级为关键词匹配。
      */
     public IntentResult determineIntent(String message) {
         if (message == null || message.isBlank()) {
             return unknown("消息为空");
         }
 
-        String lower = message.toLowerCase().trim();
+        // P5-2: 优先 LLM 分类
+        IntentResult llmResult = llmClassifier.classify(message);
+        if (llmResult != null) {
+            log.debug("[Orchestrator] LLM intent={}, confidence={}", llmResult.getIntent(), llmResult.getConfidence());
+            return llmResult;
+        }
 
-        // 按 INTENT_KEYWORDS 顺序匹配
+        // 降级：关键词匹配
+        log.debug("[Orchestrator] LLM 不可用，使用关键词规则");
+        return keywordMatch(message);
+    }
+
+    /** 关键词匹配降级 */
+    private IntentResult keywordMatch(String message) {
+        String lower = message.toLowerCase().trim();
         for (var entry : INTENT_KEYWORDS.entrySet()) {
             String intent = entry.getKey();
             for (String keyword : entry.getValue()) {
@@ -66,7 +82,7 @@ public class OrchestratorService {
                         case IntentResult.HELP -> "帮助说明";
                         default -> "未知意图";
                     };
-                    log.debug("[Orchestrator] intent={}, keyword={}, confidence={}", intent, keyword, confidence);
+                    log.debug("[Orchestrator] keyword intent={}, keyword={}, confidence={}", intent, keyword, confidence);
                     return IntentResult.builder()
                             .intent(intent)
                             .label(label)
@@ -76,9 +92,7 @@ public class OrchestratorService {
                 }
             }
         }
-
-        // 没匹配到任何关键词 → 默认当作答疑问题
-        log.debug("[Orchestrator] 未匹配关键词，默认 qa_question: {}", message);
+        log.debug("[Orchestrator] 未匹配关键词，默认 qa_question");
         return IntentResult.builder()
                 .intent(IntentResult.QA_QUESTION)
                 .label("解答问题")
