@@ -1,42 +1,43 @@
-﻿# `src` 目录说明
+# `src` 目录说明
 
-按 **student / admin / shared** 三大域划分，业务互不 import，公共能力走 `shared`。
+当前前端目录按你要求统一为：
 
-```
+```text
 src/
-├── app/                    # 应用壳：路由
-├── shared/                 # 鉴权、HTTP、协议类型、学生端通用 UI
-│   ├── api/
-│   ├── store/authStore.ts
-│   ├── types/
-│   ├── constants/
-│   ├── components/ui/
-│   ├── components/auth/
-│   └── styles/workspace-theme.css
-├── student/                # 学生端（/workspace）
-│   ├── pages/
-│   ├── components/workspace/
-│   ├── store/              # chat、path、profile…
-│   └── hooks/              # useWebSocket、useChatAutoScroll
-├── admin/                  # 管理端 Dev Console（/admin/console）
-│   ├── pages/
-│   ├── components/dev-console/
-│   ├── store/              # devConsoleStore
-│   ├── hooks/              # useDevConsoleQueries
-│   ├── types/dev-console.ts
-│   ├── constants/dev-console-nav.ts
-│   └── styles/dev-console.css
+├── api/
+│   ├── admin/
+│   ├── user/
+│   └── http.ts
+├── assets/
+│   ├── admin/
+│   └── user/
+├── components/
+│   ├── admin/
+│   └── user/
+├── pages/
+│   ├── admin/
+│   └── user/
+├── router/
+├── utils/
+├── App.tsx
+├── App.module.css
 ├── index.css
-└── main.tsx
+├── main.tsx
+└── vite-env.d.ts
 ```
 
-**导入约定**
+**归类约定**
 
-| 用途 | 路径前缀 |
-|------|----------|
-| 公共 | `@/shared/...` |
-| 学生端 | `@/student/...` |
-| 管理端 | `@/admin/...` |
-| 路由壳 | `@/app/...` |
+- `api/`：接口定义，按 `admin` / `user` 拆分；公共请求实例放 `api/http.ts`
+- `assets/`：静态资源，按 `admin` / `user` 拆分
+- `components/`：组件目录，根下只保留 `admin` 和 `user`
+- `pages/`：页面与页面域内状态、hooks、types、styles 等归档到各自的 `admin` / `user`
+- `router/`：预留给后续统一路由管理
+- `utils/`：预留给后续请求拦截器、响应拦截器等工具
 
-**禁止**：`student` ↔ `admin` 互相引用业务组件；跨域只通过 `shared`。
+**导入前缀**
+
+- `@/api/...`
+- `@/assets/...`
+- `@/components/...`
+- `@/pages/...`
