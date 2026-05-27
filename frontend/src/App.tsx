@@ -1,9 +1,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import ProtectedRoute from '@/components/user/auth/ProtectedRoute'
-import DevConsolePage from '@/pages/admin/DevConsolePage'
-import LoginPage from '@/pages/user/LoginPage'
-import RegisterPage from '@/pages/user/RegisterPage'
-import WorkspacePage from '@/pages/user/WorkspacePage'
+import ProtectedRoute from '@/student/auth/ProtectedRoute'
+import DevConsolePage from '@/admin/pages/DevConsolePage'
+import LoginPage from '@/student/pages/LoginPage'
+import RegisterPage from '@/student/pages/RegisterPage'
+import WorkspacePage from '@/student/pages/WorkspacePage'
 import styles from './App.module.css'
 
 function AdminConsoleRoute() {

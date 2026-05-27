@@ -108,47 +108,37 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         final String finalSessionId = sessionId;
 
-        // Orchestrator: 通过 AgentBus 识别意图
-        AgentTask intentTask = AgentTask.builder()
+        // OrchestratorAgent: 总调度（意图识别 + 路由派发 + 质量闸门）
+        AgentTask orchestratorTask = AgentTask.builder()
                 .agentType("orchestrator")
                 .userId(userInfo.userId())
                 .sessionId(finalSessionId)
                 .payload(Map.of("message", content))
                 .build();
-        AgentResult intentResult = agentBus.dispatch(intentTask).join();
-        String intent = (String) intentResult.getData().getOrDefault("intent", "qa_question");
-        log.info("[WS] intent={} (via AgentBus)", intent);
-
         sendEvent(session, "agent_step", objectMapper.createObjectNode()
                 .put("agent", "orchestrator")
                 .put("label", "正在分析问题...")
-                .put("intent", intent)
                 .put("status", "running")
                 .toString());
+        AgentResult orchestratorResult = agentBus.dispatch(orchestratorTask).join();
 
-        // 非 QA 意图 → 通过 AgentBus 路由到对应 agent
-        if (!"qa_question".equals(intent) && !"unknown".equals(intent)) {
-            AgentTask agentTask = AgentTask.builder()
-                    .agentType("orchestrator")
-                    .userId(userInfo.userId())
-                    .sessionId(finalSessionId)
-                    .payload(Map.of("intent", intent, "message", content))
-                    .build();
-            // 暂由 orchestrator agent 回复文本指引，后续改为路由到具体 agent
+        // 非 QA → 直接返回结果文本
+        if (!"qa".equals(orchestratorResult.getData().get("route"))) {
+            String response = (String) orchestratorResult.getData().getOrDefault("response", "处理完成");
             sendEvent(session, "agent_step", objectMapper.createObjectNode()
                     .put("agent", "orchestrator")
-                    .put("label", "已识别 " + intentResult.getData().getOrDefault("label", intent))
-                    .put("intent", intent)
+                    .put("label", "处理完成")
                     .put("status", "done")
                     .toString());
-            sendEvent(session, "chunk", "已识别您的需求。请使用对应 REST API 完成操作。");
+            sendEvent(session, "chunk", response);
             sendEvent(session, "done", objectMapper.createObjectNode()
                     .put("session_id", finalSessionId)
                     .toString());
+            persistAiMessage(userInfo.userId(), finalSessionId, response);
             return;
         }
 
-        // QA + unknown → 走答疑通道 (保留流式)
+        // QA → 流式答疑通道
         sendEvent(session, "agent_step", objectMapper.createObjectNode()
                 .put("agent", "qa_agent")
                 .put("label", "正在理解问题...")

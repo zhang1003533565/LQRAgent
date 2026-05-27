@@ -1,5 +1,5 @@
 import axios, { type AxiosResponse, type AxiosError, type InternalAxiosRequestConfig } from 'axios'
-import { useAuthStore } from '@/components/user/store/authStore'
+import { useAuthStore } from '@/student/store/authStore'
 
 /**
  * 统一 axios 实例。
