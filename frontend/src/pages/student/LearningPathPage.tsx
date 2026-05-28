@@ -1,40 +1,98 @@
+import { useState, useMemo } from 'react'
+import { usePathStore } from '@/utils/store/pathStore'
+import { getLearningPath, getCurrentPath } from '@/api/student/learningPath'
 import styles from './WorkspacePage.module.css'
 
-const summaryCards = [
-  { label: '总节点数', value: '7', unit: '个', tone: 'indigo' },
-  { label: '已完成', value: '2', unit: '个', tone: 'green' },
-  { label: '进行中', value: '1', unit: '个', tone: 'blue' },
-  { label: '未开始', value: '4', unit: '个', tone: 'slate' },
-  { label: '预计完成时间', value: '2025-06-05', unit: '', tone: 'violet' },
-] as const
-
-const pathNodes = [
-  { id: 1, title: '目标确认', status: '已完成', state: 'done', x: 24, y: 24 },
-  { id: 2, title: '知识诊断', status: '已完成', state: 'done', x: 212, y: 24 },
-  { id: 3, title: '核心概念学习', status: '进行中', state: 'active', x: 404, y: 24 },
-  { id: 4, title: '例题训练', status: '未开始', state: 'pending', x: 86, y: 126 },
-  { id: 5, title: '阶段测验', status: '未开始', state: 'pending', x: 296, y: 126 },
-  { id: 6, title: '查漏补缺', status: '未开始', state: 'pending', x: 506, y: 126 },
-  { id: 7, title: '总结提升', status: '未开始', state: 'pending', x: 296, y: 228 },
-] as const
-
-const resourceActions = [
-  { label: '生成讲解资料', icon: 'doc' },
-  { label: '生成练习题', icon: 'edit' },
-  { label: '查看关联资源', icon: 'folder' },
-] as const
-
-const pathList = [
-  { id: 1, title: '目标确认', status: '已完成', state: 'done' },
-  { id: 2, title: '知识诊断', status: '已完成', state: 'done' },
-  { id: 3, title: '核心概念学习', status: '进行中', state: 'active' },
-  { id: 4, title: '例题训练', status: '未开始', state: 'pending' },
-  { id: 5, title: '阶段测验', status: '未开始', state: 'pending' },
-  { id: 6, title: '查漏补缺', status: '未开始', state: 'pending' },
-  { id: 7, title: '总结提升', status: '未开始', state: 'pending' },
-] as const
+function nodePos(i: number, total: number) {
+  const cols = 3
+  const cw = 152, ch = 90, gx = 68, gy = 42
+  const ox = (720 - cols * cw - (cols - 1) * gx) / 2
+  const row = Math.floor(i / cols)
+  const col = i % cols
+  const rowCount = Math.min(cols, total - row * cols)
+  const rowW = rowCount * cw + (rowCount - 1) * gx
+  const rowOx = (720 - rowW) / 2
+  return { x: rowOx + col * (cw + gx), y: 24 + row * (ch + gy) }
+}
 
 export default function LearningPathPage() {
+  const { goal, planDescription, nodes, selectedKpId, loading, setPath, setLoading, selectNode } =
+    usePathStore()
+  const [inputGoal, setInputGoal] = useState(goal || '两周内完成高等数学导数与微分章节复习')
+  const [error, setError] = useState<string | null>(null)
+
+  const totalNodes = nodes.length
+  const completedCount = nodes.filter((n) => n.completed || n.status === 'COMPLETED').length
+  const activeCount = nodes.filter((n) => n.status === 'ACTIVE').length
+  const pendingCount = totalNodes - completedCount - activeCount
+
+  const summaryCards = useMemo(() => {
+    if (totalNodes === 0) {
+      return [
+        { label: '总节点数', value: '—', unit: '', tone: 'indigo' },
+        { label: '已完成', value: '—', unit: '', tone: 'green' },
+        { label: '进行中', value: '—', unit: '', tone: 'blue' },
+        { label: '未开始', value: '—', unit: '', tone: 'slate' },
+        { label: '预计完成时间', value: '—', unit: '', tone: 'violet' },
+      ]
+    }
+    const d = new Date()
+    d.setDate(d.getDate() + 14)
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    return [
+      { label: '总节点数', value: String(totalNodes), unit: '个', tone: 'indigo' },
+      { label: '已完成', value: String(completedCount), unit: '个', tone: 'green' },
+      { label: '进行中', value: String(activeCount), unit: '个', tone: 'blue' },
+      { label: '未开始', value: String(pendingCount), unit: '个', tone: 'slate' },
+      { label: '预计完成时间', value: dateStr, unit: '', tone: 'violet' },
+    ]
+  }, [totalNodes, completedCount, activeCount, pendingCount])
+
+  const selectedNode = useMemo(
+    () => nodes.find((n) => n.kpId === selectedKpId) ?? null,
+    [nodes, selectedKpId],
+  )
+
+  const nodeState = (n: (typeof nodes)[0]): 'done' | 'active' | 'pending' => {
+    if (n.completed || n.status === 'COMPLETED') return 'done'
+    if (n.status === 'ACTIVE') return 'active'
+    return 'pending'
+  }
+
+  const nodeStatusText = (n: (typeof nodes)[0]) => {
+    if (n.completed || n.status === 'COMPLETED') return '已完成'
+    if (n.status === 'ACTIVE') return '进行中'
+    return '未开始'
+  }
+
+  async function handleGenerate() {
+    if (!inputGoal.trim()) return
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await getLearningPath(inputGoal)
+      setPath(data)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : '路径生成失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleRestore() {
+    setLoading(true)
+    setError(null)
+    try {
+      const data = await getCurrentPath()
+      if (data) setPath(data)
+      else setError('暂无活跃学习路径')
+    } catch {
+      setError('获取当前路径失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <section className={styles.page}>
       <div className={styles.heroGlow} />
@@ -45,16 +103,20 @@ export default function LearningPathPage() {
           <p className={styles.subtitle}>根据学习目标自动生成阶段化学习计划</p>
         </div>
         <div className={styles.topActions}>
-          <button type="button" className={styles.secondaryBtn}>
+          <button type="button" className={styles.secondaryBtn} onClick={handleRestore} disabled={loading}>
             <span className={styles.btnIcon}>◔</span>
             恢复当前路径
           </button>
-          <button type="button" className={styles.primaryBtn}>
+          <button type="button" className={styles.primaryBtn} onClick={handleGenerate} disabled={loading}>
             <span className={styles.btnIcon}>✦</span>
-            重新生成路径
+            {loading ? '生成中...' : '重新生成路径'}
           </button>
         </div>
       </header>
+
+      {error && (
+        <div style={{ padding: '0 16px 8px', color: '#e53e3e', fontSize: 14 }}>{error}</div>
+      )}
 
       <div className={styles.layout}>
         <div className={styles.mainColumn}>
@@ -65,11 +127,13 @@ export default function LearningPathPage() {
               </div>
               <div className={styles.generatorRow}>
                 <div className={styles.inputWrap}>
-                  <label className={styles.inputLabel}>想扣：</label>
+                  <label className={styles.inputLabel}>想学：</label>
                   <input
                     className={styles.input}
-                    value="两周内完成高等数学导数与微分章节复习"
-                    readOnly
+                    value={inputGoal}
+                    onChange={(e) => setInputGoal(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+                    placeholder="输入学习目标，如：Python 装饰器"
                   />
                 </div>
                 <div className={styles.selectWrap}>
@@ -80,9 +144,14 @@ export default function LearningPathPage() {
                     <span className={styles.chevron}>⌄</span>
                   </button>
                 </div>
-                <button type="button" className={styles.generateBtn}>
+                <button
+                  type="button"
+                  className={styles.generateBtn}
+                  onClick={handleGenerate}
+                  disabled={loading}
+                >
                   <span className={styles.btnIcon}>⇪</span>
-                  生成学习路径
+                  {loading ? '生成中...' : '生成学习路径'}
                 </button>
               </div>
             </div>
@@ -108,30 +177,31 @@ export default function LearningPathPage() {
 
           <section className={`${styles.panel} ${styles.flowPanel}`}>
             <div className={styles.flowCanvas}>
-              <svg className={styles.flowLines} viewBox="0 0 720 360" aria-hidden="true">
-                <path d="M142 84 H212" className={styles.lineDone} />
-                <path d="M330 84 H404" className={styles.lineActive} />
-                <path d="M514 84 C580 84 582 84 582 120 V142 C582 168 560 168 538 168 H510" className={styles.lineGhost} />
-                <path d="M156 186 H86 C58 186 58 150 58 132 C58 114 58 102 84 102" className={styles.lineGhost} />
-                <path d="M254 186 H296" className={styles.lineGhost} />
-                <path d="M464 186 H506" className={styles.lineGhost} />
-                <path d="M566 228 V254 C566 286 544 286 520 286 H424" className={styles.lineGhost} />
-              </svg>
-
-              {pathNodes.map((node) => (
-                <article
-                  key={node.id}
-                  className={`${styles.nodeCard} ${styles[`node${node.state}`]}`}
-                  style={{ left: `${node.x}px`, top: `${node.y}px` }}
-                >
-                  <div className={`${styles.nodeIndex} ${styles[`index${node.state}`]}`}>{node.id}</div>
-                  <h3 className={styles.nodeTitle}>{node.title}</h3>
-                  <p className={styles.nodeStatus}>
-                    <span className={`${styles.statusDot} ${styles[`dot${node.state}`]}`} />
-                    {node.status}
-                  </p>
-                </article>
-              ))}
+              {nodes.length > 0 ? (
+                nodes.map((node, i) => {
+                  const ns = nodeState(node)
+                  const pos = nodePos(i, nodes.length)
+                  return (
+                    <article
+                      key={node.kpId}
+                      className={`${styles.nodeCard} ${styles[`node${ns}`]}`}
+                      style={{ left: pos.x, top: pos.y }}
+                      onClick={() => selectNode(node.kpId)}
+                    >
+                      <div className={`${styles.nodeIndex} ${styles[`index${ns}`]}`}>{node.order || i + 1}</div>
+                      <h3 className={styles.nodeTitle}>{node.title}</h3>
+                      <p className={styles.nodeStatus}>
+                        <span className={`${styles.statusDot} ${styles[`dot${ns}`]}`} />
+                        {nodeStatusText(node)}
+                      </p>
+                    </article>
+                  )
+                })
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#8b9ab6', fontSize: 14 }}>
+                  {loading ? '正在生成学习路径...' : '输入学习目标后点击「生成学习路径」'}
+                </div>
+              )}
             </div>
 
             <div className={styles.flowHint}>
@@ -139,47 +209,66 @@ export default function LearningPathPage() {
               支持从当前路径恢复薄弱学习
             </div>
           </section>
+
+          {planDescription && (
+            <section className={styles.panel}>
+              <h2 className={styles.panelTitle}>路径说明</h2>
+              <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: '#51698f' }}>{planDescription}</p>
+            </section>
+          )}
         </div>
 
         <aside className={styles.sideColumn}>
           <section className={styles.sidePanel}>
             <div className={styles.sectionTag}>✣ 节点详情</div>
-            <div className={styles.detailHeader}>
-              <div>
-                <div className={styles.detailMetaRow}>
-                  <span className={styles.detailNumber}>3</span>
-                  <h2 className={styles.detailTitle}>核心概念学习</h2>
+            {selectedNode ? (
+              <>
+                <div className={styles.detailHeader}>
+                  <div>
+                    <div className={styles.detailMetaRow}>
+                      <span className={styles.detailNumber}>{selectedNode.order || nodes.indexOf(selectedNode) + 1}</span>
+                      <h2 className={styles.detailTitle}>{selectedNode.title}</h2>
+                    </div>
+                    <p className={styles.detailLead}>排序时长</p>
+                  </div>
+                  <span className={styles.progressPill}>{nodeStatusText(selectedNode)}</span>
                 </div>
-                <p className={styles.detailLead}>排序时长</p>
-              </div>
-              <span className={styles.progressPill}>进行中</span>
-            </div>
 
-            <div className={styles.infoList}>
-              <div className={styles.infoItem}>
-                <span className={styles.infoKey}>推荐时长</span>
-                <span className={styles.infoValue}>约 4-6 小时</span>
-              </div>
-              <div className={styles.infoBlock}>
-                <h3>学习目标</h3>
-                <p>理解并掌握导数与微分的定义、性质及基本公式。</p>
-              </div>
-              <div className={styles.infoBlock}>
-                <h3>前置知识</h3>
-                <p>函数与极限的基本概念、初等函数的求导法则</p>
-              </div>
-              <div className={styles.infoBlock}>
-                <h3>节点描述</h3>
-                <p>通过系统学习导数与微分的核心概念，为后续应用打下坚实基础。</p>
-              </div>
-            </div>
+                <div className={styles.infoList}>
+                  <div className={styles.infoItem}>
+                    <span className={styles.infoKey}>推荐时长</span>
+                    <span className={styles.infoValue}>约 4-6 小时</span>
+                  </div>
+                  <div className={styles.infoBlock}>
+                    <h3>学习目标</h3>
+                    <p>{selectedNode.description || '掌握本节点核心知识点'}</p>
+                  </div>
+                  <div className={styles.infoBlock}>
+                    <h3>前置知识</h3>
+                    <p>{selectedNode.order > 1 ? `完成第 ${selectedNode.order - 1} 步「${nodes[selectedNode.order - 2]?.title ?? ''}」` : '无前置要求'}</p>
+                  </div>
+                  <div className={styles.infoBlock}>
+                    <h3>节点描述</h3>
+                    <p>{selectedNode.description || '通过系统学习，为后续应用打下坚实基础。'}</p>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p style={{ color: '#8b9ab6', fontSize: 14, padding: '20px 0' }}>
+                {loading ? '路径生成中...' : nodes.length > 0 ? '点击节点查看详情' : '请先生成学习路径'}
+              </p>
+            )}
           </section>
 
           <section className={styles.sidePanel}>
             <div className={styles.sectionTag}>▣ 资源生成</div>
             <div className={styles.resourceGrid}>
-              {resourceActions.map((action) => (
-                <button key={action.label} type="button" className={styles.resourceBtn}>
+              {[
+                { label: '生成讲解资料', icon: 'doc' },
+                { label: '生成练习题', icon: 'edit' },
+                { label: '查看关联资源', icon: 'folder' },
+              ].map((action) => (
+                <button key={action.label} type="button" className={styles.resourceBtn} disabled={!selectedNode}>
                   <span className={`${styles.resourceIcon} ${styles[`icon${action.icon}`]}`} />
                   <span>{action.label}</span>
                 </button>
@@ -190,18 +279,29 @@ export default function LearningPathPage() {
           <section className={styles.sidePanel}>
             <div className={styles.sectionTag}>◫ 路径节点列表</div>
             <div className={styles.pathList}>
-              {pathList.map((item) => (
-                <div key={item.id} className={styles.pathItem}>
-                  <div className={styles.pathLeft}>
-                    <span className={`${styles.pathIndex} ${styles[`index${item.state}`]}`}>{item.id}</span>
-                    <span className={styles.pathName}>{item.title}</span>
+              {nodes.map((item, i) => {
+                const ns = nodeState(item)
+                return (
+                  <div
+                    key={item.kpId}
+                    className={styles.pathItem}
+                    style={{ cursor: 'pointer', opacity: item.kpId === selectedKpId ? 1 : 0.7 }}
+                    onClick={() => selectNode(item.kpId)}
+                  >
+                    <div className={styles.pathLeft}>
+                      <span className={`${styles.pathIndex} ${styles[`index${ns}`]}`}>{item.order || i + 1}</span>
+                      <span className={styles.pathName}>{item.title}</span>
+                    </div>
+                    <div className={styles.pathRight}>
+                      <span className={`${styles.statusDot} ${styles[`dot${ns}`]}`} />
+                      <span className={styles.pathStatus}>{nodeStatusText(item)}</span>
+                    </div>
                   </div>
-                  <div className={styles.pathRight}>
-                    <span className={`${styles.statusDot} ${styles[`dot${item.state}`]}`} />
-                    <span className={styles.pathStatus}>{item.status}</span>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
+              {nodes.length === 0 && !loading && (
+                <p style={{ color: '#8b9ab6', fontSize: 13, padding: '8px 0' }}>暂无路径节点</p>
+              )}
             </div>
           </section>
         </aside>

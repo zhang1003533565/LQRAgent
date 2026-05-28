@@ -7,9 +7,15 @@ export interface GenerateResourceRequest {
   prompt?: string
 }
 
-/**
- * 按知识点生成学习资源（后端未实现时返回占位）。
- */
+export async function getResources(kpId: string): Promise<LearningResource[]> {
+  try {
+    const res = await http.get<{ data: LearningResource[] }>(`/resources/${kpId}`)
+    return res.data.data || []
+  } catch {
+    return []
+  }
+}
+
 export async function generateResource(
   req: GenerateResourceRequest,
 ): Promise<LearningResource> {
@@ -32,9 +38,8 @@ function buildPlaceholderResource(req: GenerateResourceRequest): LearningResourc
   return {
     id: 0,
     kpId: req.kpId,
-    resourceType: req.type,
+    resourceType: req.resourceType,
     title: titles[req.resourceType],
     content: `【待对接】${req.kpId} 的 ${req.resourceType} 资源将在后端 \`POST /api/resources/generate\` 就绪后自动加载。`,
-    mediaUrl: req.resourceType === 'ILLUSTRATION' ? undefined : undefined,
   }
 }

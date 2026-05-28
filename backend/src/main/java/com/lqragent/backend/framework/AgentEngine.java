@@ -92,6 +92,7 @@ public class AgentEngine {
         } else {
             // 复用已有会话上下文：优先 Redis，回退内存
             messages = loadSessionMessages(sid);
+            messages = validateAndRepairMessages(messages);
             if (messages.isEmpty()) {
                 messages.add(Map.of("role", "system", "content", agent.getSystemPrompt(task)));
                 for (String ctx : extraContext) {
@@ -156,7 +157,6 @@ public class AgentEngine {
             if (response == null) {
                 log.error("[AgentEngine] LLM 调用最终失败 round={}: agent={}, err={}",
                         round, agent.agentId(), lastLlmError != null ? lastLlmError.getMessage() : "unknown");
-                if (!isNewSession) resetSession(sid);
                 return AgentResult.builder()
                         .success(false).errorMessage("LLM 调用失败: " + (lastLlmError != null ? lastLlmError.getMessage() : "unknown")).build();
             }
@@ -164,7 +164,6 @@ public class AgentEngine {
             // 3b. 提取 assistant 消息
             Map<String, Object> assistantMsg = extractAssistantMessage(response);
             if (assistantMsg == null) {
-                if (!isNewSession) resetSession(sid);
                 return AgentResult.builder()
                         .success(false).errorMessage("LLM 返回空结果").build();
             }
@@ -180,7 +179,6 @@ public class AgentEngine {
                 String content = (String) assistantMsg.get("content");
                 log.info("[AgentEngine] 完成: agent={}, rounds={}, len={}",
                         agent.agentId(), round + 1, content != null ? content.length() : 0);
-                if (!isNewSession) resetSession(sid);
                 return AgentResult.builder()
                         .success(true)
                         .data(Map.of("response", content != null ? content : ""))
@@ -200,6 +198,21 @@ public class AgentEngine {
                         arguments != null ? (arguments.length() > 120 ? arguments.substring(0, 120) + "..." : arguments) : "null");
 
                 ToolResult result = toolRegistry.execute(agent.agentId(), toolName, arguments);
+
+                // ════════════════════════════════════════════
+                // 直接路由：工具返回 route=direct 时，跳过 LLM 直接返回 response
+                // ════════════════════════════════════════════
+                if (result != null && result.success() && result.data() instanceof Map<?, ?> toolData) {
+                    String toolRoute = (String) toolData.get("route");
+                    String toolResponse = (String) toolData.get("response");
+                    if ("direct".equals(toolRoute) && toolResponse != null && !toolResponse.isBlank()) {
+                        log.info("[AgentEngine] 直接路由: agent={}, tool={}, 跳过LLM", agent.agentId(), toolName);
+                        return AgentResult.builder()
+                                .success(true)
+                                .data(Map.of("route", "direct", "response", toolResponse))
+                                .build();
+                    }
+                }
 
                 // ════════════════════════════════════════════
                 // 长短上下文分离：只返回简短摘要，不喂回长文本
@@ -222,7 +235,6 @@ public class AgentEngine {
         }
 
         log.warn("[AgentEngine] 达到最大推理轮次({}): agent={}", MAX_ROUNDS, agent.agentId());
-        if (!isNewSession) resetSession(sid);
         return AgentResult.builder()
                 .success(true)
                 .data(Map.of("response", "已达到最大推理轮次，建议简化问题后重试"))
@@ -336,6 +348,41 @@ public class AgentEngine {
             log.debug("[AgentEngine] Redis 读取失败，回退内存: {}", e.getMessage());
         }
         return SessionContext.getMessages(sessionId);
+    }
+
+    /**
+     * 校验消息序列合法性：确保每个 assistant tool_calls 消息后面都跟了对应的 tool 消息。
+     * 如果 Redis 中有不完整的消息（上次执行中断导致），截断掉不完整的部分。
+     */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> validateAndRepairMessages(List<Map<String, Object>> messages) {
+        if (messages.isEmpty()) return messages;
+
+        // 从后往前扫描，找到最后一个 assistant 消息
+        int lastAssistantIdx = -1;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if ("assistant".equals(messages.get(i).get("role"))) {
+                lastAssistantIdx = i;
+                break;
+            }
+        }
+        if (lastAssistantIdx < 0) return messages;
+
+        Map<String, Object> lastAssistant = messages.get(lastAssistantIdx);
+        List<Map<String, Object>> toolCalls = (List<Map<String, Object>>) lastAssistant.get("tool_calls");
+        if (toolCalls == null || toolCalls.isEmpty()) return messages;
+
+        // 统计 assistant 之后的 tool 消息数
+        long toolMsgCount = messages.subList(lastAssistantIdx + 1, messages.size()).stream()
+                .filter(m -> "tool".equals(m.get("role")))
+                .count();
+
+        if (toolMsgCount < toolCalls.size()) {
+            log.warn("[AgentEngine] 修复不完整消息: lastAssistantIdx={}, tool_calls={}, tool_msgs={}",
+                    lastAssistantIdx, toolCalls.size(), toolMsgCount);
+            return new ArrayList<>(messages.subList(0, lastAssistantIdx));
+        }
+        return messages;
     }
 
     private void addSessionMessage(String sessionId, Map<String, Object> message) {

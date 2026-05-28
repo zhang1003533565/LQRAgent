@@ -12,6 +12,9 @@ import type { LearningPathArtifactPayload } from '@/utils/types/artifact'
 import type { MultiCardBlock } from '@/utils/types/multi-card'
 import type { ProfileSummary } from '@/utils/types/profile'
 
+const MAX_RETRY = 8
+const BASE_DELAY = 1000
+
 function handleArtifact(kind: ArtifactKind, payload: unknown) {
   const artifact = useArtifactStore.getState()
   artifact.setLastKind(kind)
@@ -43,10 +46,14 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
 }
 
 /**
- * WebSocket：chunk / agent_step / artifact / profile_patch / done / error
+ * WebSocket：chunk / agent_step / artifact / profile_patch / session_created / done / error
+ * 自动重连（指数退避，最多 8 次）
  */
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
+  const retryRef = useRef(0)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const mountedRef = useRef(true)
   const {
     appendToLastMessage,
     setStreaming,
@@ -65,6 +72,9 @@ export function useWebSocket() {
       if (data.session_id) setSessionId(data.session_id)
 
       switch (data.type) {
+        case 'session_created':
+          if (data.session_id) setSessionId(data.session_id)
+          break
         case 'chunk':
           appendToLastMessage(data.content ?? '')
           break
@@ -127,17 +137,48 @@ export function useWebSocket() {
     ],
   )
 
+  const cleanup = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    if (wsRef.current) {
+      wsRef.current.onclose = null
+      wsRef.current.onerror = null
+      wsRef.current.close()
+      wsRef.current = null
+    }
+  }, [])
+
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return
     if (!token) return
 
-    const url = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws/chat?token=${token}`
+    cleanup()
+
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const url = `${protocol}://${window.location.host}/ws/chat?token=${token}`
     const ws = new WebSocket(url)
     wsRef.current = ws
 
-    ws.onopen = () => setConnected(true)
-    ws.onclose = () => setConnected(false)
-    ws.onerror = () => setConnected(false)
+    ws.onopen = () => {
+      retryRef.current = 0
+      setConnected(true)
+    }
+
+    ws.onclose = () => {
+      setConnected(false)
+      wsRef.current = null
+      if (mountedRef.current && retryRef.current < MAX_RETRY) {
+        const delay = Math.min(BASE_DELAY * 2 ** retryRef.current, 30000)
+        retryRef.current++
+        timerRef.current = setTimeout(connect, delay)
+      }
+    }
+
+    ws.onerror = () => {
+      setConnected(false)
+    }
 
     ws.onmessage = (event) => {
       try {
@@ -146,7 +187,7 @@ export function useWebSocket() {
         console.warn('[WebSocket] non-JSON:', event.data)
       }
     }
-  }, [token, dispatch, setConnected])
+  }, [token, dispatch, setConnected, cleanup])
 
   const send = useCallback((content: string) => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) {
@@ -161,11 +202,12 @@ export function useWebSocket() {
   }, [clearSteps])
 
   const disconnect = useCallback(() => {
-    wsRef.current?.close()
-    wsRef.current = null
-  }, [])
+    mountedRef.current = false
+    cleanup()
+  }, [cleanup])
 
   useEffect(() => {
+    mountedRef.current = true
     if (token) connect()
     return () => disconnect()
   }, [token, connect, disconnect])

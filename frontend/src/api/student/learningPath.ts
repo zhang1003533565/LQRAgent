@@ -12,3 +12,12 @@ export async function getLearningPath(
   })
   return res.data.data
 }
+
+export async function getCurrentPath(): Promise<LearningPathDto | null> {
+  try {
+    const res = await http.get<{ data: LearningPathDto }>('/learning-path/current')
+    return res.data.data
+  } catch {
+    return null
+  }
+}

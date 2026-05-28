@@ -27,8 +27,9 @@
 .scrollBody {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
 }
 
 .content {
@@ -145,8 +146,11 @@
 }
 
 .timeline {
-  position: relative;
-  padding-top: 6px;
+  width: 320px;
+  min-width: 320px;
+  border-left: 1px solid rgba(215, 226, 247, 0.9);
+  overflow-y: auto;
+  padding: 16px;
 }
 
 .timelineTrack {
@@ -583,5 +587,9 @@
 
   .sendButton {
     align-self: flex-end;
+  }
+
+  .timeline {
+    display: none;
   }
 }

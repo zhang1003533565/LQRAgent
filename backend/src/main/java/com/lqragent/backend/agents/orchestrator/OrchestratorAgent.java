@@ -3,6 +3,7 @@ package com.lqragent.backend.agents.orchestrator;
 import com.lqragent.backend.framework.Agent;
 import com.lqragent.backend.framework.AgentIds;
 import com.lqragent.backend.framework.AgentBus;
+import com.lqragent.backend.framework.AgentPipeline;
 import com.lqragent.backend.framework.AgentResult;
 import com.lqragent.backend.framework.AgentTask;
 import com.lqragent.backend.framework.QualityGate;
@@ -16,7 +17,6 @@ import org.springframework.stereotype.Component;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * 总调度智能体（Leader Agent）。
@@ -72,12 +72,58 @@ public class OrchestratorAgent implements Agent {
         String message = (String) task.getPayload().getOrDefault("message", "");
         log.info("[Orchestrator] 降级模式: requestId={}, userId={}, msg={}", requestId, userId, message);
 
-        // 极简降级：请用户先配置 LLM
-        return AgentResult.builder()
-                .success(true)
-                .data(Map.of(
-                    "response", "您好！当前系统尚未配置大模型 API Key。请在管理后台「系统管理 → 模型配置」中配置 LLM 后使用智能调度功能。"
-                ))
+        String lower = message.toLowerCase();
+
+        // 关键词降级路由（无 LLM 时）
+        if (lower.matches(".*(你好|您好|hi|hello|嗨).*")) {
+            return AgentResult.builder().success(true)
+                    .data(Map.of("route", "direct", "response",
+                            "你好！我是 LQRAgent 智能学习助手，可以帮你解答问题、规划学习路径、生成学习资源。请问有什么可以帮助你的？"))
+                    .build();
+        }
+        if (lower.matches(".*(你能做什么|有什么功能|帮助|help).*")) {
+            return AgentResult.builder().success(true)
+                    .data(Map.of("route", "direct", "response",
+                            "我可以帮你做这些事情：\n1. 解答问题\n2. 规划学习路径\n3. 生成学习资源（讲义/题目/代码）\n4. 生成示意图"))
+                    .build();
+        }
+        if (lower.matches(".*(路径|学习路线|怎么学|学习计划|规划).*")) {
+            return dispatchFallback(AgentIds.LEARNING_PATH, userId, task.getSessionId(), message, "direct");
+        }
+        if (lower.matches(".*(讲义|笔记|资源|资料|代码|示例).*")) {
+            return dispatchFallback(AgentIds.RESOURCE_GENERATION, userId, task.getSessionId(), message, "direct");
+        }
+        if (lower.matches(".*(题目|练习|quiz|测试|考试|出题).*")) {
+            return dispatchFallback(AgentIds.RESOURCE_GENERATION, userId, task.getSessionId(), message, "direct");
+        }
+        if (lower.matches(".*(图|流程|示意图|思维导图).*")) {
+            return dispatchFallback(AgentIds.MEDIA_GENERATION, userId, task.getSessionId(), message, "direct");
+        }
+
+        // 默认走答疑
+        return dispatchFallback(AgentIds.INTELLIGENT_QA, userId, task.getSessionId(), message, "intelligent_qa");
+    }
+
+    private AgentResult dispatchFallback(String agentType, Long userId, String sessionId, String message, String route) {
+        AgentResult sub = dispatchToAgent(agentType, userId, sessionId, Map.of("message", message));
+        if (sub == null || !sub.isSuccess()) {
+            String err = sub != null ? sub.getErrorMessage() : "子Agent执行失败";
+            return AgentResult.builder().success(true)
+                    .data(Map.of("route", "direct", "response", "抱歉，处理失败：" + err))
+                    .build();
+        }
+        String response = "";
+        if (sub.getData() != null) {
+            Object r = sub.getData().get("response");
+            if (r != null) response = r.toString();
+            else {
+                Object msg = sub.getData().get("message");
+                if (msg != null) response = msg.toString();
+            }
+        }
+        if (response.isBlank()) response = "处理完成";
+        return AgentResult.builder().success(true)
+                .data(Map.of("route", route, "response", response))
                 .build();
     }
 
@@ -91,7 +137,7 @@ public class OrchestratorAgent implements Agent {
             你是 LQRAgent 的最高决策调度大脑。你的核心职责是：
 
             ## 决策原则
-            1. **自主分析意图**：仔细阅读用户消息，理解用户真正想要什么（问候、帮助、学习路径、资源生成、示意图）
+            1. **自主分析意图**：仔细阅读用户消息，理解用户真正想要什么（问候、答疑、学习路径、资源生成、示意图）
             2. **按需调用工具**：不要一次性调用所有工具。先调最需要的那个，确认成功后（收到 JSON 状态码）再决策下一步
             3. **关注上下文**：如果上一轮已经生成了路径，这一轮用户要求资源，不要重复生成路径
             4. **拒绝并行派发**：一次只调一个工具。等待该工具返回成功状态后再决策下一个
@@ -103,6 +149,11 @@ public class OrchestratorAgent implements Agent {
 
             ### handle_help — 场景：用户询问功能
             用户问"你能做什么/有什么功能"时调用。返回帮助信息后即结束。
+
+            ### handle_qa — 场景：用户提问、答疑、咨询
+            用户发送问题、疑问、咨询时调用（如"什么是导数"、"帮我解答XX"、"你好"等）。
+            **这是最常用的工具**，无法明确归类为其他工具时，默认使用此工具。
+            内部会通过RAG检索知识库并流式回答。
 
             ### handle_learning_path — 场景：用户要学习路径
             用户说"我想学XX/怎么学XX/学习路线"时调用。
@@ -116,11 +167,15 @@ public class OrchestratorAgent implements Agent {
             ### handle_media_generate — 场景：用户要示意图
             用户说"画图/示意图/流程图"时调用。
 
+            ### handle_learning_flow — 场景：用户要完整学习流程
+            用户说"我想系统学XX/从头学XX/完整学习XX"时调用。
+            自动串联：路径规划 → 资源生成 → 质量评估，一步到位。
+
             ## 输出规范
             - 工具返回的是 JSON 状态码（如 {"status":"success","resourceId":128}），不是完整内容
             - 根据状态码判断成功/失败，不要假设工具结果内容
             - 所有子任务结果汇总后，用自然语言回复用户
-            - 未知意图或无法处理的问题，告诉用户你能做什么
+            - 未知意图时，默认调用 handle_qa 进行答疑
             """;
     }
 
@@ -129,12 +184,16 @@ public class OrchestratorAgent implements Agent {
         return List.of(
             ToolSchema.of("greet", "用户打招呼时调用，返回欢迎语。调用后本轮结束。"),
             ToolSchema.of("handle_help", "用户询问功能时调用，返回帮助说明。调用后本轮结束。"),
+            ToolSchema.of("handle_qa", "用户提问、答疑、咨询问题时调用（如「你好」「什么是导数」「帮我解答XX问题」）。内部调度智能答疑Agent进行RAG检索+流式回答。",
+                ToolSchema.params(Map.of("message", ToolSchema.stringParam("用户消息", "如：什么是导数")), "message")),
             ToolSchema.of("handle_learning_path", "用户要规划学习路径时调用（如「我想学Python装饰器」）。内部调度 LearningPathAgent 生成路径。",
                 ToolSchema.params(Map.of("message", ToolSchema.stringParam("用户消息", "如：我想学Python装饰器")), "message")),
             ToolSchema.of("handle_resource_generate", "用户要生成学习资源时调用（如「生成讲义/出题/给我讲讲装饰器」）。内部调度 ResourceGenerationAgent 按学生画像按需生成。",
                 ToolSchema.params(Map.of("message", ToolSchema.stringParam("用户消息", "如：给我生成Python装饰器的学习资源")), "message")),
             ToolSchema.of("handle_media_generate", "用户要生成示意图时调用（如「画一个流程图」）。",
-                ToolSchema.params(Map.of("message", ToolSchema.stringParam("用户消息", "如：画一个装饰器的流程图")), "message"))
+                ToolSchema.params(Map.of("message", ToolSchema.stringParam("用户消息", "如：画一个装饰器的流程图")), "message")),
+            ToolSchema.of("handle_learning_flow", "用户要完整学习流程时调用（如「我想系统学Python装饰器」）。自动串联路径规划→资源生成→质量评估。",
+                ToolSchema.params(Map.of("message", ToolSchema.stringParam("用户消息", "如：我想系统学Python装饰器")), "message"))
         );
     }
 
@@ -148,6 +207,7 @@ public class OrchestratorAgent implements Agent {
         registry.register(agentId(), "greet", args -> {
             return Map.of(
                 "status", "success",
+                "route", "direct",
                 "response", "你好！我是 LQRAgent 智能学习助手，可以帮你解答问题、规划学习路径、生成学习资源。请问有什么可以帮助你的？"
             );
         });
@@ -156,6 +216,7 @@ public class OrchestratorAgent implements Agent {
         registry.register(agentId(), "handle_help", args -> {
             return Map.of(
                 "status", "success",
+                "route", "direct",
                 "response", """
                     我可以帮你做这些事情：
                     1. 📖 解答问题 — 发送任何 Python 相关问题
@@ -164,6 +225,39 @@ public class OrchestratorAgent implements Agent {
                     4. 🎨 生成示意图
 
                     直接输入问题开始学习吧！"""
+            );
+        });
+
+        // ——— handle_qa：派发子任务到 IntelligentQaAgent（答疑） ———
+        registry.register(agentId(), "handle_qa", args -> {
+            Map<String, Object> p = registry.parseArgs(args);
+            String msg = (String) p.getOrDefault("message", "");
+            Long userId = RequestContext.getUserId();
+            String sessionId = (String) p.get("sessionId");
+
+            AgentResult subResult = dispatchToAgent(AgentIds.INTELLIGENT_QA, userId, sessionId,
+                    Map.of("message", msg));
+
+            if (subResult == null || !subResult.isSuccess()) {
+                java.util.Map<String, Object> err = new java.util.LinkedHashMap<>();
+                err.put("status", "error");
+                err.put("error", "答疑失败");
+                if (subResult != null && subResult.getErrorMessage() != null) {
+                    err.put("detail", subResult.getErrorMessage());
+                }
+                return err;
+            }
+
+            String response = "";
+            if (subResult.getData() != null) {
+                Object r = subResult.getData().get("response");
+                if (r != null) response = r.toString();
+            }
+            return Map.of(
+                "status", "success",
+                "route", AgentIds.INTELLIGENT_QA,
+                "response", response.isBlank() ? "答疑完成" : response,
+                "sub_agent", AgentIds.INTELLIGENT_QA
             );
         });
 
@@ -193,6 +287,7 @@ public class OrchestratorAgent implements Agent {
             // 只返回状态摘要，不返回完整路径内容（截断由 AgentEngine 保障）
             return Map.of(
                 "status", "success",
+                "route", AgentIds.LEARNING_PATH,
                 "message", "学习路径已规划完成",
                 "sub_agent", AgentIds.LEARNING_PATH
             );
@@ -222,6 +317,7 @@ public class OrchestratorAgent implements Agent {
 
             return Map.of(
                 "status", "success",
+                "route", AgentIds.RESOURCE_GENERATION,
                 "message", "资源已由教学资源专家生成并存入数据库，质检流程已自动触发",
                 "sub_agent", AgentIds.RESOURCE_GENERATION,
                 "next_step_hint", "你可以询问用户是否需要其他类型的资源，或继续解答问题"
@@ -247,8 +343,57 @@ public class OrchestratorAgent implements Agent {
 
             return Map.of(
                 "status", "success",
+                "route", AgentIds.MEDIA_GENERATION,
                 "message", "示意图已生成",
                 "sub_agent", AgentIds.MEDIA_GENERATION
+            );
+        });
+
+        // ——— handle_learning_flow：Pipeline 全链路（路径→资源→质检）———
+        registry.register(agentId(), "handle_learning_flow", args -> {
+            Map<String, Object> p = registry.parseArgs(args);
+            String msg = (String) p.getOrDefault("message", "");
+            Long userId = RequestContext.getUserId();
+            String sessionId = (String) p.get("sessionId");
+
+            log.info("[Orchestrator] Pipeline 启动: msg={}", msg);
+
+            AgentResult pipelineResult = AgentPipeline.of("learning-path-full", agentBus())
+                    .then(AgentIds.LEARNING_PATH, ctx -> Map.of("message", msg))
+                    .then(AgentIds.RESOURCE_GENERATION, (prev, ctx) -> {
+                        // 从路径结果中提取第一个知识点 ID
+                        if (prev != null && prev.containsKey("nodes")) {
+                            Object nodes = prev.get("nodes");
+                            if (nodes instanceof java.util.List<?> list && !list.isEmpty()) {
+                                Object first = list.get(0);
+                                if (first instanceof Map<?, ?> node) {
+                                    Object kpId = node.get("kpId");
+                                    if (kpId != null) {
+                                        return Map.of("message", "为知识点 " + kpId + " 生成讲义");
+                                    }
+                                }
+                            }
+                        }
+                        return Map.of("message", "为 " + msg + " 生成配套讲义");
+                    })
+                    .then(AgentIds.QUALITY_ASSESSMENT, (prev, ctx) -> {
+                        if (prev != null && prev.containsKey("resourceId")) {
+                            return Map.of("resourceId", String.valueOf(prev.get("resourceId")));
+                        }
+                        return Map.of("resourceId", "0");
+                    })
+                    .execute(userId, sessionId);
+
+            if (pipelineResult == null || !pipelineResult.isSuccess()) {
+                String err = pipelineResult != null ? pipelineResult.getErrorMessage() : "Pipeline 执行失败";
+                return Map.of("status", "error", "route", "direct", "response", "学习链路执行失败：" + err);
+            }
+
+            return Map.of(
+                "status", "success",
+                "route", "direct",
+                "message", "学习链路已完成：路径规划 → 资源生成 → 质量评估",
+                "sub_agent", "pipeline"
             );
         });
     }
