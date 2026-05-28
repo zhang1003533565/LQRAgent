@@ -171,8 +171,12 @@
   background: linear-gradient(90deg, #2e80ff 0%, #2168ff 100%);
 }
 
-.userCard {
+.userCardWrapper {
+  position: relative;
   margin-top: 6px;
+}
+
+.userCard {
   width: 100%;
   padding: clamp(12px, 1.8vh, 18px) 18px clamp(12px, 1.8vh, 18px) 16px;
   display: flex;
@@ -185,6 +189,11 @@
     linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(245, 250, 255, 0.94));
   box-shadow: 0 14px 34px rgba(145, 184, 236, 0.12);
   cursor: pointer;
+}
+
+.userCardActive {
+  border-color: #1f6fff;
+  box-shadow: 0 8px 28px rgba(31, 111, 255, 0.18);
 }
 
 .avatar {
@@ -232,6 +241,69 @@
 .userArrow svg {
   width: 100%;
   height: 100%;
+}
+
+.userArrowUp svg {
+  transform: rotate(180deg);
+}
+
+/* ---------- 用户下拉菜单 ---------- */
+
+.userDropdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  padding: 6px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid rgba(198, 221, 248, 0.85);
+  box-shadow: 0 12px 36px rgba(107, 144, 204, 0.18);
+  z-index: 20;
+  animation: dropdownIn 0.18s ease;
+}
+
+.userDropdownItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  font-size: clamp(13px, 1.7vh, 15px);
+  font-weight: 700;
+  color: #55688f;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.userDropdownItem:hover {
+  background: rgba(237, 244, 255, 0.86);
+  color: #1f6fff;
+}
+
+.userDropdownItem:last-child {
+  color: #e05555;
+}
+
+.userDropdownItem:last-child:hover {
+  background: rgba(255, 235, 235, 0.7);
+  color: #d13838;
+}
+
+@keyframes dropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 960px) {
@@ -293,7 +365,8 @@
     bottom: 12px;
   }
 
-  .userCard {
+  .userCard,
+  .userCardWrapper {
     justify-content: center;
     padding: 10px;
   }

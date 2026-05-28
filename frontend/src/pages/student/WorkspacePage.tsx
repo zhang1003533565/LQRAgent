@@ -6,6 +6,7 @@ import LearningResourcesPage from './LearningResourcesPage'
 import QuizPage from './QuizPage'
 import UploadPage from './UploadPage'
 import ProfilePage from './ProfilePage'
+import ProfileCenterPage from './ProfileCenterPage'
 
 export default function WorkspacePage() {
   return (
@@ -17,6 +18,7 @@ export default function WorkspacePage() {
         <Route path="profile" element={<ProfilePage />} />
         <Route path="resources" element={<LearningResourcesPage />} />
         <Route path="quiz" element={<QuizPage />} />
+        <Route path="profile-center" element={<ProfileCenterPage />} />
         <Route path="notes" element={<NotesView />} />
       </Route>
     </Routes>
