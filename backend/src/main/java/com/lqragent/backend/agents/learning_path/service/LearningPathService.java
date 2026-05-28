@@ -1,7 +1,10 @@
 package com.lqragent.backend.agents.learning_path.service;
 
-import com.lqragent.backend.agents.shared.knowledgegraph.entity.KnowledgePoint;
-import com.lqragent.backend.agents.shared.knowledgegraph.service.KnowledgeGraphService;
+import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.agents.knowledgegraph.service.KnowledgeGraphService;
+import com.lqragent.backend.framework.llm.LlmContentGenerator;
+import com.lqragent.backend.agents.learner_profile.dto.ProfileSummaryDto;
+import com.lqragent.backend.agents.learner_profile.service.LearnerProfileService;
 import com.lqragent.backend.agents.learning_path.dto.LearningPathDto;
 import com.lqragent.backend.agents.learning_path.entity.LearningPath;
 import com.lqragent.backend.agents.learning_path.entity.LearningPathStep;
@@ -13,7 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -29,6 +34,8 @@ public class LearningPathService {
     private final KnowledgeGraphService kgService;
     private final LearningPathRepository pathRepo;
     private final LearningPathStepRepository stepRepo;
+    private final LlmContentGenerator llmGenerator;
+    private final LearnerProfileService profileService;
 
     /**
      * 生成新学习路径。
@@ -67,6 +74,10 @@ public class LearningPathService {
 
         // 4. 构建 DTO
         List<LearningPathDto.PathNode> nodes = buildNodes(pathKpIds);
+
+        // 5. LLM 个性化排序（可选，失败保留原顺序）
+        nodes = sortNodesWithLlm(nodes, userId);
+
         String planDescription = buildPlanDescription(nodes);
 
         // 5. 持久化到 DB
@@ -181,6 +192,57 @@ public class LearningPathService {
                     .build());
         }
         return nodes;
+    }
+
+    /**
+     * 调 LLM 对路径节点做个性化排序。失败时保留原顺序。
+     */
+    private List<LearningPathDto.PathNode> sortNodesWithLlm(List<LearningPathDto.PathNode> nodes, Long userId) {
+        if (nodes.size() <= 1) return nodes;
+
+        try {
+            ProfileSummaryDto profile = profileService.getSummary(userId);
+            String profileHint = buildProfileHint(profile);
+
+            List<String> kpIds = nodes.stream().map(LearningPathDto.PathNode::getKpId).toList();
+            List<String> sorted = llmGenerator.generatePathSort(kpIds, profileHint);
+
+            if (sorted != null && !sorted.isEmpty()) {
+                // 按 LLM 返回的顺序重建节点，跳过不在原路径中的 ID
+                Map<String, LearningPathDto.PathNode> nodeMap = new LinkedHashMap<>();
+                for (LearningPathDto.PathNode n : nodes) {
+                    nodeMap.put(n.getKpId(), n);
+                }
+                List<LearningPathDto.PathNode> result = new ArrayList<>();
+                int order = 0;
+                for (String kpId : sorted) {
+                    LearningPathDto.PathNode node = nodeMap.remove(kpId);
+                    if (node != null) {
+                        result.add(node.toBuilder().order(order++).build());
+                    }
+                }
+                // 追加 LLM 未提及的节点（兜底）
+                for (LearningPathDto.PathNode remaining : nodeMap.values()) {
+                    result.add(remaining.toBuilder().order(order++).build());
+                }
+                log.info("[LearningPath] LLM 排序完成: {} 个节点", result.size());
+                return result;
+            }
+        } catch (Exception e) {
+            log.warn("[LearningPath] LLM 排序失败，保留原顺序: {}", e.getMessage());
+        }
+        return nodes;
+    }
+
+    private String buildProfileHint(ProfileSummaryDto profile) {
+        if (profile == null) return "无画像数据";
+        StringBuilder sb = new StringBuilder();
+        sb.append("- 知识水平: ").append(profile.getKnowledgeLevel() != null ? profile.getKnowledgeLevel() : "未知").append("\n");
+        sb.append("- 学习目标: ").append(profile.getLearningGoal() != null ? profile.getLearningGoal() : "未指定").append("\n");
+        sb.append("- 学习节奏: ").append(profile.getLearningPace() != null ? profile.getLearningPace() : "未知").append("\n");
+        sb.append("- 兴趣方向: ").append(profile.getInterestDirection() != null ? profile.getInterestDirection() : "未指定").append("\n");
+        sb.append("- 已掌握知识点: ").append(profile.getTopicMastery() != null ? profile.getTopicMastery() : "无数据").append("\n");
+        return sb.toString();
     }
 
     private String buildPlanDescription(List<LearningPathDto.PathNode> nodes) {

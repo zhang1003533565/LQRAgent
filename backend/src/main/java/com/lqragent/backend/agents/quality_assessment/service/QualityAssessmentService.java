@@ -1,7 +1,7 @@
 package com.lqragent.backend.agents.quality_assessment.service;
 
 import com.lqragent.backend.agents.resource_generation.entity.ResourceItem;
-import com.lqragent.backend.agents.shared.llm.LlmContentGenerator;
+import com.lqragent.backend.framework.llm.LlmContentGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

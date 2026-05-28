@@ -1,11 +1,11 @@
 package com.lqragent.backend.agents.quality_assessment;
 
-import com.lqragent.backend.agent.Agent;
-import com.lqragent.backend.agent.AgentIds;
-import com.lqragent.backend.agent.AgentResult;
-import com.lqragent.backend.agent.AgentTask;
-import com.lqragent.backend.agent.ToolRegistry;
-import com.lqragent.backend.agent.ToolSchema;
+import com.lqragent.backend.framework.Agent;
+import com.lqragent.backend.framework.AgentIds;
+import com.lqragent.backend.framework.AgentResult;
+import com.lqragent.backend.framework.AgentTask;
+import com.lqragent.backend.framework.ToolRegistry;
+import com.lqragent.backend.framework.ToolSchema;
 import com.lqragent.backend.agents.quality_assessment.service.QualityAssessmentService;
 import com.lqragent.backend.agents.resource_generation.entity.ResourceItem;
 import lombok.RequiredArgsConstructor;

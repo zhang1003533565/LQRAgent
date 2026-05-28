@@ -1,7 +1,7 @@
 package com.lqragent.backend.agents.content_analyzer.service;
 
-import com.lqragent.backend.agents.shared.knowledgegraph.entity.KnowledgePoint;
-import com.lqragent.backend.agents.shared.knowledgegraph.repository.KnowledgePointRepository;
+import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.agents.knowledgegraph.repository.KnowledgePointRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

@@ -25,7 +25,7 @@ public class LearningPathDto {
 
     @Schema(description = "路径节点")
     @Data
-    @Builder
+    @Builder(toBuilder = true)
     public static class PathNode {
 
         @Schema(description = "知识点 ID")

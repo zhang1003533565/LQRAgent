@@ -7,6 +7,7 @@ import {
   ProfilePanel,
   KnowledgeGraphPanel,
   ResourcePanel,
+  ModelConfigPanel,
   SystemConfigPanel,
   UploadQueuePanel,
   UserListPanel,
@@ -42,6 +43,8 @@ function resolveMainContent(activeNav: DevConsoleNavId, agents: AgentRuntimeStat
       return <UserListPanel />
     case 'upload':
       return <UploadQueuePanel />
+    case 'model-config':
+      return <ModelConfigPanel />
     case 'system-config':
       return <SystemConfigPanel />
     case 'profile':

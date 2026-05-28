@@ -1,7 +1,7 @@
 package com.lqragent.backend.agents.learner_profile.service;
 
 import com.lqragent.backend.chat.entity.ChatMessage;
-import com.lqragent.backend.agents.shared.llm.LlmContentGenerator;
+import com.lqragent.backend.framework.llm.LlmContentGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

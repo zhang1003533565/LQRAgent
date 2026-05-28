@@ -69,6 +69,7 @@ export const DEV_CONSOLE_NAV: DevConsoleNavGroup[] = [
   {
     title: '系统管理',
     items: [
+      { id: 'model-config', label: '模型配置', icon: Settings },
       { id: 'system-config', label: '系统配置', icon: Settings },
     ],
   },
@@ -84,6 +85,7 @@ export const DEV_CONSOLE_NAV_LABEL: Record<DevConsoleNavId, string> = {
   knowledge: '知识图谱',
   path: '学习路径',
   resources: '资源管理',
+  'model-config': '模型配置',
   'system-config': '系统配置',
   'agent-orchestrator': '协调 Orchestrator',
   'agent-qa': '答疑 QaAgent',

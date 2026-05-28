@@ -53,6 +53,9 @@ public class SecurityConfig {
                     "/api-docs/**",
                     "/v3/api-docs/**"
                 ).permitAll()
+                // 测试控制台
+                .requestMatchers("/api/test/**").permitAll()
+                .requestMatchers("/console.html").permitAll()
                 // 其余接口需要认证
                 .anyRequest().authenticated()
             )

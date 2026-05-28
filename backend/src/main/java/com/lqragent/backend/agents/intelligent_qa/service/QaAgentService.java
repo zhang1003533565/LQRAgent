@@ -2,8 +2,8 @@ package com.lqragent.backend.agents.intelligent_qa.service;
 
 import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import com.lqragent.backend.chat.service.ChatSessionService;
-import com.lqragent.backend.observability.entity.AgentRunLog;
-import com.lqragent.backend.observability.service.AgentRunLogService;
+import com.lqragent.backend.chat.entity.AgentRunLog;
+import com.lqragent.backend.chat.service.AgentRunLogService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

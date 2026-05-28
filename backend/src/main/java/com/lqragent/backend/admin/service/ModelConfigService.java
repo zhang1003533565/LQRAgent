@@ -2,7 +2,7 @@ package com.lqragent.backend.admin.service;
 
 import com.lqragent.backend.admin.dto.ModelConfigDto;
 import com.lqragent.backend.admin.dto.ModelConfigSaveRequest;
-import com.lqragent.backend.aiserver.AiServerEnvSyncService;
+import com.lqragent.backend.chat.proxy.AiServerEnvSyncService;
 import com.lqragent.backend.common.exception.BusinessException;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import com.lqragent.backend.systemconfig.ConfigKeys;

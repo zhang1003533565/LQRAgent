@@ -1,12 +1,13 @@
 package com.lqragent.backend.agents.resource_generation.service;
 
-import com.lqragent.backend.agents.shared.knowledgegraph.entity.KnowledgePoint;
-import com.lqragent.backend.agents.shared.knowledgegraph.service.KnowledgeGraphService;
+import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.agents.knowledgegraph.service.KnowledgeGraphService;
 import com.lqragent.backend.agents.resource_generation.dto.ResourceGenerateRequest;
 import com.lqragent.backend.agents.resource_generation.dto.ResourceGenerateResponse;
 import com.lqragent.backend.agents.resource_generation.entity.ResourceItem;
 import com.lqragent.backend.agents.resource_generation.repository.ResourceItemRepository;
-import com.lqragent.backend.agents.shared.llm.LlmContentGenerator;
+import com.lqragent.backend.agents.quality_assessment.service.QualityAssessmentService;
+import com.lqragent.backend.framework.llm.LlmContentGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,6 +29,7 @@ public class ResourceGenerationService {
     private final ResourceItemRepository resourceRepo;
     private final KnowledgeGraphService kgService;
     private final LlmContentGenerator llmGenerator;
+    private final QualityAssessmentService qualityService;
 
     /**
      * 为某知识点生成指定类型的资源。
@@ -58,6 +60,28 @@ public class ResourceGenerationService {
         };
 
         item = resourceRepo.save(item);
+
+        // 质量评估 + 重试
+        var assessment = qualityService.assessFull(item);
+        if (!assessment.passed()) {
+            log.warn("[ResourceFacade] 首次质检未通过: id={}, failures={}, 重试中...", item.getId(), assessment.failures());
+            Long failedId = item.getId();
+            // 重新生成一次
+            item = switch (type) {
+                case ResourceItem.TYPE_LESSON -> generateLesson(kp, request);
+                case ResourceItem.TYPE_QUIZ -> generateQuiz(kp, request);
+                case ResourceItem.TYPE_CODE_CASE -> generateCodeCase(kp, request);
+                case ResourceItem.TYPE_MIND_MAP -> generateMindMap(kp, request);
+                case ResourceItem.TYPE_EXTENDED_READING -> generateExtendedReading(kp, request);
+                case ResourceItem.TYPE_ILLUSTRATION -> generateIllustration(kp, request);
+                default -> item;
+            };
+            item = resourceRepo.save(item);
+            // 删除首次失败的记录
+            resourceRepo.deleteById(failedId);
+            log.info("[ResourceFacade] 重试完成: oldId={}, newId={}", failedId, item.getId());
+        }
+
         log.info("[ResourceFacade] 已保存: id={}, type={}, kp={}", item.getId(), type, kpId);
 
         return ResourceGenerateResponse.builder()

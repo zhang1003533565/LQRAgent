@@ -1,7 +1,7 @@
 package com.lqragent.backend.agents.media_generation.service;
 
-import com.lqragent.backend.agents.shared.knowledgegraph.entity.KnowledgePoint;
-import com.lqragent.backend.agents.shared.knowledgegraph.service.KnowledgeGraphService;
+import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.agents.knowledgegraph.service.KnowledgeGraphService;
 import com.lqragent.backend.agents.media_generation.dto.MediaResult;
 import com.lqragent.backend.agents.resource_generation.entity.ResourceItem;
 import com.lqragent.backend.agents.resource_generation.repository.ResourceItemRepository;
@@ -21,10 +21,13 @@ import java.util.UUID;
 
 /**
  * 媒体生成服务。
- * 支持 3 种模式（由 sys_config agent.mediagen.image_provider 控制）：
+ * 图片模式（由 sys_config agent.mediagen.image_provider 控制）：
  * - mock：占位符（默认）
  * - dalle3：调 OpenAI DALL·E 3 API
  * - sd3：调 Stability AI API
+ * 视频模式（由 sys_config agent.mediagen.video_provider 控制）：
+ * - mock：占位符（默认）
+ * - seedance：预留，待接入字节 SeeDance API
  */
 @Slf4j
 @Service
@@ -134,6 +137,48 @@ public class MediaGenerationService {
             log.warn("[MediaGeneration] Stability AI 调用失败: {}", e.getMessage());
         }
         return "/api/media/placeholder_fallback.png";
+    }
+
+    /**
+     * 生成教学视频（预留接口）。
+     * 视频 provider 由 sys_config agent.mediagen.video_provider 控制。
+     * 当前仅支持 mock 模式，返回占位符。
+     */
+    @Transactional
+    public MediaResult generateVideo(String kpId, String prompt) {
+        KnowledgePoint kp = kgService.getByKpId(kpId)
+                .orElseThrow(() -> new IllegalArgumentException("知识点不存在: " + kpId));
+
+        String provider = runtimeConfig.get("agent.mediagen.video_provider", "mock");
+        String finalPrompt = prompt != null ? prompt : kp.getTitle() + " 教学演示视频";
+        String videoUrl;
+
+        switch (provider) {
+            case "seedance" -> {
+                // TODO: 接入字节 SeeDance API
+                log.warn("[MediaGeneration] seedance 视频生成尚未实现，使用占位符");
+                videoUrl = "/api/media/video_placeholder_seedance.mp4";
+            }
+            default -> {
+                videoUrl = "/api/media/video_placeholder_" + UUID.randomUUID().toString().substring(0, 8) + ".mp4";
+            }
+        }
+
+        ResourceItem item = ResourceItem.builder()
+                .kpId(kpId)
+                .resourceType(ResourceItem.TYPE_ILLUSTRATION)
+                .title(kp.getTitle() + " — 教学视频")
+                .content("<!-- AI 生成教学视频 -->\n\n" + kp.getTitle() + " 教学演示")
+                .mediaUrl(videoUrl)
+                .mediaMime("video/mp4")
+                .generationPrompt(finalPrompt)
+                .build();
+        item = resourceRepo.save(item);
+
+        log.info("[MediaGeneration] 视频生成: provider={}, resourceId={}, url={}", provider, item.getId(), videoUrl);
+        return MediaResult.builder()
+                .resourceId(item.getId()).kpId(kpId).mediaUrl(videoUrl)
+                .mediaMime("video/mp4").prompt(finalPrompt).newlyCreated(true).build();
     }
 
     public Path getMediaPath(Long resourceId) {

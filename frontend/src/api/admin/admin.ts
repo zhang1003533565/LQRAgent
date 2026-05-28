@@ -252,3 +252,18 @@ export async function getAgentRuns(page = 1, size = 20): Promise<AgentRunsData> 
   const res = await http.get<{ data: AgentRunsData }>('/admin/agent-runs', { params: { page, size } })
   return res.data.data
 }
+
+// ===== Agent 测试 =====
+
+export interface AgentTestResult {
+  success: boolean
+  agentType: string
+  data: Record<string, unknown>
+  errorMessage: string
+  durationMs: number
+}
+
+export async function testAgent(agentType: string, payload: Record<string, unknown>): Promise<AgentTestResult> {
+  const res = await http.post<{ data: AgentTestResult }>('/admin/agent-test', { agentType, payload })
+  return res.data.data
+}

@@ -6,8 +6,9 @@
  * 配置读写：GET+PUT /api/admin/config
  * 模型配置：每个 Agent 独立 model / host / api-key（sys_config 存储）
  */
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { getAgentStats, listSysConfig, saveSysConfig, type AgentStatsResponse } from '@/api/admin/admin'
+import { getAgentStats, listSysConfig, saveSysConfig, testAgent, type AgentStatsResponse } from '@/api/admin/admin'
 
 // ==================== 可选的模型列表 ====================
 
@@ -207,6 +208,76 @@ function useSaveConfig() {
   })
 }
 
+// ==================== 每个 Agent 的测试表单字段定义 ====================
+
+interface TestFieldDef {
+  key: string
+  label: string
+  placeholder: string
+  type?: 'text' | 'textarea' | 'select'
+  options?: { label: string; value: string }[]
+  defaultValue?: string
+  /** 额外说明 */
+  hint?: string
+}
+
+const AGENT_TEST_FIELDS: Record<string, TestFieldDef[]> = {
+  orchestrator: [
+    { key: 'message', label: '用户意图', placeholder: '如：我想学 Python 装饰器', hint: 'Orchestrator 会做意图分类并路由到对应 Agent' },
+  ],
+  qa_agent: [
+    { key: 'message', label: '问题内容', placeholder: '如：Python 中 *args 和 **kwargs 有什么区别？', hint: '触发 RAG 问答，返回流式文本回答' },
+  ],
+  learningpath: [
+    { key: 'goal', label: '学习目标', placeholder: '如：掌握 Python 装饰器', hint: 'BFS 遍历知识图谱 + LLM 排序生成路径' },
+    { key: 'currentKpId', label: '当前知识点（可选）', placeholder: '如：python_decorator', hint: '从哪个知识点开始规划，留空从头开始' },
+  ],
+  resourcefacade: [
+    { key: 'kpId', label: '知识点 ID', placeholder: '如：python_decorator', hint: '要生成资源的知识点' },
+    { key: 'resourceType', label: '资源类型', type: 'select', defaultValue: 'LESSON',
+      options: [
+        { label: 'LESSON — 讲义文档', value: 'LESSON' },
+        { label: 'QUIZ — 练习题目', value: 'QUIZ' },
+        { label: 'CODE_CASE — 代码案例', value: 'CODE_CASE' },
+        { label: 'ILLUSTRATION — 思维导图', value: 'ILLUSTRATION' },
+        { label: 'EXTENSION_READING — 拓展阅读', value: 'EXTENSION_READING' },
+      ] },
+  ],
+  learnerprofile: [
+    { key: 'message', label: '对话内容（用于 LLM 抽取画像）', placeholder: '如：我觉得函数式编程太难了，更喜欢面向对象的方式', hint: '从对话中提取 6 维度画像' },
+  ],
+  qualityassessment: [
+    { key: 'content', label: '待校验内容', type: 'textarea',
+      placeholder: '粘贴需要质检的文本，如讲义或题目内容',
+      hint: '检查格式、敏感词、学术规范、事实性' },
+  ],
+  contentanalyzer: [
+    { key: 'message', label: '文档内容 / 关键词', type: 'textarea',
+      placeholder: '粘贴文档内容或输入关键词，如：装饰器 闭包 Python',
+      hint: '提取知识点并关联知识图谱' },
+  ],
+  effectassessment: [
+    { key: 'kpId', label: '知识点 ID', placeholder: '如：python_decorator' },
+    { key: 'score', label: '答题分数', placeholder: '如：60', type: 'select', defaultValue: '40',
+      options: [
+        { label: '40 分（不及格，触发薄弱分析）', value: '40' },
+        { label: '60 分（及格）', value: '60' },
+        { label: '80 分（良好）', value: '80' },
+        { label: '100 分（满分）', value: '100' },
+      ] },
+    { key: 'correct', label: '正确题数', placeholder: '如：2', defaultValue: '2' },
+    { key: 'total', label: '总题数', placeholder: '如：5', defaultValue: '5' },
+  ],
+  mediagen: [
+    { key: 'kpId', label: '知识点 ID', placeholder: '如：python_decorator' },
+    { key: 'mediaType', label: '媒体类型', type: 'select', defaultValue: 'illustration',
+      options: [
+        { label: 'illustration — 示意图', value: 'illustration' },
+        { label: 'mindmap — 思维导图', value: 'mindmap' },
+      ] },
+  ],
+}
+
 // ==================== 渲染组件 ====================
 
 function StatusBadge({ status }: { status: 'done' | 'wip' | 'todo' }) {
@@ -227,11 +298,39 @@ function AgentDetailView({
   onSave: (key: string, value: string) => void
   saving: boolean
 }) {
+  const testFields = AGENT_TEST_FIELDS[def.agentLogName] ?? [{ key: 'message', label: '消息', placeholder: '输入测试消息' }]
+  const [testValues, setTestValues] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {}
+    testFields.forEach((f) => { init[f.key] = f.defaultValue ?? '' })
+    return init
+  })
+  const [testResult, setTestResult] = useState<string | null>(null)
+  const [testLoading, setTestLoading] = useState(false)
+
   const myStats = stats?.stats?.find((s) => s.agent === def.agentLogName)
   const totalCalls = myStats?.total ?? 0
   const successRate = totalCalls > 0 ? Math.round((myStats.success / totalCalls) * 100) : 0
   const status = totalCalls > 0 ? 'online' : 'idle'
   const statusDot = status === 'online' ? 'bg-green-500' : 'bg-yellow-500'
+
+  const handleTest = async () => {
+    const payload: Record<string, unknown> = {}
+    Object.entries(testValues).forEach(([k, v]) => {
+      if (v.trim() !== '') payload[k] = v.trim()
+    })
+    if (Object.keys(payload).length === 0) return
+    setTestLoading(true)
+    setTestResult(null)
+    try {
+      const res = await testAgent(def.agentLogName, payload)
+      setTestResult(JSON.stringify(res, null, 2))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      setTestResult(`请求失败: ${msg}`)
+    } finally {
+      setTestLoading(false)
+    }
+  }
 
   return (
     <div className="space-y-4" data-agent={def.id}>
@@ -326,6 +425,62 @@ function AgentDetailView({
             )
           })}
         </div>
+      </div>
+
+      {/* 发送测试 — 每个 Agent 专属表单 */}
+      <div className="rounded-lg border border-console-border p-4">
+        <h4 className="mb-1 text-xs font-medium uppercase tracking-wider text-console-muted">发送测试</h4>
+        <div className="mb-3 space-y-3">
+          {testFields.map((field) => (
+            <div key={field.key}>
+              <label className="mb-1 block text-xs text-console-muted">{field.label}</label>
+              {field.type === 'textarea' ? (
+                <textarea
+                  value={testValues[field.key] ?? ''}
+                  onChange={(e) => setTestValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                  placeholder={field.placeholder}
+                  disabled={testLoading}
+                  rows={4}
+                  className="w-full rounded border border-console-border bg-console-card px-3 py-1.5 text-sm text-console-text placeholder:text-console-muted/40 resize-y"
+                />
+              ) : field.type === 'select' ? (
+                <select
+                  value={testValues[field.key] ?? field.defaultValue ?? ''}
+                  disabled={testLoading}
+                  onChange={(e) => setTestValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                  className="w-full rounded border border-console-border bg-console-card px-3 py-1.5 text-sm text-console-text"
+                >
+                  {field.options?.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={testValues[field.key] ?? ''}
+                  onChange={(e) => setTestValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                  onKeyDown={(e) => e.key === 'Enter' && handleTest()}
+                  placeholder={field.placeholder}
+                  disabled={testLoading}
+                  className="w-full rounded border border-console-border bg-console-card px-3 py-1.5 text-sm text-console-text placeholder:text-console-muted/40"
+                />
+              )}
+              {field.hint && <p className="mt-0.5 text-[10px] text-console-muted/50">{field.hint}</p>}
+            </div>
+          ))}
+        </div>
+        <button
+          onClick={handleTest}
+          disabled={testLoading}
+          className="w-full rounded bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-500 disabled:opacity-50"
+        >
+          {testLoading ? '执行中...' : '发送测试'}
+        </button>
+        {testResult && (
+          <pre className="mt-3 max-h-60 overflow-auto rounded border border-console-border bg-console-card p-3 text-xs text-console-text whitespace-pre-wrap">
+            {testResult}
+          </pre>
+        )}
       </div>
     </div>
   )

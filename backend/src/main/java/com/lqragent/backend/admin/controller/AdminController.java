@@ -9,10 +9,10 @@ import com.lqragent.backend.admin.dto.SysConfigSaveRequest;
 import com.lqragent.backend.admin.service.AdminService;
 import com.lqragent.backend.admin.service.ModelConfigService;
 import com.lqragent.backend.common.dto.ApiResponse;
-import com.lqragent.backend.agents.shared.knowledgegraph.entity.KnowledgeEdge;
-import com.lqragent.backend.agents.shared.knowledgegraph.entity.KnowledgePoint;
-import com.lqragent.backend.agents.shared.knowledgegraph.repository.KnowledgeEdgeRepository;
-import com.lqragent.backend.agents.shared.knowledgegraph.repository.KnowledgePointRepository;
+import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgeEdge;
+import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.agents.knowledgegraph.repository.KnowledgeEdgeRepository;
+import com.lqragent.backend.agents.knowledgegraph.repository.KnowledgePointRepository;
 import com.lqragent.backend.agents.learner_profile.dto.ProfileSummaryDto;
 import com.lqragent.backend.agents.learner_profile.entity.LearnerProfile;
 import com.lqragent.backend.agents.learner_profile.repository.LearnerProfileRepository;
@@ -22,9 +22,9 @@ import com.lqragent.backend.agents.learning_path.repository.LearningPathReposito
 import com.lqragent.backend.agents.learning_path.repository.LearningPathStepRepository;
 import com.lqragent.backend.agents.resource_generation.entity.ResourceItem;
 import com.lqragent.backend.agents.resource_generation.repository.ResourceItemRepository;
-import com.lqragent.backend.agent.AgentBus;
-import com.lqragent.backend.observability.entity.AgentRunLog;
-import com.lqragent.backend.observability.repository.AgentRunLogRepository;
+import com.lqragent.backend.framework.AgentBus;
+import com.lqragent.backend.chat.entity.AgentRunLog;
+import com.lqragent.backend.admin.repository.AgentRunLogRepository;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask;
 import com.lqragent.backend.uploadqueue.service.UploadQueueService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -201,6 +201,42 @@ public class AdminController {
             items = resourceItemRepo.findAll();
         }
         return ApiResponse.ok(items);
+    }
+
+    @Operation(summary = "测试智能体", description = "发送测试消息到指定 Agent，返回执行结果。payload 为完整 payload map，可包含 message/kpId/goal 等字段")
+    @SuppressWarnings("unchecked")
+    @PostMapping("/agent-test")
+    public ApiResponse<Map<String, Object>> testAgent(@RequestBody Map<String, Object> body) {
+        String agentType = (String) body.getOrDefault("agentType", "orchestrator");
+        Object payloadObj = body.get("payload");
+        java.util.Map<String, Object> payload;
+        if (payloadObj instanceof java.util.Map) {
+            payload = new java.util.HashMap<>((java.util.Map<String, Object>) payloadObj);
+        } else {
+            payload = java.util.Map.of("message", body.getOrDefault("message", ""));
+        }
+        String sessionId = "admin-test-" + System.nanoTime();
+
+        com.lqragent.backend.framework.RequestContext.init(1L);
+
+        var task = com.lqragent.backend.framework.AgentTask.builder()
+                .agentType(agentType)
+                .userId(1L)
+                .sessionId(sessionId)
+                .payload(payload)
+                .build();
+
+        long start = System.currentTimeMillis();
+        var result = agentBus.dispatch(task).join();
+        long duration = System.currentTimeMillis() - start;
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("success", result.isSuccess());
+        data.put("agentType", agentType);
+        data.put("data", result.getData() != null ? result.getData() : Map.of());
+        data.put("errorMessage", result.getErrorMessage() != null ? result.getErrorMessage() : "");
+        data.put("durationMs", duration);
+        return ApiResponse.ok(data);
     }
 
     @Operation(summary = "智能体调用统计", description = "已注册智能体列表 + 调用次数/成功率/平均耗时")

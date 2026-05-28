@@ -28,6 +28,16 @@ public class AcademicChecker {
         "(据研究[^。]{0,10}$|有研究表明[^。]{0,10}$)"
     );
 
+    /** 占位符/未完成标记 */
+    private static final Pattern PLACEHOLDER = Pattern.compile(
+        "(TODO|FIXME|待补充|待完善|占位|placeholder|\\.{3,}|……)"
+    );
+
+    /** 不安全代码模式（教学中不应出现的危险用法） */
+    private static final Pattern UNSAFE_CODE = Pattern.compile(
+        "(exec\\s*\\(|eval\\s*\\(|__import__\\s*\\(|os\\.system\\s*\\()"
+    );
+
     public CheckResult check(String content) {
         if (content == null || content.isBlank()) return CheckResult.pass();
 
@@ -37,6 +47,10 @@ public class AcademicChecker {
             return CheckResult.fail("包含绝对化用语（建议改为更严谨的表达）");
         if (SUSPICIOUS_CITATION.matcher(content).find())
             return CheckResult.fail("疑似虚假引用证据");
+        if (PLACEHOLDER.matcher(content).find())
+            return CheckResult.fail("内容包含占位符或未完成标记");
+        if (UNSAFE_CODE.matcher(content).find())
+            return CheckResult.fail("代码示例包含不安全的函数调用（exec/eval等）");
         return CheckResult.pass();
     }
 

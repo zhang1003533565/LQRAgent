@@ -1,14 +1,14 @@
 package com.lqragent.backend.agents.orchestrator;
 
-import com.lqragent.backend.agent.Agent;
-import com.lqragent.backend.agent.AgentIds;
-import com.lqragent.backend.agent.AgentBus;
-import com.lqragent.backend.agent.AgentResult;
-import com.lqragent.backend.agent.AgentTask;
-import com.lqragent.backend.agent.QualityGate;
-import com.lqragent.backend.agent.RequestContext;
-import com.lqragent.backend.agent.ToolRegistry;
-import com.lqragent.backend.agent.ToolSchema;
+import com.lqragent.backend.framework.Agent;
+import com.lqragent.backend.framework.AgentIds;
+import com.lqragent.backend.framework.AgentBus;
+import com.lqragent.backend.framework.AgentResult;
+import com.lqragent.backend.framework.AgentTask;
+import com.lqragent.backend.framework.QualityGate;
+import com.lqragent.backend.framework.RequestContext;
+import com.lqragent.backend.framework.ToolRegistry;
+import com.lqragent.backend.framework.ToolSchema;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
@@ -263,23 +263,33 @@ public class OrchestratorAgent implements Agent {
      * <b>上下文隔离</b>：子 sessionId 使用独立的后缀，
      * 避免子 Agent 的 SessionContext 污染父 Agent 的消息序列。
      * </p>
+     * <b>重试</b>：子 Agent 失败时自动重试 1 次。
      */
     private AgentResult dispatchToAgent(String agentType, Long userId, String sessionId,
                                          Map<String, Object> extraPayload) {
-        // 子 session 用独立 ID，避免 SessionContext 消息队列交叉污染
         String subSessionId = (sessionId != null) ? sessionId + ":sub:" + agentType : null;
         Map<String, Object> payload = new HashMap<>(extraPayload);
-        AgentTask subTask = AgentTask.builder()
-                .agentType(agentType)
-                .userId(userId)
-                .sessionId(subSessionId)
-                .payload(payload)
-                .build();
 
-        AgentResult result = agentBus().dispatch(subTask).join();
+        AgentResult result = null;
+        for (int attempt = 0; attempt <= 1; attempt++) {
+            AgentTask subTask = AgentTask.builder()
+                    .agentType(agentType)
+                    .userId(userId)
+                    .sessionId(subSessionId)
+                    .payload(payload)
+                    .build();
 
-        // 质检闸门（保留现有机制）
-        if (qualityGate.requiresGate(agentType)) {
+            result = agentBus().dispatch(subTask).join();
+
+            if (result.isSuccess()) break;
+            if (attempt == 0) {
+                log.warn("[Orchestrator] 子Agent失败，重试: agent={}, error={}", agentType, result.getErrorMessage());
+                try { Thread.sleep(500); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
+            }
+        }
+
+        // 质检闸门
+        if (result != null && qualityGate.requiresGate(agentType)) {
             var gateResult = qualityGate.inspect(result);
             if (!gateResult.passed()) {
                 log.warn("[Orchestrator] QualityGate 拦截: agent={}, reason={}", agentType, gateResult.reason());

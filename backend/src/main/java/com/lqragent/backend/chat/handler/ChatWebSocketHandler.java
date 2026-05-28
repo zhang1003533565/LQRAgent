@@ -2,11 +2,11 @@ package com.lqragent.backend.chat.handler;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lqragent.backend.agent.AgentBus;
-import com.lqragent.backend.agent.AgentIds;
-import com.lqragent.backend.agent.AgentResult;
-import com.lqragent.backend.agent.AgentTask;
-import com.lqragent.backend.agent.RequestContext;
+import com.lqragent.backend.framework.AgentBus;
+import com.lqragent.backend.framework.AgentIds;
+import com.lqragent.backend.framework.AgentResult;
+import com.lqragent.backend.framework.AgentTask;
+import com.lqragent.backend.framework.RequestContext;
 import com.lqragent.backend.chat.entity.ChatMessage;
 import com.lqragent.backend.chat.entity.ChatSession;
 import com.lqragent.backend.chat.proxy.AiServerWsProxy;

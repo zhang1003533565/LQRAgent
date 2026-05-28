@@ -1,6 +1,6 @@
 package com.lqragent.backend.uploadqueue.service;
 
-import com.lqragent.backend.aiserver.AiServerClient;
+import com.lqragent.backend.chat.proxy.AiServerClient;
 import com.lqragent.backend.agents.content_analyzer.service.ContentAnalyzerService;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask.KbScope;

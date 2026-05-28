@@ -3,7 +3,7 @@ package com.lqragent.backend.admin.service;
 import com.lqragent.backend.admin.dto.AdminStatusDto;
 import com.lqragent.backend.admin.dto.AdminUserDto;
 import com.lqragent.backend.admin.dto.SysConfigDto;
-import com.lqragent.backend.aiserver.AiServerClient;
+import com.lqragent.backend.chat.proxy.AiServerClient;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import com.lqragent.backend.systemconfig.ConfigKeys;
 import com.lqragent.backend.systemconfig.entity.SysConfig;

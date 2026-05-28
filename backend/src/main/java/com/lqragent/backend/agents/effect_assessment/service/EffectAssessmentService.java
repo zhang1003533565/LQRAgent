@@ -6,12 +6,13 @@ import com.lqragent.backend.agents.learning_path.repository.LearningPathReposito
 import com.lqragent.backend.agents.learning_path.repository.LearningPathStepRepository;
 import com.lqragent.backend.quiz.entity.StudyBehavior;
 import com.lqragent.backend.quiz.repository.StudyBehaviorRepository;
-import com.lqragent.backend.agents.shared.llm.LlmContentGenerator;
+import com.lqragent.backend.framework.llm.LlmContentGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -35,7 +36,8 @@ public class EffectAssessmentService {
     private final LlmContentGenerator llmGenerator;
 
     /**
-     * 答题后评估，低分时插入复习节点。
+     * 答题后评估，低分时在当前学习位置之后插入复习节点。
+     * 避免复习节点出现在已学完的节点之前。
      */
     @Transactional
     public void evaluateQuizResult(Long userId, String kpId, int score, boolean correct) {
@@ -48,15 +50,37 @@ public class EffectAssessmentService {
         Long pathId = activePath.get().getId();
         List<LearningPathStep> steps = stepRepo.findByPathIdOrderByStepOrder(pathId);
 
-        boolean alreadyHasKp = steps.stream().anyMatch(s -> s.getKpId().equals(kpId));
-        if (!alreadyHasKp) {
-            int maxOrder = steps.stream().mapToInt(LearningPathStep::getStepOrder).max().orElse(0);
-            stepRepo.save(LearningPathStep.builder()
-                    .pathId(pathId).kpId(kpId)
-                    .stepOrder(maxOrder + 1).completed(false).status("PENDING")
-                    .build());
-            log.info("[EffectAssessment] 插入复习节点: userId={}, kpId={}", userId, kpId);
+        boolean alreadyHasKp = steps.stream().anyMatch(s ->
+                s.getKpId().equals(kpId) && !Boolean.TRUE.equals(s.getCompleted()));
+        if (alreadyHasKp) return;
+
+        // 找到最后一个已完成的步骤，插入在其之后
+        int insertAfterOrder = -1;
+        for (LearningPathStep step : steps) {
+            if (Boolean.TRUE.equals(step.getCompleted())) {
+                insertAfterOrder = step.getStepOrder();
+            }
         }
+
+        // 找到插入点后面第一个未完成步骤的 order，复习节点插在它之前
+        int newOrder = insertAfterOrder + 1;
+        List<LearningPathStep> toShift = new ArrayList<>();
+        for (LearningPathStep step : steps) {
+            if (step.getStepOrder() >= newOrder) {
+                toShift.add(step);
+            }
+        }
+        // 后移已有步骤，腾出位置
+        for (LearningPathStep step : toShift) {
+            step.setStepOrder(step.getStepOrder() + 1);
+            stepRepo.save(step);
+        }
+
+        stepRepo.save(LearningPathStep.builder()
+                .pathId(pathId).kpId(kpId)
+                .stepOrder(newOrder).completed(false).status("PENDING")
+                .build());
+        log.info("[EffectAssessment] 插入复习节点: userId={}, kpId={}, order={}", userId, kpId, newOrder);
     }
 
     /**

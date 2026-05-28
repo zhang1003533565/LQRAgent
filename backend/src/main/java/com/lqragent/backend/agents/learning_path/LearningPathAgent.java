@@ -1,12 +1,12 @@
 package com.lqragent.backend.agents.learning_path;
 
-import com.lqragent.backend.agent.Agent;
-import com.lqragent.backend.agent.AgentIds;
-import com.lqragent.backend.agent.AgentResult;
-import com.lqragent.backend.agent.AgentTask;
-import com.lqragent.backend.agent.RequestContext;
-import com.lqragent.backend.agent.ToolRegistry;
-import com.lqragent.backend.agent.ToolSchema;
+import com.lqragent.backend.framework.Agent;
+import com.lqragent.backend.framework.AgentIds;
+import com.lqragent.backend.framework.AgentResult;
+import com.lqragent.backend.framework.AgentTask;
+import com.lqragent.backend.framework.RequestContext;
+import com.lqragent.backend.framework.ToolRegistry;
+import com.lqragent.backend.framework.ToolSchema;
 import com.lqragent.backend.agents.learning_path.service.LearningPathService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
