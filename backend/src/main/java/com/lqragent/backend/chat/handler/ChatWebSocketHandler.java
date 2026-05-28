@@ -3,14 +3,17 @@ package com.lqragent.backend.chat.handler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.agent.AgentBus;
+import com.lqragent.backend.agent.AgentIds;
 import com.lqragent.backend.agent.AgentResult;
 import com.lqragent.backend.agent.AgentTask;
+import com.lqragent.backend.agent.RequestContext;
 import com.lqragent.backend.chat.entity.ChatMessage;
 import com.lqragent.backend.chat.entity.ChatSession;
 import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import com.lqragent.backend.chat.repository.ChatMessageRepository;
 import com.lqragent.backend.chat.service.ChatSessionService;
-import com.lqragent.backend.qaagent.service.QaAgentService;
+import com.lqragent.backend.agents.learner_profile.service.LearnerProfileService;
+import com.lqragent.backend.agents.intelligent_qa.service.QaAgentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -21,6 +24,7 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * /ws/chat WebSocket 端点处理器。
@@ -41,6 +45,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final AgentBus agentBus;
     private final ChatMessageRepository chatMessageRepository;
     private final WebSocketSessionManager sessionManager;
+    private final LearnerProfileService learnerProfileService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -55,6 +60,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
+        RequestContext.init(userId);
         sessionManager.register(session, userId, username);
         log.info("[WS] client connected: sessionId={}, userId={}, username={}", session.getId(), userId, username);
     }
@@ -74,6 +80,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             sendEvent(session, "error", "消息格式错误");
             return;
         }
+
+        // 每条消息生成新 requestId
+        RequestContext.init(userInfo.userId());
 
         String type = node.has("type") ? node.get("type").asText() : "";
         String content = node.has("content") ? node.get("content").asText() : "";
@@ -110,23 +119,47 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         // OrchestratorAgent: 总调度（意图识别 + 路由派发 + 质量闸门）
         AgentTask orchestratorTask = AgentTask.builder()
-                .agentType("orchestrator")
+                .agentType(AgentIds.ORCHESTRATOR)
                 .userId(userInfo.userId())
                 .sessionId(finalSessionId)
                 .payload(Map.of("message", content))
                 .build();
         sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                .put("agent", "orchestrator")
+                .put("agent", AgentIds.ORCHESTRATOR)
                 .put("label", "正在分析问题...")
                 .put("status", "running")
                 .toString());
         AgentResult orchestratorResult = agentBus.dispatch(orchestratorTask).join();
 
-        // 非 QA → 直接返回结果文本
-        if (!"qa".equals(orchestratorResult.getData().get("route"))) {
-            String response = (String) orchestratorResult.getData().getOrDefault("response", "处理完成");
+        // ── 处理失败（LLM 调用失败 / 无配置 / 超时）→ 返回错误信息 ──
+        if (!orchestratorResult.isSuccess()) {
+            String errMsg = orchestratorResult.getErrorMessage();
+            log.warn("[WS] orchestrator 执行失败: taskId={}, error={}", orchestratorTask.getTaskId(), errMsg);
             sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                    .put("agent", "orchestrator")
+                    .put("agent", AgentIds.ORCHESTRATOR)
+                    .put("label", "处理失败")
+                    .put("status", "failed")
+                    .put("detail", errMsg != null ? errMsg : "未知错误")
+                    .toString());
+            sendEvent(session, "error", errMsg != null ? errMsg : "执行失败");
+            persistAiMessage(userInfo.userId(), finalSessionId, "抱歉，处理失败: " + (errMsg != null ? errMsg : "未知错误"));
+            return;
+        }
+
+        // ── 从 data 中提取响应 ──
+        Map<String, Object> resultData = orchestratorResult.getData();
+        // data 为 @Builder.Default new HashMap<>()，当 LLM 配置但调用失败时可能是空
+        String route = resultData != null ? (String) resultData.get("route") : null;
+
+        // 非 QA → 直接返回结果文本
+        String response = resultData != null ? (String) resultData.get("response") : null;
+        if (response == null || response.isBlank()) {
+            response = "处理完成";
+        }
+
+        if (!"intelligent_qa".equals(route) && !"qa".equals(route)) {
+            sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                    .put("agent", AgentIds.ORCHESTRATOR)
                     .put("label", "处理完成")
                     .put("status", "done")
                     .toString());
@@ -135,12 +168,13 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     .put("session_id", finalSessionId)
                     .toString());
             persistAiMessage(userInfo.userId(), finalSessionId, response);
+            triggerProfileExtractionAsync(userInfo.userId(), finalSessionId, session);
             return;
         }
 
         // QA → 流式答疑通道
         sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                .put("agent", "qa_agent")
+                .put("agent", "intelligent_qa")
                 .put("label", "正在理解问题...")
                 .put("status", "running")
                 .toString());
@@ -157,7 +191,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     @Override
                     public void onDone(String aiServerSessionId) {
                         sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                                .put("agent", "qa_agent")
+                                .put("agent", "intelligent_qa")
                                 .put("label", "回答完成")
                                 .put("status", "done")
                                 .toString());
@@ -165,6 +199,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                                 .put("session_id", finalSessionId)
                                 .toString());
                         persistAiMessage(userInfo.userId(), finalSessionId, fullResponse.toString());
+                        triggerProfileExtractionAsync(currentUserId, finalSessionId, session);
 
                         // P2-5: artifact multi_card — 检测响应含媒体时推送
                         try {
@@ -187,7 +222,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     @Override
                     public void onError(String error) {
                         sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                                .put("agent", "qa_agent")
+                                .put("agent", "intelligent_qa")
                                 .put("label", "处理失败")
                                 .put("status", "failed")
                                 .put("detail", error)
@@ -199,12 +234,14 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
+        RequestContext.clear();
         sessionManager.unregister(session.getId());
         log.info("[WS] client disconnected: sessionId={}, status={}", session.getId(), status);
     }
 
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) {
+        RequestContext.clear();
         log.error("[WS] transport error: sessionId={}, msg={}", session.getId(), exception.getMessage());
         sessionManager.unregister(session.getId());
     }
@@ -237,6 +274,34 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         } catch (IOException e) {
             log.error("[WS] send error: sessionId={}, type={}, msg={}", session.getId(), type, e.getMessage());
         }
+    }
+
+    /**
+     * 对话结束后异步增量抽取画像，并推送 agent_step + profile_patch（由 Service 触发）。
+     */
+    private void triggerProfileExtractionAsync(Long userId, String chatSessionId, WebSocketSession ws) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                sendEvent(ws, "agent_step", objectMapper.createObjectNode()
+                        .put("agent", "learner_profile")
+                        .put("label", "正在从对话更新学习画像…")
+                        .put("status", "running")
+                        .toString());
+                learnerProfileService.extractFromSession(userId, chatSessionId);
+                sendEvent(ws, "agent_step", objectMapper.createObjectNode()
+                        .put("agent", "learner_profile")
+                        .put("label", "学习画像已更新")
+                        .put("status", "done")
+                        .toString());
+            } catch (Exception e) {
+                log.warn("[WS] 画像抽取失败: userId={}, sessionId={}", userId, chatSessionId, e);
+                sendEvent(ws, "agent_step", objectMapper.createObjectNode()
+                        .put("agent", "learner_profile")
+                        .put("label", "画像更新已跳过")
+                        .put("status", "done")
+                        .toString());
+            }
+        });
     }
 
     private void persistAiMessage(Long userId, String sessionId, String body) {

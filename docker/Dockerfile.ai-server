@@ -1,0 +1,30 @@
+# =============================================
+# DeepTutor AI Server — Dockerfile
+# =============================================
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+
+# Install system dependencies (for some Python wheels)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy dependency specs first (leverage Docker cache)
+COPY ai-server/pyproject.toml ai-server/setup.cfg ai-server/setup.py* ./
+
+# Install dependencies
+RUN pip install --no-cache-dir -e ".[server]" 2>/dev/null || pip install fastapi uvicorn[standard] pydantic
+
+# Copy application code
+COPY ai-server/ .
+
+# Default env
+ENV DEEPTUTOR_DEBUG=false
+ENV CHROMA_HOST=chroma
+ENV CHROMA_PORT=8000
+
+EXPOSE 8001
+
+# Docker 环境：直接跑 uvicorn（不 reload）
+CMD ["python", "-m", "uvicorn", "deeptutor.api.main:app", "--host", "0.0.0.0", "--port", "8001"]

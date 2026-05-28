@@ -1,0 +1,36 @@
+# =============================================
+# LQRAgent 基础设施
+# 日常开发只需起 redis + chroma，其他本地跑
+# =============================================
+services:
+
+  redis:
+    image: redis:7-alpine
+    container_name: lqragent-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: lqragent-chroma
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  chroma-data:

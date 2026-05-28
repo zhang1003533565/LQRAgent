@@ -1,0 +1,108 @@
+# =============================================
+# LQRAgent — Docker 一键启动
+# =============================================
+# 用法：
+#   开发模式（只起基础设施）：
+#     docker compose up redis chroma mysql -d
+#   完整模式（包含所有服务）：
+#     docker compose up --build -d
+#
+# 后端和前端在开发时建议本地运行（热重载更快）。
+# ai-server 由后端自动启动，Docker 中不单独打包。
+# =============================================
+
+services:
+
+  # ── 基础设施 ──────────────────────────────────
+
+  redis:
+    image: redis:7-alpine
+    container_name: lqragent-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: lqragent-chroma
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    container_name: lqragent-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: agent
+      MYSQL_CHARACTER_SET_SERVER: utf8mb4
+      MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p123456"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── 后端（可选，生产/演示用） ──────────────────
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: lqragent-backend
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: agent
+      DB_USER: root
+      DB_PASS: "123456"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
+      AI_SERVER_BASE_URL: http://ai-server:8001
+      AI_SERVER_AUTO_START: "false"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── 前端（可选，生产/演示用） ──────────────────
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    container_name: lqragent-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  chroma-data:
+  mysql-data:

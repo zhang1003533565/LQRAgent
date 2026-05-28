@@ -17,8 +17,11 @@ public class QualityGate {
 
     /** 需要经过闸门的 agent 类型 */
     private static final List<String> GATED_AGENTS = List.of(
-            "resourcefacade", "contentanalyzer", "qualityassessment",
-            "learningpath", "mediageneration"
+            AgentIds.RESOURCE_GENERATION,
+            AgentIds.CONTENT_ANALYZER,
+            AgentIds.QUALITY_ASSESSMENT,
+            AgentIds.LEARNING_PATH,
+            AgentIds.MEDIA_GENERATION
     );
 
     /**
@@ -47,12 +50,12 @@ public class QualityGate {
 
         // 检查必需字段
         String agentType = result.getAgentType();
-        if ("resourcefacade".equals(agentType)) {
+        if (AgentIds.RESOURCE_GENERATION.equals(agentType)) {
             if (!data.containsKey("content") && !data.containsKey("resourceType")) {
                 return GateResult.fail("资源缺少 content/resourceType");
             }
         }
-        if ("learningpath".equals(agentType)) {
+        if (AgentIds.LEARNING_PATH.equals(agentType)) {
             if (!data.containsKey("nodes") || data.get("nodes") == null) {
                 return GateResult.fail("路径缺少节点列表");
             }
