@@ -2,6 +2,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ChatMessage } from '@/utils/types/chat'
 import MultiCardMessage from './MultiCardMessage'
+import MermaidRenderer from './MermaidRenderer'
 import styles from './StreamingMessage.module.css'
 
 interface Props {
@@ -27,7 +28,24 @@ export default function StreamingMessage({ message }: Props) {
             <MultiCardMessage cards={message.cards!} />
           ) : (
             <>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content || ' '}</ReactMarkdown>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  code({ className, children, ...props }) {
+                    const match = /language-(\w+)/.exec(className || '')
+                    if (match?.[1] === 'mermaid') {
+                      return <MermaidRenderer code={String(children).replace(/\n$/, '')} />
+                    }
+                    return (
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
+                    )
+                  },
+                }}
+              >
+                {message.content || ' '}
+              </ReactMarkdown>
               {message.streaming && <span className={styles.cursor} />}
             </>
           )}

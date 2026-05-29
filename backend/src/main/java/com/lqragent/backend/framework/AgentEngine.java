@@ -200,16 +200,19 @@ public class AgentEngine {
                 ToolResult result = toolRegistry.execute(agent.agentId(), toolName, arguments);
 
                 // ════════════════════════════════════════════
-                // 直接路由：工具返回 route=direct 时，跳过 LLM 直接返回 response
+                // 路由透传：工具返回非空 route 时，跳过 LLM 直接返回
                 // ════════════════════════════════════════════
                 if (result != null && result.success() && result.data() instanceof Map<?, ?> toolData) {
                     String toolRoute = (String) toolData.get("route");
                     String toolResponse = (String) toolData.get("response");
-                    if ("direct".equals(toolRoute) && toolResponse != null && !toolResponse.isBlank()) {
-                        log.info("[AgentEngine] 直接路由: agent={}, tool={}, 跳过LLM", agent.agentId(), toolName);
+                    if (toolRoute != null && !toolRoute.isEmpty()) {
+                        log.info("[AgentEngine] 路由透传: agent={}, tool={}, route={}, 跳过LLM", agent.agentId(), toolName, toolRoute);
+                        java.util.Map<String, Object> resultData = new java.util.LinkedHashMap<>();
+                        resultData.put("route", toolRoute);
+                        if (toolResponse != null) resultData.put("response", toolResponse);
                         return AgentResult.builder()
                                 .success(true)
-                                .data(Map.of("route", "direct", "response", toolResponse))
+                                .data(resultData)
                                 .build();
                     }
                 }

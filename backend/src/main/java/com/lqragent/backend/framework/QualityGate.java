@@ -48,7 +48,12 @@ public class QualityGate {
             return GateResult.fail("结果为空");
         }
 
-        // 检查必需字段
+        // AgentEngine 返回格式：{"route":"xxx","response":"..."}，跳过字段级检查
+        if (data.containsKey("route") || data.containsKey("response")) {
+            return GateResult.pass();
+        }
+
+        // 检查必需字段（仅对直接 Service 返回的结果）
         String agentType = result.getAgentType();
         if (AgentIds.RESOURCE_GENERATION.equals(agentType)) {
             if (!data.containsKey("content") && !data.containsKey("resourceType")) {

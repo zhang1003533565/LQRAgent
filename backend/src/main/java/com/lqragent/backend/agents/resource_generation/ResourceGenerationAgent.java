@@ -50,8 +50,13 @@ public class ResourceGenerationAgent implements Agent {
         Map<String, Object> payload = task.getPayload();
         String kpId = (String) payload.getOrDefault("kpId", "");
         String resourceType = (String) payload.getOrDefault("resourceType", "LESSON");
+        String message = (String) payload.getOrDefault("message", "");
 
-        var request = ResourceGenerateRequest.builder().kpId(kpId).resourceType(resourceType).build();
+        var request = ResourceGenerateRequest.builder()
+                .kpId(kpId)
+                .resourceType(resourceType)
+                .customPrompt(message)
+                .build();
         var response = resourceFacadeService.generate(request);
         return AgentResult.builder()
                 .success(true)

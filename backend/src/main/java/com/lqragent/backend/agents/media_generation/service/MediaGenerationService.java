@@ -17,7 +17,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * 媒体生成服务。
@@ -60,8 +59,8 @@ public class MediaGenerationService {
                 mime = "image/webp";
             }
             default -> {
-                imageUrl = "/api/media/placeholder_" + UUID.randomUUID().toString().substring(0, 8) + ".png";
-                mime = "image/png";
+                imageUrl = buildPlaceholderSvg("示意图");
+                mime = "image/svg+xml";
             }
         }
 
@@ -87,7 +86,7 @@ public class MediaGenerationService {
         String apiKey = runtimeConfig.get("llm.api-key", "");
         if (apiKey.isBlank()) {
             log.warn("[MediaGeneration] DALL·E API Key 未配置");
-            return "/api/media/placeholder_no_key.png";
+            return buildPlaceholderSvg("API Key 未配置");
         }
         try {
             RestClient client = RestClient.builder().build();
@@ -110,7 +109,7 @@ public class MediaGenerationService {
         } catch (Exception e) {
             log.warn("[MediaGeneration] DALL·E 调用失败: {}", e.getMessage());
         }
-        return "/api/media/placeholder_fallback.png";
+        return buildPlaceholderSvg("DALL·E 生成失败");
     }
 
     /** 调 Stability AI */
@@ -118,7 +117,7 @@ public class MediaGenerationService {
         String apiKey = runtimeConfig.get("agent.mediagen.api_key", "");
         if (apiKey.isBlank()) {
             log.warn("[MediaGeneration] Stability AI API Key 未配置");
-            return "/api/media/placeholder_no_key.png";
+            return buildPlaceholderSvg("API Key 未配置");
         }
         try {
             RestClient client = RestClient.builder().build();
@@ -136,7 +135,7 @@ public class MediaGenerationService {
         } catch (Exception e) {
             log.warn("[MediaGeneration] Stability AI 调用失败: {}", e.getMessage());
         }
-        return "/api/media/placeholder_fallback.png";
+        return buildPlaceholderSvg("Stability AI 生成失败");
     }
 
     /**
@@ -157,10 +156,10 @@ public class MediaGenerationService {
             case "seedance" -> {
                 // TODO: 接入字节 SeeDance API
                 log.warn("[MediaGeneration] seedance 视频生成尚未实现，使用占位符");
-                videoUrl = "/api/media/video_placeholder_seedance.mp4";
+                videoUrl = "";  // seedance 未实现，返回空
             }
             default -> {
-                videoUrl = "/api/media/video_placeholder_" + UUID.randomUUID().toString().substring(0, 8) + ".mp4";
+                videoUrl = "";  // mock 模式，视频暂不生成
             }
         }
 
@@ -190,5 +189,19 @@ public class MediaGenerationService {
                     return null;
                 })
                 .orElse(null);
+    }
+
+    /** 生成内联 SVG data URI 占位图，前端可直接 <img src> 渲染 */
+    private String buildPlaceholderSvg(String label) {
+        String svg = """
+            <svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+              <rect width="400" height="300" rx="16" fill="#eef2f7"/>
+              <rect x="1" y="1" width="398" height="298" rx="15" fill="none" stroke="#c5d0de" stroke-width="1.5" stroke-dasharray="6 4"/>
+              <circle cx="200" cy="120" r="36" fill="#c5d0de"/>
+              <text x="200" y="128" text-anchor="middle" font-family="sans-serif" font-size="28" fill="#8b9ab6">?</text>
+              <text x="200" y="190" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#526989">%s</text>
+              <text x="200" y="215" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#8b9ab6">Mock 模式 · 配置 AI 图片 Provider 后自动生成</text>
+            </svg>""".formatted(label);
+        return "data:image/svg+xml," + java.net.URLEncoder.encode(svg, java.nio.charset.StandardCharsets.UTF_8);
     }
 }

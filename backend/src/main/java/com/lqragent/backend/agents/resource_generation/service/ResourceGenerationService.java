@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.UUID;
 
 /**
  * 资源生成门面服务。
@@ -36,8 +35,20 @@ public class ResourceGenerationService {
      */
     @Transactional
     public ResourceGenerateResponse generate(ResourceGenerateRequest request) {
-        String kpId = request.getKpId();
+        String rawKpId = request.getKpId();
         String type = request.getResourceType();
+
+        // 空 kpId 防御：从 goal 模糊匹配
+        if (rawKpId == null || rawKpId.isBlank()) {
+            String goal = request.getCustomPrompt();
+            if (goal != null && !goal.isBlank()) {
+                rawKpId = resolveKpIdFromGoal(goal);
+            }
+            if (rawKpId == null || rawKpId.isBlank()) {
+                throw new IllegalArgumentException("kpId 为空且无法从 goal 匹配知识点");
+            }
+        }
+        final String kpId = rawKpId;
 
         KnowledgePoint kp = kgService.getByKpId(kpId)
                 .orElseThrow(() -> new IllegalArgumentException("知识点不存在: " + kpId));
@@ -246,5 +257,23 @@ if __name__ == "__main__":
                 .content(content)
                 .generationPrompt(req.getCustomPrompt())
                 .build();
+    }
+
+    /** 从 goal 文本模糊匹配知识点ID */
+    private String resolveKpIdFromGoal(String goal) {
+        if (goal == null || goal.isBlank()) return null;
+        if (goal.matches("kp_[a-zA-Z0-9_]+")) return goal;
+        List<KnowledgePoint> all = kgService.getAll();
+        for (KnowledgePoint kp : all) {
+            if (kp.getTitle().contains(goal) || goal.contains(kp.getTitle())) {
+                return kp.getKpId();
+            }
+        }
+        for (KnowledgePoint kp : all) {
+            if (kp.getDescription() != null && kp.getDescription().contains(goal)) {
+                return kp.getKpId();
+            }
+        }
+        return null;
     }
 }

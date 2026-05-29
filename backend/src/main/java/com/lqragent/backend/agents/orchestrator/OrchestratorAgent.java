@@ -228,36 +228,12 @@ public class OrchestratorAgent implements Agent {
             );
         });
 
-        // ——— handle_qa：派发子任务到 IntelligentQaAgent（答疑） ———
+        // ——— handle_qa：只返回路由信号，由 ChatWebSocketHandler 走流式 QA 通道 ———
         registry.register(agentId(), "handle_qa", args -> {
-            Map<String, Object> p = registry.parseArgs(args);
-            String msg = (String) p.getOrDefault("message", "");
-            Long userId = RequestContext.getUserId();
-            String sessionId = (String) p.get("sessionId");
-
-            AgentResult subResult = dispatchToAgent(AgentIds.INTELLIGENT_QA, userId, sessionId,
-                    Map.of("message", msg));
-
-            if (subResult == null || !subResult.isSuccess()) {
-                java.util.Map<String, Object> err = new java.util.LinkedHashMap<>();
-                err.put("status", "error");
-                err.put("error", "答疑失败");
-                if (subResult != null && subResult.getErrorMessage() != null) {
-                    err.put("detail", subResult.getErrorMessage());
-                }
-                return err;
-            }
-
-            String response = "";
-            if (subResult.getData() != null) {
-                Object r = subResult.getData().get("response");
-                if (r != null) response = r.toString();
-            }
             return Map.of(
                 "status", "success",
-                "route", AgentIds.INTELLIGENT_QA,
-                "response", response.isBlank() ? "答疑完成" : response,
-                "sub_agent", AgentIds.INTELLIGENT_QA
+                "route", "intelligent_qa",
+                "response", ""
             );
         });
 

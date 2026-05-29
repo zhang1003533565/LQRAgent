@@ -26,7 +26,8 @@ public class LearningPathAgent implements Agent {
     @Override
     public AgentResult process(AgentTask task) {
         Long userId = task.getUserId();
-        String goal = (String) task.getPayload().getOrDefault("goal", "");
+        String goal = (String) task.getPayload().getOrDefault("goal",
+                task.getPayload().getOrDefault("message", ""));
         var dto = learningPathService.generatePath(userId, goal, null);
         return AgentResult.builder()
                 .success(true)

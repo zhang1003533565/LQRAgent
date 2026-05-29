@@ -163,11 +163,12 @@ public class LearningPathService {
                 return kp.getKpId();
             }
         }
-        // 找不到则取最后一个知识点作为目标（学完整个课程）
+        // 无匹配时返回第一个知识点作为默认目标
         if (!all.isEmpty()) {
-            return all.get(all.size() - 1).getKpId();
+            log.warn("[LearningPath] 未匹配到知识点, goal={}, 使用第一个KP: {}", goal, all.get(0).getKpId());
+            return all.get(0).getKpId();
         }
-        return "kp_intro";
+        throw new IllegalArgumentException("知识图谱为空，无法规划学习路径");
     }
 
     /** 获取图谱第一个知识点（作为默认起点） */
