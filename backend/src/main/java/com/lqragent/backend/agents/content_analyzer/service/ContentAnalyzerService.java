@@ -3,13 +3,12 @@ package com.lqragent.backend.agents.content_analyzer.service;
 import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgePoint;
 import com.lqragent.backend.agents.knowledgegraph.repository.KnowledgePointRepository;
 import com.lqragent.backend.framework.llm.LlmContentGenerator;
+import com.lqragent.backend.storage.QiniuStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -27,6 +26,7 @@ public class ContentAnalyzerService {
 
     private final KnowledgePointRepository knowledgePointRepo;
     private final LlmContentGenerator llmGenerator;
+    private final QiniuStorageService qiniuStorageService;
 
     /**
      * 对上传文件执行内容分析。
@@ -58,18 +58,13 @@ public class ContentAnalyzerService {
         return new AnalysisResult(summary, matchedKpIds);
     }
 
-    /** 读取文本文件内容 */
-    private String readFileContent(String filePath) {
+    /** 从七牛云下载文件并读取文本内容 */
+    private String readFileContent(String objectKey) {
         try {
-            Path path = Path.of(filePath);
-            if (!Files.exists(path) || !Files.isReadable(path)) {
-                log.warn("[ContentAnalyzer] file not found or not readable: {}", filePath);
-                return null;
-            }
-            byte[] bytes = Files.readAllBytes(path);
+            byte[] bytes = qiniuStorageService.download(objectKey);
             return new String(bytes, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            log.warn("[ContentAnalyzer] read error: {}: {}", filePath, e.getMessage());
+            log.warn("[ContentAnalyzer] R2 download error: key={}, error={}", objectKey, e.getMessage());
             return null;
         }
     }

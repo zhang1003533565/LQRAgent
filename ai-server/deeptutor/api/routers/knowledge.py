@@ -172,23 +172,18 @@ def _save_uploaded_files(
     kb_name: str | None = None,
 ) -> tuple[list[str], list[str]]:
     """
-    Save uploaded files to the local raw/ directory.
+    Save uploaded files to Qiniu object storage.
 
-    When PocketBase is enabled and ``kb_name`` is supplied, each file is also
-    uploaded to the PocketBase knowledge_bases record as a file attachment
-    (best-effort — local write is always the primary path).
+    Returns (filenames, qiniu_keys) where qiniu_keys are the object keys
+    used to download files later for processing.
     """
+    from deeptutor.utils.qiniu_storage import upload_to_qiniu
+
     uploaded_files: list[str] = []
-    uploaded_file_paths: list[str] = []
-    written_file_paths: list[Path] = []
-
-    from deeptutor.services.pocketbase_client import is_pocketbase_enabled
-
-    _pb_sync = is_pocketbase_enabled() and bool(kb_name)
+    uploaded_file_paths: list[str] = []  # Qiniu keys
 
     try:
         for file in files:
-            file_path = None
             original_filename = file.filename or "upload"
             try:
                 sanitized_filename = DocumentValidator.validate_upload_safety(
@@ -196,64 +191,73 @@ def _save_uploaded_files(
                     _get_upload_file_size(file),
                     allowed_extensions=allowed_extensions,
                 )
-                file.filename = sanitized_filename
 
-                file_path = target_dir / sanitized_filename
-                max_size = DocumentValidator.MAX_FILE_SIZE
-                written_bytes = 0
-
+                # Read file bytes
                 file.file.seek(0)
-                with open(file_path, "wb") as buffer:
-                    for chunk in iter(lambda: file.file.read(8192), b""):
-                        written_bytes += len(chunk)
-                        if written_bytes > max_size:
-                            size_str = format_bytes_human_readable(max_size)
-                            raise HTTPException(
-                                status_code=400,
-                                detail=(
-                                    f"File '{sanitized_filename}' exceeds maximum size "
-                                    f"limit of {size_str}"
-                                ),
-                            )
-                        buffer.write(chunk)
+                file_bytes = file.file.read()
+                max_size = DocumentValidator.MAX_FILE_SIZE
+                if len(file_bytes) > max_size:
+                    size_str = format_bytes_human_readable(max_size)
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"File '{sanitized_filename}' exceeds maximum size limit of {size_str}",
+                    )
 
                 DocumentValidator.validate_upload_safety(
-                    sanitized_filename, written_bytes, allowed_extensions=allowed_extensions
+                    sanitized_filename, len(file_bytes), allowed_extensions=allowed_extensions
                 )
-                written_file_paths.append(file_path)
+
+                # Categorize by extension and upload to Qiniu
+                ext = sanitized_filename.lower().rsplit(".", 1)[-1] if "." in sanitized_filename else ""
+                category = _categorize_file(ext)
+                qiniu_key = f"{category}/{kb_name or 'default'}/{sanitized_filename}"
+
+                # Detect content type
+                content_type_map = {
+                    "pdf": "application/pdf", "md": "text/markdown", "txt": "text/plain",
+                    "py": "text/x-python", "json": "application/json", "csv": "text/csv",
+                    "html": "text/html", "xml": "application/xml",
+                }
+                content_type = content_type_map.get(ext, "application/octet-stream")
+
+                upload_to_qiniu(qiniu_key, file_bytes, content_type)
                 uploaded_files.append(sanitized_filename)
-                uploaded_file_paths.append(str(file_path))
+                uploaded_file_paths.append(qiniu_key)
 
-                # Mirror file to PocketBase when enabled (best-effort, non-blocking).
-                if _pb_sync and kb_name:
-                    try:
-                        _upload_file_to_pb(kb_name, sanitized_filename, file_path)
-                    except Exception as pb_exc:
-                        logger.debug(
-                            "PocketBase file upload failed for '%s': %s",
-                            sanitized_filename,
-                            pb_exc,
-                        )
+                logger.info(f"Uploaded to Qiniu: {sanitized_filename} -> {qiniu_key}")
+
+            except HTTPException:
+                raise
             except Exception as e:
-                if file_path and file_path.exists():
-                    try:
-                        os.unlink(file_path)
-                    except OSError:
-                        pass
-
-                error_message = f"Validation failed for file '{original_filename}': {format_exception_message(e)}"
+                error_message = f"Upload failed for file '{original_filename}': {format_exception_message(e)}"
                 logger.error(error_message, exc_info=True)
                 raise HTTPException(status_code=400, detail=error_message) from e
-    except Exception:
-        for written_path in written_file_paths:
-            if written_path.exists():
-                try:
-                    os.unlink(written_path)
-                except OSError:
-                    pass
+    except HTTPException:
         raise
+    except Exception as e:
+        logger.error(f"Upload batch failed: {format_exception_message(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Upload failed: {format_exception_message(e)}") from e
 
     return uploaded_files, uploaded_file_paths
+
+
+def _categorize_file(ext: str) -> str:
+    """按文件扩展名分类到七牛云目录。"""
+    categories = {
+        "pdf": "documents/pdf",
+        "doc": "documents/word", "docx": "documents/word",
+        "ppt": "documents/ppt", "pptx": "documents/ppt",
+        "xls": "documents/excel", "xlsx": "documents/excel",
+        "md": "documents/text", "txt": "documents/text", "rst": "documents/text",
+        "py": "code", "java": "code", "kt": "code", "js": "code", "ts": "code",
+        "go": "code", "rs": "code", "c": "code", "cpp": "code", "h": "code",
+        "png": "images", "jpg": "images", "jpeg": "images", "gif": "images",
+        "svg": "images", "webp": "images",
+        "mp4": "media/video", "avi": "media/video", "mov": "media/video",
+        "mp3": "media/audio", "wav": "media/audio",
+        "json": "data", "yaml": "data", "yml": "data", "csv": "data", "xml": "data",
+    }
+    return categories.get(ext, "documents/other")
 
 
 def _get_upload_file_size(file: UploadFile) -> int | None:
@@ -524,11 +528,38 @@ async def run_upload_processing_task(
     with capture_task_logs(task_id):
         try:
             _task_log(task_id, f"Processing {len(uploaded_file_paths)} file(s) for KB '{kb_name}'")
+
+            # Download from Qiniu to temp directory for processing
+            import tempfile
+            import shutil as _shutil
+            from deeptutor.utils.qiniu_storage import download_from_qiniu
+
+            temp_dir = Path(tempfile.mkdtemp(prefix="qiniu_dl_"))
+            local_paths: list[str] = []
+
+            for qiniu_key in uploaded_file_paths:
+                try:
+                    file_bytes = await run_in_thread(download_from_qiniu, qiniu_key)
+                    filename = qiniu_key.split("_", 1)[-1] if "_" in qiniu_key else qiniu_key.split("/")[-1]
+                    local_path = temp_dir / filename
+                    local_path.write_bytes(file_bytes)
+                    local_paths.append(str(local_path))
+                    _task_log(task_id, f"Downloaded from Qiniu: {filename}")
+                except Exception as dl_err:
+                    _task_log(task_id, f"Failed to download {qiniu_key}: {dl_err}", level="warning")
+
+            if not local_paths:
+                _task_log(task_id, "No files downloaded from Qiniu")
+                progress_tracker.update(ProgressStage.COMPLETED, "No files to process", current=0, total=0)
+                task_manager.update_task_status(task_id, "completed")
+                task_stream_manager.emit_complete(task_id, "No files to process")
+                return
+
             progress_tracker.update(
                 ProgressStage.PROCESSING_DOCUMENTS,
-                f"Processing {len(uploaded_file_paths)} files...",
+                f"Processing {len(local_paths)} files...",
                 current=0,
-                total=len(uploaded_file_paths),
+                total=len(local_paths),
             )
 
             adder = DocumentAdder(
@@ -538,7 +569,7 @@ async def run_upload_processing_task(
                 rag_provider=rag_provider,
             )
 
-            staged_files = adder.add_documents(uploaded_file_paths, allow_duplicates=False)
+            staged_files = adder.add_documents(local_paths, allow_duplicates=False)
             _task_log(task_id, f"Staged {len(staged_files)} new file(s)")
 
             if not staged_files:
@@ -613,6 +644,13 @@ async def run_upload_processing_task(
                 ProgressStage.ERROR, f"Processing failed: {error_msg}", error=error_msg
             )
             task_stream_manager.emit_failed(task_id, error_msg, details=trace)
+        finally:
+            # Clean up temp directory (Qiniu downloads)
+            try:
+                _shutil.rmtree(temp_dir, ignore_errors=True)
+                _task_log(task_id, f"Cleaned up temp dir: {temp_dir}")
+            except Exception:
+                pass
 
 
 @router.get("/health")

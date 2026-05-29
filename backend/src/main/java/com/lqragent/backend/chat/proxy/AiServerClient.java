@@ -3,9 +3,16 @@ package com.lqragent.backend.chat.proxy;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestTemplate;
 
 import java.util.Map;
 
@@ -61,16 +68,30 @@ public class AiServerClient {
                 .body(Map.class);
     }
 
-    /** 上传文档到知识库 */
+    /** 上传文档到知识库（multipart/form-data） */
+    @SuppressWarnings("unchecked")
     public Map<?, ?> uploadDocument(String kbName, String fileName, byte[] content, String mimeType) {
-        log.info("[AiServerClient] uploadDocument: kb={}, file={}", kbName, fileName);
-        // DeepTutor 知识库上传走 multipart，这里用 RestClient 的 body 模拟
-        return client().post()
-                .uri("/api/v1/knowledge/{kb_name}/upload", kbName)
-                .header("Content-Type", mimeType)
-                .body(content)
-                .retrieve()
-                .body(Map.class);
+        log.info("[AiServerClient] uploadDocument: kb={}, file={}, size={}", kbName, fileName, content.length);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        ByteArrayResource fileResource = new ByteArrayResource(content) {
+            @Override
+            public String getFilename() {
+                return fileName;
+            }
+        };
+        body.add("files", fileResource);
+
+        HttpEntity<MultiValueMap<String, Object>> request = new HttpEntity<>(body, headers);
+
+        String baseUrl = runtimeConfig.getAiServerBaseUrl();
+        String url = baseUrl + "/api/v1/knowledge/" + kbName + "/upload";
+
+        RestTemplate restTemplate = new RestTemplate();
+        return restTemplate.postForObject(url, request, Map.class);
     }
 
     /** 获取画像记忆（DeepTutor Persistent Memory） */

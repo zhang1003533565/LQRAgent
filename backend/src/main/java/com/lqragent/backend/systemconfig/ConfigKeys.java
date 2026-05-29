@@ -35,4 +35,10 @@ public final class ConfigKeys {
     /** RAG 知识库名称（ai-server 侧的知识库标识） */
     public static final String RAG_KB_NAME = "agent.rag.kb_name";
 
+    /** 七牛云对象存储 */
+    public static final String QINIU_ACCESS_KEY = "qiniu.access-key";
+    public static final String QINIU_SECRET_KEY = "qiniu.secret-key";
+    public static final String QINIU_BUCKET = "qiniu.bucket";
+    public static final String QINIU_REGION = "qiniu.region";
+
 }

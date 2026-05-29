@@ -2,6 +2,7 @@ package com.lqragent.backend.uploadqueue.service;
 
 import com.lqragent.backend.chat.proxy.AiServerClient;
 import com.lqragent.backend.agents.content_analyzer.service.ContentAnalyzerService;
+import com.lqragent.backend.storage.QiniuStorageService;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import com.lqragent.backend.systemconfig.ConfigKeys;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask;
@@ -16,8 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import org.springframework.data.domain.PageRequest;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,6 +36,7 @@ public class UploadQueueService {
     private final AiServerClient aiServerClient;
     private final ContentAnalyzerService contentAnalyzerService;
     private final AppRuntimeConfig runtimeConfig;
+    private final QiniuStorageService qiniuStorageService;
 
     /**
      * 将上传任务入队，立即返回，不阻塞前端。
@@ -62,6 +62,11 @@ public class UploadQueueService {
 
     public List<KbUploadTask> listRecent(int limit) {
         return taskRepository.findAllByOrderByCreatedAtDesc(PageRequest.of(0, limit));
+    }
+
+    public KbUploadTask getTaskById(Long id) {
+        return taskRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("上传任务不存在: " + id));
     }
 
     public long totalCount() {
@@ -110,20 +115,17 @@ public class UploadQueueService {
                 log.warn("[UploadQueue] KB may already exist: {}", e.getMessage());
             }
 
-            // 2. 读取文件并上传到 DeepTutor
-            Path filePath = Path.of(task.getFilePath());
-            if (Files.exists(filePath) && Files.isReadable(filePath)) {
-                byte[] content = Files.readAllBytes(filePath);
-                String mimeType = detectMimeType(task.getFileName());
-                try {
-                    aiServerClient.uploadDocument(kbName, task.getFileName(), content, mimeType);
-                    log.info("[UploadQueue] Uploaded to DeepTutor KB: {}", task.getFileName());
-                } catch (Exception e) {
-                    log.warn("[UploadQueue] DeepTutor upload failed (non-fatal): {}", e.getMessage());
-                }
+            // 2. 从七牛云下载文件，发送到 DeepTutor
+            byte[] content = qiniuStorageService.download(task.getFilePath());
+            String mimeType = detectMimeType(task.getFileName());
+            try {
+                aiServerClient.uploadDocument(kbName, task.getFileName(), content, mimeType);
+                log.info("[UploadQueue] Uploaded to DeepTutor KB: {}", task.getFileName());
+            } catch (Exception e) {
+                log.warn("[UploadQueue] DeepTutor upload failed (non-fatal): {}", e.getMessage());
             }
 
-            // 3. 内容分析 → 映射知识点
+            // 3. 内容分析 → 映射知识点（ContentAnalyzerService 也从七牛下载读取）
             var analysis = contentAnalyzerService.analyze(task.getFilePath(), task.getFileName());
             task.setAnalysisResult(analysis.toJson());
             task.setMappedKpIds(String.join(",", analysis.mappedKpIds()));
