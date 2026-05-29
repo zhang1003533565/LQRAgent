@@ -7,7 +7,7 @@ import SystemStatusCard from './SystemStatusCard'
 import TraceFlowPanel from './TraceFlowPanel'
 
 export default function DashboardView() {
-  const { services, tasks, agents, isLoading } = useDevConsoleOverview()
+  const { metrics, services, tasks, agents, isLoading } = useDevConsoleOverview()
 
   return (
     <motion.div
@@ -15,7 +15,7 @@ export default function DashboardView() {
       animate={{ opacity: 1 }}
       className="space-y-4"
     >
-      <StatCards />
+      <StatCards metrics={metrics} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <SystemStatusCard services={services} />

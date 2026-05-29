@@ -54,7 +54,7 @@ const AGENT_DEFS: Record<string, AgentDef> = {
     features: [
       { label: 'LLM 意图分类', status: 'done', note: '优先 LLM，降级关键词' },
       { label: '结果聚合', status: 'todo', note: '等全部 Agent 返回再合并' },
-      { label: 'RequestContext', status: 'todo', note: 'request_id + user_id 全链路' },
+      { label: 'RequestContext', status: 'done', note: 'ThreadLocal userId + requestId 全链路' },
     ],
     configItems: [
       { configKey: 'agent.orchestrator.llm_intent_enabled', label: '启用 LLM 意图分类', type: 'toggle', defaultValue: 'true' },
@@ -67,7 +67,7 @@ const AGENT_DEFS: Record<string, AgentDef> = {
     aiSource: '🔗 ai-server WS（DeepTutor 内部 RAG）',
     features: [
       { label: '文本流式问答', status: 'done', note: 'WS → ai-server' },
-      { label: 'Mermaid 流程图', status: 'wip', note: '调 LLM 生成，前端渲染' },
+      { label: 'Mermaid 流程图', status: 'done', note: 'CDN mermaid 11 + StreamingMessage 渲染' },
       { label: '质量校验前置', status: 'todo', note: '答案经质检再返回' },
     ],
     configItems: [
@@ -80,7 +80,7 @@ const AGENT_DEFS: Record<string, AgentDef> = {
     aiSource: '🔗 LLM API — 个性化排序',
     features: [
       { label: 'BFS 路径骨架', status: 'done', note: '31 知识点，依赖拓扑排序' },
-      { label: 'LLM 个性化排序', status: 'wip', note: '结合画像调整步骤顺序' },
+      { label: 'LLM 个性化排序', status: 'done', note: 'sortNodesWithLlm() 读画像+LLM排序' },
       { label: '资源类型关联', status: 'todo', note: '每步骤指定 lesson/quiz/code' },
     ],
     configItems: [
@@ -98,8 +98,8 @@ const AGENT_DEFS: Record<string, AgentDef> = {
       { label: '讲义文档', status: 'done', note: 'Markdown + 代码块' },
       { label: '练习题目', status: 'done', note: '选择+填空+编程' },
       { label: '代码案例', status: 'done', note: '完整可运行代码' },
-      { label: '思维导图', status: 'wip', note: 'Markdown 列表 → 前端 mermaid' },
-      { label: '拓展阅读', status: 'wip', note: '延伸阅读清单+摘要' },
+      { label: '思维导图', status: 'wip', note: 'Markdown 列表已生成，待 Mermaid 语法输出' },
+      { label: '拓展阅读', status: 'done', note: 'LLM 生成 + 模板兜底 + 持久化' },
     ],
     configItems: [
       { configKey: 'agent.resourcefacade.model', label: '模型', type: 'model', options: COMMON_MODELS, defaultValue: 'gpt-4o-mini' },
@@ -117,7 +117,7 @@ const AGENT_DEFS: Record<string, AgentDef> = {
     aiSource: '🔗 LLM API（抽取）+ 🔗 ai-server Memory（对话摘要）',
     features: [
       { label: '答题记录画像', status: 'done', note: '6 维度粗算' },
-      { label: 'LLM 对话抽取', status: 'wip', note: '调 LLM 从对话提取 6 维度' },
+      { label: 'LLM 对话抽取', status: 'done', note: '规则+ProfileExtractor 双通道' },
       { label: 'ai-server Memory', status: 'wip', note: '对话摘要存储' },
     ],
     configItems: [
@@ -133,9 +133,9 @@ const AGENT_DEFS: Record<string, AgentDef> = {
     aiSource: '🔗 LLM API（事实校验）+ 🏗️ 本地（敏感词+学术检查）',
     features: [
       { label: '非空/格式检查', status: 'done', note: '当前仅此' },
-      { label: 'LLM 事实性校验', status: 'wip', note: '"这段内容有错误吗？"' },
-      { label: '敏感内容过滤', status: 'todo', note: '本地敏感词库' },
-      { label: '学术规范性检查', status: 'todo', note: '虚假引用+绝对化用语' },
+      { label: 'LLM 事实性校验', status: 'wip', note: 'assessFull() 已实现，依赖开关' },
+      { label: '敏感内容过滤', status: 'done', note: 'SensitiveFilter 词库匹配' },
+      { label: '学术规范性检查', status: 'done', note: 'AcademicChecker 正则检测' },
     ],
     configItems: [
       { configKey: 'agent.qualityassessment.model', label: '校验模型', type: 'model', options: COMMON_MODELS, defaultValue: 'gpt-4o-mini' },
@@ -149,7 +149,7 @@ const AGENT_DEFS: Record<string, AgentDef> = {
     features: [
       { label: '关键词匹配知识点', status: 'done', note: '结构化课程够用' },
       { label: '上传入知识库', status: 'done', note: 'ai-server RAG' },
-      { label: 'LLM 提取（可选）', status: 'wip', note: '非结构化文档时使用' },
+      { label: 'LLM 提取（可选）', status: 'done', note: 'analyzeWithLlm() 优先LLM降级子串' },
     ],
     configItems: [
       { configKey: 'agent.contentanalyzer.extraction_method', label: '提取方式', type: 'select', defaultValue: 'keyword',
@@ -162,7 +162,7 @@ const AGENT_DEFS: Record<string, AgentDef> = {
     aiSource: '🔗 LLM API（薄弱点分析）',
     features: [
       { label: '低分→插复习节点', status: 'done', note: '简单规则' },
-      { label: 'LLM 薄弱点分析', status: 'wip', note: '从答题和行为数据分析' },
+      { label: 'LLM 薄弱点分析', status: 'done', note: 'analyzeWeakness() 行为数据+LLM' },
       { label: '行为追踪', status: 'todo', note: '前端埋点：点击+停留时间' },
     ],
     configItems: [

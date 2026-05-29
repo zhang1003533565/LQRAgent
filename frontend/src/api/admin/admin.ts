@@ -255,6 +255,51 @@ export async function getAgentRuns(page = 1, size = 20): Promise<AgentRunsData> 
 
 // ===== Agent 测试 =====
 
+export interface QuizRecordItem {
+  id: number
+  userId: number
+  kpId: string
+  resourceId: number | null
+  score: number
+  isCorrect: boolean
+  answer: string
+  createdAt: string
+}
+
+export interface QuizRecordsData {
+  items: QuizRecordItem[]
+  total: number
+  page: number
+  size: number
+}
+
+export interface StudyBehaviorItem {
+  id: number
+  userId: number
+  kpId: string | null
+  action: string
+  durationSec: number | null
+  extra: string | null
+  createdAt: string
+}
+
+export interface StudyBehaviorsData {
+  items: StudyBehaviorItem[]
+  total: number
+  page: number
+  size: number
+}
+
+export async function getQuizRecords(page = 1, size = 20): Promise<QuizRecordsData> {
+  const res = await http.get<{ data: QuizRecordsData }>('/admin/quiz-records', { params: { page, size } })
+  return res.data.data
+}
+
+export async function getStudyBehaviors(page = 1, size = 20): Promise<StudyBehaviorsData> {
+  const res = await http.get<{ data: StudyBehaviorsData }>('/admin/study-behaviors', { params: { page, size } })
+  return res.data.data
+}
+
 export interface AgentTestResult {
   success: boolean
   agentType: string

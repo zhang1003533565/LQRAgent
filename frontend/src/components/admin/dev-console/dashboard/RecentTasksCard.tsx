@@ -12,7 +12,7 @@ export default function RecentTasksCard({ tasks }: RecentTasksCardProps) {
       <CardHeader>
         <CardTitle>最近任务</CardTitle>
         <p className="text-xs text-console-muted">
-          MOCK · 后续对齐上传队列 / 编排任务 API
+          来源：智能体运行日志
         </p>
       </CardHeader>
       <CardContent className="space-y-2">

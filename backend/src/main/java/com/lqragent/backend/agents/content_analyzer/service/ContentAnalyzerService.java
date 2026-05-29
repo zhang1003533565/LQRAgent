@@ -2,6 +2,7 @@ package com.lqragent.backend.agents.content_analyzer.service;
 
 import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgePoint;
 import com.lqragent.backend.agents.knowledgegraph.repository.KnowledgePointRepository;
+import com.lqragent.backend.framework.llm.LlmContentGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -10,6 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -24,6 +26,7 @@ import java.util.stream.Collectors;
 public class ContentAnalyzerService {
 
     private final KnowledgePointRepository knowledgePointRepo;
+    private final LlmContentGenerator llmGenerator;
 
     /**
      * 对上传文件执行内容分析。
@@ -45,8 +48,11 @@ public class ContentAnalyzerService {
                 ? content.substring(0, 200) + "..."
                 : content;
 
-        // 关键词匹配知识点
-        List<String> matchedKpIds = matchKnowledgePoints(content);
+        // 优先 LLM 分析，失败降级子串匹配
+        List<String> matchedKpIds = analyzeWithLlm(content);
+        if (matchedKpIds.isEmpty()) {
+            matchedKpIds = matchKnowledgePoints(content);
+        }
 
         log.info("[ContentAnalyzer] done: file={}, matched={}", fileName, matchedKpIds);
         return new AnalysisResult(summary, matchedKpIds);
@@ -75,7 +81,6 @@ public class ContentAnalyzerService {
         List<String> matched = new ArrayList<>();
 
         for (KnowledgePoint kp : allKps) {
-            // 检查标题或描述是否在内容中出现
             String title = kp.getTitle().toLowerCase();
             String desc = kp.getDescription() != null ? kp.getDescription().toLowerCase() : "";
             if (lowerContent.contains(title) || (desc.length() > 5 && lowerContent.contains(desc))) {
@@ -83,6 +88,34 @@ public class ContentAnalyzerService {
             }
         }
         return matched;
+    }
+
+    /** LLM 分析文档覆盖的知识点，失败返回空列表 */
+    private List<String> analyzeWithLlm(String content) {
+        try {
+            List<KnowledgePoint> allKps = knowledgePointRepo.findAll();
+            String kpList = allKps.stream()
+                    .map(kp -> kp.getKpId() + ": " + kp.getTitle())
+                    .collect(Collectors.joining("\n"));
+            String truncated = content.length() > 3000
+                    ? content.substring(0, 3000) : content;
+
+            String result = llmGenerator.generate("content_analysis",
+                    "知识点匹配",
+                    "以下是课程知识点列表：\n" + kpList
+                    + "\n\n以下是上传文档内容：\n" + truncated
+                    + "\n\n请返回文档覆盖的知识点ID列表（JSON数组格式，如 [\"kp_decorator\",\"kp_function\"]）");
+
+            if (result != null && result.contains("[")) {
+                String arrayStr = result.substring(result.indexOf("["), result.lastIndexOf("]") + 1);
+                return Arrays.stream(arrayStr.replaceAll("[\"\\s]", "").split(","))
+                        .filter(s -> !s.isBlank())
+                        .toList();
+            }
+        } catch (Exception e) {
+            log.warn("[ContentAnalyzer] LLM 分析失败，降级子串匹配: {}", e.getMessage());
+        }
+        return List.of();
     }
 
     /** 分析结果 */

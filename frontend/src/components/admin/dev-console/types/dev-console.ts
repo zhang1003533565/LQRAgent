@@ -37,12 +37,15 @@ export interface RecentTask {
 }
 
 export interface AgentRuntimeStatus {
-  agent: AgentId
+  agent: string
   status: 'running' | 'idle' | 'failed'
   latencyMs: number
   tokens: number
-  /** MOCK: WS agent_step 聚合 或 GET /admin/agents/runtime */
-  source: 'mock'
+  total?: number
+  success?: number
+  failed?: number
+  successRate?: string
+  source: 'mock' | 'api'
 }
 
 /** React Flow 要求 node.data 满足 Record<string, unknown> */
@@ -87,3 +90,5 @@ export type DevConsoleNavId =
   | 'agent-contentanalyzer'
   | 'agent-effectassessment'
   | 'agent-mediagen'
+  | 'quiz-records'
+  | 'study-behaviors'

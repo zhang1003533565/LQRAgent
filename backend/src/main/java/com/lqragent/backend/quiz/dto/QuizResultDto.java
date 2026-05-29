@@ -27,4 +27,7 @@ public class QuizResultDto {
 
     @Schema(description = "学生答案")
     private String answer;
+
+    @Schema(description = "低分时的薄弱点分析报告")
+    private String weaknessReport;
 }

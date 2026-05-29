@@ -3,6 +3,7 @@ package com.lqragent.backend.chat.proxy;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
+import com.lqragent.backend.systemconfig.ConfigKeys;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -53,12 +54,15 @@ public class AiServerWsProxy {
                         @Override
                         public void onOpen(WebSocket webSocket) {
                             log.info("[AiServerWsProxy] connected to ai-server");
-                            // ai-server unified WS expects: type=message, content, session_id
-                            String payload = objectMapper.createObjectNode()
+                            // ai-server unified WS expects: type=message, content, session_id, knowledge_bases, tools
+                            String kbName = runtimeConfig.get(ConfigKeys.RAG_KB_NAME, "lqragent-uploads");
+                            com.fasterxml.jackson.databind.node.ObjectNode payloadNode = objectMapper.createObjectNode()
                                     .put("type", "message")
                                     .put("content", userMessage)
-                                    .put("session_id", sessionId != null ? sessionId : "")
-                                    .toString();
+                                    .put("session_id", sessionId != null ? sessionId : "");
+                            payloadNode.putArray("knowledge_bases").add(kbName);
+                            payloadNode.putArray("tools").add("rag");
+                            String payload = payloadNode.toString();
                             webSocket.sendText(payload, true);
                             log.debug("[AiServerWsProxy] sent: {}", payload);
                             WebSocket.Listener.super.onOpen(webSocket);

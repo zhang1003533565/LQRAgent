@@ -72,12 +72,19 @@ public class QuizService {
         // 效果评估：低分→动态调整路径
         effectAssessmentService.evaluateQuizResult(userId, request.getKpId(), score, correct);
 
+        // 低分时触发薄弱点分析
+        String weaknessReport = null;
+        if (!correct || score < 60) {
+            weaknessReport = effectAssessmentService.analyzeWeakness(userId);
+        }
+
         return QuizResultDto.builder()
                 .id(record.getId())
                 .correct(correct)
                 .score(score)
                 .kpId(request.getKpId())
                 .answer(request.getAnswer())
+                .weaknessReport(weaknessReport)
                 .build();
     }
 }

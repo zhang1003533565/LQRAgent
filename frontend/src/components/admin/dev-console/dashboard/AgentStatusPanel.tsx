@@ -13,10 +13,15 @@ export default function AgentStatusPanel({ agents }: AgentStatusPanelProps) {
       <CardHeader>
         <CardTitle>Agent 状态</CardTitle>
         <p className="text-xs text-console-muted">
-          与 WS <code className="text-console-blue">agent_step</code> / P3 监控 API 对齐
+          来源：GET /admin/agent-stats
         </p>
       </CardHeader>
       <CardContent className="space-y-2">
+        {agents.length === 0 && (
+          <p className="text-center text-xs text-console-muted py-4">
+            暂无 Agent 调用记录
+          </p>
+        )}
         {agents.map((row, i) => (
           <motion.div
             key={row.agent}
@@ -27,13 +32,17 @@ export default function AgentStatusPanel({ agents }: AgentStatusPanelProps) {
           >
             <div>
               <p className="font-mono text-xs text-console-muted">{row.agent}</p>
-              <p className="text-sm">{AGENT_LABELS[row.agent]}</p>
+              <p className="text-sm">{(AGENT_LABELS as Record<string, string>)[row.agent] || row.agent}</p>
             </div>
-            <ConsoleBadge variant={row.status === 'running' ? 'success' : 'muted'}>
+            <ConsoleBadge variant={row.status === 'failed' ? 'danger' : 'muted'}>
               {row.status}
             </ConsoleBadge>
             <span className="font-mono text-xs text-console-muted">{row.latencyMs}ms</span>
-            <span className="font-mono text-xs text-console-blue">{row.tokens} tok</span>
+            {row.total != null && (
+              <span className="font-mono text-xs text-console-blue">
+                {row.success}/{row.total} ({row.successRate})
+              </span>
+            )}
           </motion.div>
         ))}
       </CardContent>

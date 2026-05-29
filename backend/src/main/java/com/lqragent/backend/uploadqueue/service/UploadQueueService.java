@@ -2,6 +2,8 @@ package com.lqragent.backend.uploadqueue.service;
 
 import com.lqragent.backend.chat.proxy.AiServerClient;
 import com.lqragent.backend.agents.content_analyzer.service.ContentAnalyzerService;
+import com.lqragent.backend.systemconfig.AppRuntimeConfig;
+import com.lqragent.backend.systemconfig.ConfigKeys;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask.KbScope;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask.TaskStatus;
@@ -34,6 +36,7 @@ public class UploadQueueService {
     private final KbUploadTaskRepository taskRepository;
     private final AiServerClient aiServerClient;
     private final ContentAnalyzerService contentAnalyzerService;
+    private final AppRuntimeConfig runtimeConfig;
 
     /**
      * 将上传任务入队，立即返回，不阻塞前端。
@@ -100,7 +103,7 @@ public class UploadQueueService {
 
         try {
             // 1. 创建/获取 DeepTutor 知识库
-            String kbName = "lqragent-uploads";
+            String kbName = runtimeConfig.get(ConfigKeys.RAG_KB_NAME, "lqragent-uploads");
             try {
                 aiServerClient.createKnowledgeBase(kbName);
             } catch (Exception e) {

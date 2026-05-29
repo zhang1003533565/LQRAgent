@@ -20,6 +20,8 @@ import {
   AgentContentAnalyzerPanel,
   AgentEffectAssessmentPanel,
   AgentMediaGenPanel,
+  QuizRecordPanel,
+  StudyBehaviorPanel,
 } from '@/components/admin/dev-console/panels'
 import { LogPanel, QuickActions } from '@/components/admin/dev-console/logs'
 import { useDevConsoleOverview } from '@/components/admin/dev-console/hooks/useDevConsoleQueries'
@@ -74,6 +76,10 @@ function resolveMainContent(activeNav: DevConsoleNavId, agents: AgentRuntimeStat
       return <AgentEffectAssessmentPanel />
     case 'agent-mediagen':
       return <AgentMediaGenPanel />
+    case 'quiz-records':
+      return <QuizRecordPanel />
+    case 'study-behaviors':
+      return <StudyBehaviorPanel />
     default:
       return <DevConsolePlaceholder navId={activeNav} />
   }

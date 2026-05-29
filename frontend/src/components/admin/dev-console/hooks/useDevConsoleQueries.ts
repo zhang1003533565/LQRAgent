@@ -1,18 +1,27 @@
 import { useQuery } from '@tanstack/react-query'
-import { getAdminStatus } from '@/api/admin/admin'
+import { getAdminStatus, getAgentStats, getAgentRuns } from '@/api/admin/admin'
 import {
-  MOCK_AGENT_RUNTIME,
-  MOCK_METRICS,
-  MOCK_RECENT_TASKS,
   MOCK_SERVICES,
 } from '@/components/admin/dev-console/mock/data'
-import type { ServiceHealth } from '@/components/admin/dev-console/types/dev-console'
+import type { AgentRuntimeStatus, RecentTask, ServiceHealth } from '@/components/admin/dev-console/types/dev-console'
 
-/** 对接已有 GET /admin/status，其余指标仍为 MOCK */
+/** 对接 GET /admin/status + GET /admin/agent-stats + GET /admin/agent-runs */
 export function useDevConsoleOverview() {
   const statusQuery = useQuery({
     queryKey: ['dev-console', 'admin-status'],
     queryFn: getAdminStatus,
+    refetchInterval: 15_000,
+  })
+
+  const agentStatsQuery = useQuery({
+    queryKey: ['dev-console', 'agent-stats'],
+    queryFn: getAgentStats,
+    refetchInterval: 30_000,
+  })
+
+  const agentRunsQuery = useQuery({
+    queryKey: ['dev-console', 'agent-runs'],
+    queryFn: () => getAgentRuns(1, 10),
     refetchInterval: 15_000,
   })
 
@@ -31,13 +40,53 @@ export function useDevConsoleOverview() {
       ]
     : MOCK_SERVICES
 
+  // 将 agent-stats 转换为 AgentRuntimeStatus[]
+  const agents: AgentRuntimeStatus[] = agentStatsQuery.data
+    ? agentStatsQuery.data.stats.map((s) => ({
+        agent: s.agent,
+        status: s.failed > 0 && s.success === 0 ? 'failed' : 'idle',
+        latencyMs: s.avgDurationMs,
+        tokens: 0,
+        total: s.total,
+        success: s.success,
+        failed: s.failed,
+        successRate: s.successRate,
+        source: 'api' as const,
+      }))
+    : []
+
+  // 将 agent-runs 转换为 RecentTask[]
+  const tasks: RecentTask[] = agentRunsQuery.data
+    ? agentRunsQuery.data.items.slice(0, 8).map((run) => ({
+        id: String(run.id),
+        studentId: `user-${run.userId}`,
+        description: `${run.agent} · ${run.intent || run.status}`,
+        status: run.status === 'SUCCESS' ? 'completed' : run.status === 'FAILED' ? 'failed' : 'running',
+        startedAt: run.createdAt,
+        source: 'upload' as const,
+      }))
+    : []
+
+  // 计算汇总指标
+  const stats = agentStatsQuery.data?.stats || []
+  const metrics = {
+    requestsToday: stats.reduce((sum, s) => sum + s.total, 0),
+    tokensToday: 0,
+    agentCallsToday: stats.reduce((sum, s) => sum + s.total, 0),
+    avgResponseMs: stats.length > 0
+      ? Math.round(stats.reduce((sum, s) => sum + s.avgDurationMs, 0) / stats.length)
+      : 0,
+    onlineUsers: statusQuery.data?.userCount ?? 0,
+    source: 'mock' as const,
+  }
+
   return {
-    metrics: MOCK_METRICS,
+    metrics,
     services,
-    tasks: MOCK_RECENT_TASKS,
-    agents: MOCK_AGENT_RUNTIME,
+    tasks,
+    agents,
     adminStatus: statusQuery.data,
-    isLoading: statusQuery.isLoading,
+    isLoading: statusQuery.isLoading || agentStatsQuery.isLoading,
     refetch: statusQuery.refetch,
   }
 }

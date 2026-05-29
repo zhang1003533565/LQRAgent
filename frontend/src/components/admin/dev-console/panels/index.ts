@@ -6,6 +6,8 @@ export { default as ProfilePanel } from './ProfilePanel'
 export { default as KnowledgeGraphPanel } from './KnowledgeGraphPanel'
 export { default as LearningPathPanel } from './LearningPathPanel'
 export { default as ResourcePanel } from './ResourcePanel'
+export { default as QuizRecordPanel } from './QuizRecordPanel'
+export { default as StudyBehaviorPanel } from './StudyBehaviorPanel'
 export { default as AgentMonitorPanel } from './AgentMonitorPanel'
 export {
   AgentOrchestratorPanel,

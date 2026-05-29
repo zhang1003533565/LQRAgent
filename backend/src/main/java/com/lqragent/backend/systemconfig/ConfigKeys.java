@@ -32,4 +32,7 @@ public final class ConfigKeys {
     public static final String EMBEDDING_API_KEY = "embedding.api-key";
     public static final String EMBEDDING_HOST = "embedding.host";
 
+    /** RAG 知识库名称（ai-server 侧的知识库标识） */
+    public static final String RAG_KB_NAME = "agent.rag.kb_name";
+
 }

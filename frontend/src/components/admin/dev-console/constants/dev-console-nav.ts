@@ -17,6 +17,8 @@ import {
   BarChart3,
   ImageIcon,
   ShieldCheck,
+  ClipboardList,
+  Activity,
 } from 'lucide-react'
 import type { DevConsoleNavId } from '@/components/admin/dev-console/types/dev-console'
 
@@ -50,6 +52,8 @@ export const DEV_CONSOLE_NAV: DevConsoleNavGroup[] = [
       { id: 'knowledge', label: '知识图谱', icon: Network },
       { id: 'path', label: '学习路径', icon: Route },
       { id: 'resources', label: '资源管理', icon: BookOpen },
+      { id: 'quiz-records', label: '答题记录', icon: ClipboardList },
+      { id: 'study-behaviors', label: '学习行为', icon: Activity },
     ],
   },
   {
@@ -96,4 +100,6 @@ export const DEV_CONSOLE_NAV_LABEL: Record<DevConsoleNavId, string> = {
   'agent-contentanalyzer': '内容分析',
   'agent-effectassessment': '效果评估',
   'agent-mediagen': '媒体生成',
+  'quiz-records': '答题记录',
+  'study-behaviors': '学习行为',
 }
