@@ -2,6 +2,8 @@ package com.lqragent.backend.agents.quality_assessment.service;
 
 import com.lqragent.backend.agents.resource_generation.entity.ResourceItem;
 import com.lqragent.backend.framework.llm.LlmContentGenerator;
+import com.lqragent.backend.systemconfig.AppRuntimeConfig;
+import com.lqragent.backend.systemconfig.ConfigKeys;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,7 @@ public class QualityAssessmentService {
     private final LlmContentGenerator llmGenerator;
     private final SensitiveFilter sensitiveFilter;
     private final AcademicChecker academicChecker;
+    private final AppRuntimeConfig runtimeConfig;
 
     /** 全量检查结果 */
     public record AssessmentResult(boolean passed, List<String> failures, String summary) {
@@ -49,8 +52,8 @@ public class QualityAssessmentService {
         if (item.getTitle() == null || item.getTitle().isBlank())
             failures.add("标题为空");
 
-        // 2. LLM 事实性校验（默认关闭，由 sys_config 控制）
-        if (failures.isEmpty()) {
+        // 2. LLM 事实性校验（由 sys_config 开关控制，默认关闭）
+        if (failures.isEmpty() && Boolean.parseBoolean(runtimeConfig.get("agent.quality.llm_check", "false"))) {
             String llmResult = llmGenerator.generate("factual_check", item.getTitle(), item.getContent());
             if (llmResult != null && llmResult.startsWith("FAIL")) {
                 failures.add("事实校验: " + llmResult);

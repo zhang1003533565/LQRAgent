@@ -36,7 +36,7 @@ public class QaAgentService {
 
         log.info("[QaAgent] handling message: userId={}, sessionId={}, content={}", userId, sessionId, userMessage);
 
-        aiServerWsProxy.streamChat(sessionId, userMessage, new AiServerWsProxy.StreamCallback() {
+        aiServerWsProxy.streamChat(sessionId, userMessage, userId, new AiServerWsProxy.StreamCallback() {
             @Override
             public void onChunk(String content) {
                 callback.onChunk(content);

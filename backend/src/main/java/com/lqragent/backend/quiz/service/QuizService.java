@@ -72,10 +72,9 @@ public class QuizService {
         // 效果评估：低分→动态调整路径
         effectAssessmentService.evaluateQuizResult(userId, request.getKpId(), score, correct);
 
-        // 低分时触发薄弱点分析
-        String weaknessReport = null;
+        // 低分时异步触发薄弱点分析（不阻塞用户请求）
         if (!correct || score < 60) {
-            weaknessReport = effectAssessmentService.analyzeWeakness(userId);
+            effectAssessmentService.analyzeWeaknessAsync(userId);
         }
 
         return QuizResultDto.builder()
@@ -84,7 +83,6 @@ public class QuizService {
                 .score(score)
                 .kpId(request.getKpId())
                 .answer(request.getAnswer())
-                .weaknessReport(weaknessReport)
                 .build();
     }
 }

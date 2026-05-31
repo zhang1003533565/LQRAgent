@@ -9,6 +9,7 @@ import com.lqragent.backend.quiz.repository.StudyBehaviorRepository;
 import com.lqragent.backend.framework.llm.LlmContentGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -85,9 +86,27 @@ public class EffectAssessmentService {
 
     /**
      * LLM 分析薄弱点（基于行为和答题数据）。
-     * @return 分析文本，包含薄弱知识点列表 + 建议
+     * 异步执行，不阻塞用户答题请求。
+     */
+    @Async
+    public void analyzeWeaknessAsync(Long userId) {
+        try {
+            String result = doAnalyzeWeakness(userId);
+            log.info("[EffectAssessment] 薄弱点分析完成: userId={}, result={}", userId,
+                    result.length() > 100 ? result.substring(0, 100) + "..." : result);
+        } catch (Exception e) {
+            log.warn("[EffectAssessment] 薄弱点分析失败: userId={}, error={}", userId, e.getMessage());
+        }
+    }
+
+    /**
+     * LLM 分析薄弱点（同步版本，供需要返回值的场景调用）。
      */
     public String analyzeWeakness(Long userId) {
+        return doAnalyzeWeakness(userId);
+    }
+
+    private String doAnalyzeWeakness(Long userId) {
         // 获取用户最近的行为数据
         List<StudyBehavior> behaviors = behaviorRepo.findByUserIdOrderByCreatedAtDesc(userId);
         if (behaviors.isEmpty()) {

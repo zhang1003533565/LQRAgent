@@ -17,4 +17,6 @@ public interface KbUploadTaskRepository extends JpaRepository<KbUploadTask, Long
     long countByStatus(TaskStatus status);
 
     Optional<KbUploadTask> findFirstByStatusOrderByPriorityDescCreatedAtAsc(TaskStatus status);
+
+    List<KbUploadTask> findTopNByStatusOrderByPriorityDescCreatedAtAsc(TaskStatus status, Pageable pageable);
 }

@@ -172,9 +172,10 @@ public class OrchestratorAgent implements Agent {
             自动串联：路径规划 → 资源生成 → 质量评估，一步到位。
 
             ## 输出规范
-            - 工具返回的是 JSON 状态码（如 {"status":"success","resourceId":128}），不是完整内容
-            - 根据状态码判断成功/失败，不要假设工具结果内容
-            - 所有子任务结果汇总后，用自然语言回复用户
+            - 工具返回中包含 "response" 字段，这是子 Agent 生成的完整内容
+            - **你必须将 response 字段的内容原样转发给用户，不要自己总结、不要加系统评论、不要只说"处理完成"**
+            - 如果 response 内容很长，可以直接转发，不需要精简
+            - 你不需要解释你在做什么，直接输出内容即可
             - 未知意图时，默认调用 handle_qa 进行答疑
             """;
     }
@@ -260,11 +261,17 @@ public class OrchestratorAgent implements Agent {
                 return err;
             }
 
-            // 只返回状态摘要，不返回完整路径内容（截断由 AgentEngine 保障）
+            // 返回子 agent 的完整内容，供 Orchestrator LLM 整合输出
+            String content = "";
+            if (subResult.getData() != null) {
+                Object r = subResult.getData().get("response");
+                if (r != null) content = r.toString();
+            }
+            if (content.isBlank()) content = "学习路径已规划完成";
             return Map.of(
                 "status", "success",
                 "route", AgentIds.LEARNING_PATH,
-                "message", "学习路径已规划完成",
+                "response", content,
                 "sub_agent", AgentIds.LEARNING_PATH
             );
         });
@@ -291,12 +298,17 @@ public class OrchestratorAgent implements Agent {
                 return err;
             }
 
+            String content = "";
+            if (subResult.getData() != null) {
+                Object r = subResult.getData().get("response");
+                if (r != null) content = r.toString();
+            }
+            if (content.isBlank()) content = "资源已生成并存入数据库";
             return Map.of(
                 "status", "success",
                 "route", AgentIds.RESOURCE_GENERATION,
-                "message", "资源已由教学资源专家生成并存入数据库，质检流程已自动触发",
-                "sub_agent", AgentIds.RESOURCE_GENERATION,
-                "next_step_hint", "你可以询问用户是否需要其他类型的资源，或继续解答问题"
+                "response", content,
+                "sub_agent", AgentIds.RESOURCE_GENERATION
             );
         });
 
@@ -317,10 +329,16 @@ public class OrchestratorAgent implements Agent {
                 );
             }
 
+            String content = "";
+            if (subResult.getData() != null) {
+                Object r = subResult.getData().get("response");
+                if (r != null) content = r.toString();
+            }
+            if (content.isBlank()) content = "示意图已生成";
             return Map.of(
                 "status", "success",
                 "route", AgentIds.MEDIA_GENERATION,
-                "message", "示意图已生成",
+                "response", content,
                 "sub_agent", AgentIds.MEDIA_GENERATION
             );
         });
@@ -365,10 +383,16 @@ public class OrchestratorAgent implements Agent {
                 return Map.of("status", "error", "route", "direct", "response", "学习链路执行失败：" + err);
             }
 
+            String content = "";
+            if (pipelineResult.getData() != null) {
+                Object r = pipelineResult.getData().get("response");
+                if (r != null) content = r.toString();
+            }
+            if (content.isBlank()) content = "学习链路已完成：路径规划 → 资源生成 → 质量评估";
             return Map.of(
                 "status", "success",
                 "route", "direct",
-                "message", "学习链路已完成：路径规划 → 资源生成 → 质量评估",
+                "response", content,
                 "sub_agent", "pipeline"
             );
         });

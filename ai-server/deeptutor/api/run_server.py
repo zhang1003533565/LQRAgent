@@ -45,6 +45,15 @@ def main() -> None:
     configure_logging()
     backend_port = get_backend_port(project_root)
 
+    # 强制加载 .env 并清除 LLM 配置缓存，确保 .env 更新后立即生效
+    from deeptutor.services.config.env_store import get_env_store
+    get_env_store().load()
+    try:
+        from deeptutor.services.llm.config import clear_llm_config_cache
+        clear_llm_config_cache()
+    except Exception:
+        pass
+
     # Configure reload_excludes to skip directories that shouldn't trigger reloads
     # Use absolute paths to ensure they're properly resolved
     reload_excludes = [

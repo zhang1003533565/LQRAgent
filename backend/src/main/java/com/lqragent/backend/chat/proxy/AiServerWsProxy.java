@@ -33,13 +33,9 @@ public class AiServerWsProxy {
     /**
      * 流式对话：连接 ai-server WebSocket（/api/v1/ws 统一协议），
      * 发送用户消息，将流式响应通过 callback 传回。
-     * <p>
-     * ai-server unified WS 协议：
-     * - 发送: {"type":"message","content":"...","session_id":"..."}
-     * - 接收: content(流式块) / done(完成) / error(失败) / session(会话信息)
-     * </p>
+     * 同时检索公共知识库和用户私有知识库。
      */
-    public void streamChat(String sessionId, String userMessage, StreamCallback callback) {
+    public void streamChat(String sessionId, String userMessage, Long userId, StreamCallback callback) {
         String wsUrl = runtimeConfig.getAiServerWsUrl();
         log.info("[AiServerWsProxy] connecting to ai-server WS: {}", wsUrl);
 
@@ -54,13 +50,17 @@ public class AiServerWsProxy {
                         @Override
                         public void onOpen(WebSocket webSocket) {
                             log.info("[AiServerWsProxy] connected to ai-server");
-                            // ai-server unified WS expects: type=message, content, session_id, knowledge_bases, tools
-                            String kbName = runtimeConfig.get(ConfigKeys.RAG_KB_NAME, "lqragent-uploads");
+                            // 同时检索公共库和用户私有库
+                            String publicKb = runtimeConfig.get(ConfigKeys.KB_PUBLIC, "kb-public");
+                            String privatePrefix = runtimeConfig.get(ConfigKeys.KB_PRIVATE_PREFIX, "kb-private-");
+                            String privateKb = privatePrefix + userId;
                             com.fasterxml.jackson.databind.node.ObjectNode payloadNode = objectMapper.createObjectNode()
                                     .put("type", "message")
                                     .put("content", userMessage)
                                     .put("session_id", sessionId != null ? sessionId : "");
-                            payloadNode.putArray("knowledge_bases").add(kbName);
+                            com.fasterxml.jackson.databind.node.ArrayNode kbArray = payloadNode.putArray("knowledge_bases");
+                            kbArray.add(publicKb);
+                            kbArray.add(privateKb);
                             payloadNode.putArray("tools").add("rag");
                             String payload = payloadNode.toString();
                             webSocket.sendText(payload, true);

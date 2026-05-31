@@ -9,21 +9,25 @@
 }
 
 .avatar {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
-  background: var(--ws-accent);
-  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 600;
   flex-shrink: 0;
 }
 
-.user .avatar {
-  background: var(--ws-success);
+.userAvatar {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.aiAvatar {
+  background: linear-gradient(135deg, #e0edff 0%, #c7dfff 100%);
+  box-shadow: 0 4px 12px rgba(47, 119, 255, 0.12);
 }
 
 .content {
@@ -34,39 +38,40 @@
 }
 
 .bubble {
-  padding: 12px 16px;
-  border-radius: 12px;
-  background: #f1f3f5;
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: #f1f5f9;
   font-size: 14px;
   line-height: 1.7;
+  color: #1e293b;
+  word-break: break-word;
 }
 
 .user .bubble {
-  background: var(--ws-accent);
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   color: #fff;
+  border-radius: 16px 16px 4px 16px;
 }
 
-.bubble :global(pre) {
-  background: #1e1e2e;
-  color: #cdd6f4;
-  padding: 12px;
-  border-radius: 8px;
-  overflow-x: auto;
-  font-size: 13px;
-  margin: 8px 0;
+.assistant .bubble {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-radius: 16px 16px 16px 4px;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.03);
+  backdrop-filter: blur(8px);
 }
 
-.bubble :global(code) {
-  background: rgba(0, 0, 0, 0.08);
-  padding: 2px 5px;
-  border-radius: 4px;
-  font-size: 13px;
+/* Markdown 样式 */
+.bubble :global(h1),
+.bubble :global(h2),
+.bubble :global(h3) {
+  margin: 12px 0 6px;
+  color: #0f172a;
 }
 
-.bubble :global(pre code) {
-  background: none;
-  padding: 0;
-}
+.bubble :global(h1) { font-size: 18px; }
+.bubble :global(h2) { font-size: 16px; }
+.bubble :global(h3) { font-size: 15px; }
 
 .bubble :global(p) {
   margin: 4px 0;
@@ -78,34 +83,127 @@
   margin: 4px 0;
 }
 
+.bubble :global(li) {
+  margin: 2px 0;
+}
+
+.bubble :global(table) {
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 13px;
+  width: 100%;
+}
+
+.bubble :global(th),
+.bubble :global(td) {
+  border: 1px solid #e2e8f0;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.bubble :global(th) {
+  background: #f8fafc;
+  font-weight: 600;
+}
+
+.bubble :global(pre) {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 14px;
+  border-radius: 10px;
+  overflow-x: auto;
+  font-size: 13px;
+  margin: 8px 0;
+}
+
+.bubble :global(code) {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #e11d48;
+}
+
+.bubble :global(pre code) {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.bubble :global(blockquote) {
+  border-left: 3px solid #3b82f6;
+  padding-left: 12px;
+  margin: 8px 0;
+  color: #64748b;
+}
+
+/* 时间戳 */
 .time {
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
-  color: #95a1bb;
+  color: #94a3b8;
 }
 
 .assistantTime {
-  align-self: flex-start;
   padding-left: 4px;
 }
 
 .userTime {
-  align-self: flex-end;
+  text-align: right;
   padding-right: 4px;
 }
 
+/* 流式光标 */
 .cursor {
   display: inline-block;
   width: 2px;
   height: 1em;
-  background: var(--ws-accent);
+  background: #3b82f6;
   margin-left: 2px;
   vertical-align: text-bottom;
   animation: blink 0.8s step-end infinite;
 }
 
 @keyframes blink {
-  50% {
-    opacity: 0;
-  }
+  50% { opacity: 0; }
+}
+
+/* 操作按钮 */
+.actions {
+  display: flex;
+  gap: 4px;
+  padding-left: 4px;
+  margin-top: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.wrapper:hover .actions {
+  opacity: 1;
+}
+
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #64748b;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.actionBtn:hover {
+  background: #f1f5f9;
+  color: #334155;
+  border-color: #cbd5e1;
+}
+
+.actionBtn.active {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #93c5fd;
 }

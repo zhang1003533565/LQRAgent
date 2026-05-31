@@ -126,6 +126,37 @@ public class AIServerRunner implements CommandLineRunner {
         log.info("[AIServerRunner] AI Server API started with PID {}", aiProcess.pid());
     }
 
+    /**
+     * 重启 ai-server（先停后启）。
+     */
+    public synchronized void restart() {
+        log.info("[AIServerRunner] 重启 ai-server...");
+        stop();
+        try {
+            File workDir = resolveAiServerDir().orElse(null);
+            if (workDir != null) {
+                startAiServer(workDir);
+            }
+        } catch (Exception e) {
+            log.error("[AIServerRunner] 重启失败: {}", e.getMessage());
+        }
+    }
+
+    private void stop() {
+        if (aiProcess != null && aiProcess.isAlive()) {
+            log.info("[AIServerRunner] 停止 ai-server (PID: {})", aiProcess.pid());
+            aiProcess.destroy();
+            try {
+                if (!aiProcess.waitFor(10, TimeUnit.SECONDS)) {
+                    aiProcess.destroyForcibly();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            aiProcess = null;
+        }
+    }
+
     private static File aiServerLogFile() throws IOException {
         Path logDir = Paths.get("logs");
         Files.createDirectories(logDir);

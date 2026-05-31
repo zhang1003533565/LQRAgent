@@ -44,6 +44,7 @@ public class KnowledgeGraphLoader {
         try {
             JsonNode root = objectMapper.readTree(
                     new ClassPathResource(GRAPH_JSON).getInputStream());
+            String courseName = root.has("course_name") ? root.get("course_name").asText() : "默认";
             JsonNode chapters = root.get("chapters");
 
             List<KnowledgePoint> points = new ArrayList<>();
@@ -63,6 +64,7 @@ public class KnowledgeGraphLoader {
                             .title(name)
                             .description(chapterTitle + " — " + name)
                             .chapter(chapterId)
+                            .subject(courseName)
                             .difficulty(difficulty)
                             .build());
 

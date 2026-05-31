@@ -1,7 +1,7 @@
 import { useWebSocket } from '@/utils/hooks/useWebSocket'
 import ChatMessageList from './ChatMessageList'
 import ChatComposer from './ChatComposer'
-import AgentTimeline from './AgentTimeline'
+import AgentStepsBar from './AgentStepsBar'
 import styles from './ChatView.module.css'
 
 export default function ChatView() {
@@ -15,16 +15,12 @@ export default function ChatView() {
 
       <div className={styles.scrollBody}>
         <div className={styles.content}>
+          <AgentStepsBar />
           <ChatMessageList />
         </div>
-        <aside className={styles.timeline}>
-          <AgentTimeline />
-        </aside>
       </div>
 
-      <section className={styles.composer}>
-        <ChatComposer onSend={send} />
-      </section>
+      <ChatComposer onSend={send} />
     </section>
   )
 }

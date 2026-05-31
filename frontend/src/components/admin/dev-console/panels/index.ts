@@ -8,15 +8,5 @@ export { default as LearningPathPanel } from './LearningPathPanel'
 export { default as ResourcePanel } from './ResourcePanel'
 export { default as QuizRecordPanel } from './QuizRecordPanel'
 export { default as StudyBehaviorPanel } from './StudyBehaviorPanel'
-export { default as AgentMonitorPanel } from './AgentMonitorPanel'
-export {
-  AgentOrchestratorPanel,
-  AgentQaPanel,
-  AgentLearningPathPanel,
-  AgentResourceFacadePanel,
-  AgentLearnerProfilePanel,
-  AgentQualityAssessmentPanel,
-  AgentContentAnalyzerPanel,
-  AgentEffectAssessmentPanel,
-  AgentMediaGenPanel,
-} from './agent/AgentPanels'
+export { default as AgentManagementPanel } from './AgentManagementPanel'
+export { default as KnowledgeBasePanel } from './KnowledgeBasePanel'

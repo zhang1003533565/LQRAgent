@@ -9,7 +9,6 @@ interface Props {
 export default function ChatComposer({ onSend }: Props) {
   const [input, setInput] = useState('')
   const addMessage = useChatStore((s) => s.addMessage)
-  const isConnected = useChatStore((s) => s.isConnected)
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -35,12 +34,8 @@ export default function ChatComposer({ onSend }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className={styles.inputArea}>
-      <div className={styles.status}>
-        <span className={isConnected ? styles.online : styles.offline} />
-        {isConnected ? '已连接' : '未连接（后端 WS 就绪后自动恢复）'}
-      </div>
-      <div className={styles.inputRow}>
+    <div className={styles.composerWrap}>
+      <form onSubmit={handleSubmit} className={styles.inputRow}>
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -50,14 +45,26 @@ export default function ChatComposer({ onSend }: Props) {
               handleSubmit(e as unknown as FormEvent)
             }
           }}
-          placeholder="输入问题或学习目标（Enter 发送，Shift+Enter 换行）"
-          rows={3}
+          placeholder="输入你的问题..."
+          rows={2}
           className={styles.textarea}
         />
-        <button type="submit" className={styles.sendBtn} disabled={!input.trim()}>
-          发送
-        </button>
-      </div>
-    </form>
+        <div className={styles.bottomBar}>
+          <div className={styles.tools}>
+            <button type="button" className={styles.toolBtn} title="图片">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+              <span>图片</span>
+            </button>
+            <button type="button" className={styles.toolBtn} title="工具">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+              <span>工具</span>
+            </button>
+          </div>
+          <button type="submit" className={styles.sendBtn} disabled={!input.trim()}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m22 2-7 20-4-9-9-4z"/><path d="m22 2-11 11"/></svg>
+          </button>
+        </div>
+      </form>
+    </div>
   )
 }

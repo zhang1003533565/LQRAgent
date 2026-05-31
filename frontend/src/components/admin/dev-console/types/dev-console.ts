@@ -1,6 +1,4 @@
-import type { AgentId } from '@/utils/types/agent-events'
-
-/** Dev Console 专用类型（P3 Agent 监控 / 运行时 API 预留） */
+/** Dev Console 专用类型 */
 
 export type ServiceStatus = 'online' | 'offline' | 'connected' | 'degraded'
 
@@ -8,7 +6,6 @@ export interface ServiceHealth {
   id: string
   name: string
   status: ServiceStatus
-  /** 对接：GET /admin/status 部分字段 */
   source: 'api' | 'mock'
 }
 
@@ -18,7 +15,6 @@ export interface DashboardMetrics {
   agentCallsToday: number
   avgResponseMs: number
   onlineUsers: number
-  /** MOCK: 待对接 GET /admin/metrics/dashboard */
   source: 'mock'
 }
 
@@ -48,15 +44,6 @@ export interface AgentRuntimeStatus {
   source: 'mock' | 'api'
 }
 
-/** React Flow 要求 node.data 满足 Record<string, unknown> */
-export interface TraceNodeData extends Record<string, unknown> {
-  label: string
-  agent?: AgentId
-  status: 'success' | 'running' | 'pending' | 'failed'
-  durationMs: number
-  tokens: number
-}
-
 export type LogLevel = 'INFO' | 'WARN' | 'ERROR' | 'DEBUG'
 
 export interface DevLogEntry {
@@ -64,31 +51,25 @@ export interface DevLogEntry {
   level: LogLevel
   message: string
   timestamp: string
-  /** 待对接：管理端 WS 或 GET /admin/logs/stream */
   source: 'mock' | 'ws'
 }
 
+/** 精简后的导航 ID：5 组 ~15 项 */
 export type DevConsoleNavId =
   | 'dashboard'
-  | 'agent-debug'
-  | 'trace'
-  | 'users'
-  | 'profile'
+  // 内容管理
   | 'knowledge'
-  | 'path'
   | 'resources'
   | 'upload'
-  | 'system-config'
-  | 'model-config'
-  // 智能体管理（8 个 Agent + 模型配置）
-  | 'agent-orchestrator'
-  | 'agent-qa'
-  | 'agent-learningpath'
-  | 'agent-resourcefacade'
-  | 'agent-learnerprofile'
-  | 'agent-qualityassessment'
-  | 'agent-contentanalyzer'
-  | 'agent-effectassessment'
-  | 'agent-mediagen'
+  | 'knowledge-base'
+  // 学员管理
+  | 'users'
+  | 'profile'
+  | 'path'
   | 'quiz-records'
   | 'study-behaviors'
+  // 智能体
+  | 'agents'
+  // 系统
+  | 'model-config'
+  | 'system-config'

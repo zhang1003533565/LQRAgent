@@ -9,7 +9,10 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -39,10 +42,24 @@ public class GlobalExceptionHandler {
         return ApiResponse.fail(400, msg);
     }
 
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ApiResponse<Void> handleMaxUpload(MaxUploadSizeExceededException ex) {
+        log.warn("Upload too large: {}", ex.getMessage());
+        return ApiResponse.fail(400, "文件过大，超出限制");
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ResponseEntity<Map<String, String>> handleMultipart(MultipartException ex) {
+        log.warn("Multipart error: {}", ex.getMessage());
+        return ResponseEntity.badRequest().body(Map.of("error", "上传失败: " + ex.getMostSpecificCause().getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ApiResponse<Void> handleGeneral(Exception ex) {
-        log.error("Unexpected error", ex);
-        return ApiResponse.fail(500, "服务器内部错误");
+        log.error("Unexpected error: {}", ex.getMessage(), ex);
+        return ApiResponse.fail(500, "服务器内部错误: " + ex.getMessage());
     }
 }

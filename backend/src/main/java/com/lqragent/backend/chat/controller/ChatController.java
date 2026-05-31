@@ -133,4 +133,33 @@ public class ChatController {
                 .toList();
         return ApiResponse.ok(dtos);
     }
+
+    @Operation(summary = "删除聊天会话")
+    @DeleteMapping("/sessions/{sessionId}")
+    public ApiResponse<Void> deleteSession(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String sessionId) {
+        User user = currentUserService.requireUser(userDetails);
+        var session = chatSessionService.findById(sessionId);
+        if (session.isEmpty() || !session.get().getUserId().equals(user.getId())) {
+            return ApiResponse.ok();
+        }
+        chatSessionService.deleteSession(sessionId);
+        return ApiResponse.ok();
+    }
+
+    @Operation(summary = "重命名聊天会话")
+    @PutMapping("/sessions/{sessionId}")
+    public ApiResponse<Void> renameSession(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String sessionId,
+            @RequestBody Map<String, String> body) {
+        User user = currentUserService.requireUser(userDetails);
+        var session = chatSessionService.findById(sessionId);
+        if (session.isEmpty() || !session.get().getUserId().equals(user.getId())) {
+            return ApiResponse.ok();
+        }
+        chatSessionService.updateTitle(sessionId, body.getOrDefault("title", "新对话"));
+        return ApiResponse.ok();
+    }
 }

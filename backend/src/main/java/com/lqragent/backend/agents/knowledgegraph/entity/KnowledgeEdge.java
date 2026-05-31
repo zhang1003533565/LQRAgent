@@ -28,7 +28,11 @@ public class KnowledgeEdge {
     private String toKpId;
 
     @Column(name = "relation_type", length = 32)
-    @Comment("关系类型：PREREQUISITE等")
+    @Comment("关系类型：PREREQUISITE/CROSS_DISCIPLINE等")
     @Builder.Default
     private String relationType = "PREREQUISITE";
+
+    @Column(length = 64)
+    @Comment("交叉学科标签，跨学科关系时填写")
+    private String crossSubject;
 }

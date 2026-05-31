@@ -107,7 +107,15 @@ class EnvStore:
         else:
             values = OrderedDict()
         for key, value in values.items():
-            os.environ.setdefault(key, value)
+            old = os.environ.get(key)
+            os.environ[key] = value
+            # 如果 LLM/Embedding 配置变了，清除缓存
+            if old != value and key.startswith(("LLM_", "EMBEDDING_")):
+                try:
+                    from deeptutor.services.llm.config import clear_llm_config_cache
+                    clear_llm_config_cache()
+                except Exception:
+                    pass
         return values
 
     def get(self, key: str, default: str = "") -> str:

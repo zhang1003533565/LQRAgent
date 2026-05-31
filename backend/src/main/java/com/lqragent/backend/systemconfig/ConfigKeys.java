@@ -35,6 +35,11 @@ public final class ConfigKeys {
     /** RAG 知识库名称（ai-server 侧的知识库标识） */
     public static final String RAG_KB_NAME = "agent.rag.kb_name";
 
+    /** 公共知识库名称 */
+    public static final String KB_PUBLIC = "agent.rag.kb_public";
+    /** 私有知识库前缀（拼 userId） */
+    public static final String KB_PRIVATE_PREFIX = "agent.rag.kb_private_prefix";
+
     /** 七牛云对象存储 */
     public static final String QINIU_ACCESS_KEY = "qiniu.access-key";
     public static final String QINIU_SECRET_KEY = "qiniu.secret-key";

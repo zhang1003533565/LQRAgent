@@ -355,21 +355,6 @@ public class AdminController {
         return ApiResponse.ok(result);
     }
 
-    @Operation(summary = "重试上传任务", description = "重新处理一条失败的上传任务")
-    @PostMapping("/upload/process/{taskId}")
-    public ApiResponse<?> retryUploadTask(@PathVariable Long taskId) {
-        KbUploadTask task = uploadQueueService.getTaskById(taskId);
-        uploadQueueService.processImmediatelyAsync(task);
-        return ApiResponse.ok(Map.of("message", "已重新触发处理", "taskId", taskId));
-    }
-
-    @Operation(summary = "删除上传任务", description = "删除一条上传任务记录")
-    @DeleteMapping("/upload/tasks/{taskId}")
-    public ApiResponse<?> deleteUploadTask(@PathVariable Long taskId) {
-        uploadQueueService.deleteTask(taskId);
-        return ApiResponse.ok(Map.of("message", "已删除", "taskId", taskId));
-    }
-
     @Operation(summary = "上传公共资料", description = "上传文件到公共知识库 kb-public，异步向量化")
     @PostMapping("/upload-public")
     public ApiResponse<?> uploadPublic(
@@ -382,10 +367,12 @@ public class AdminController {
             if (originalName == null || originalName.isBlank()) {
                 return ApiResponse.ok(Map.of("error", "文件名为空"));
             }
-            String key = "uploads/" + UUID.randomUUID() + "_" + originalName;
+            String ext = FileCategories.extractExt(originalName);
+            String category = FileCategories.categorize(ext);
+            String key = "public/" + category + "/" + UUID.randomUUID() + "_" + originalName;
             String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
 
-            log.info("[Admin] upload-public: key={}, size={}", key, file.getSize());
+            log.info("[Admin] upload-public: key={}, ext={}, category={}", key, ext, category);
             qiniuStorageService.upload(key, file.getBytes(), contentType);
             log.info("[Admin] upload-public: uploaded to qiniu, key={}", key);
 

@@ -37,6 +37,11 @@ public class KnowledgePoint {
     @Comment("所属章节")
     private String chapter;
 
+    @Column(length = 64)
+    @Comment("所属学科/科目，如 Python基础、数据结构、算法")
+    @Builder.Default
+    private String subject = "默认";
+
     @Column(nullable = false)
     @Comment("难度等级：1-5")
     private Integer difficulty;

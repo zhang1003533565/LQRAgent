@@ -1,6 +1,7 @@
 package com.lqragent.backend.uploadqueue.controller;
 
 import com.lqragent.backend.common.dto.ApiResponse;
+import com.lqragent.backend.storage.FileCategories;
 import com.lqragent.backend.storage.QiniuStorageService;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask.KbScope;
@@ -40,10 +41,8 @@ public class UploadQueueController {
 
         // 按文件类型分类存储
         String originalName = file.getOriginalFilename();
-        String ext = originalName != null && originalName.contains(".")
-                ? originalName.substring(originalName.lastIndexOf(".") + 1).toLowerCase()
-                : "";
-        String category = categorizeFile(ext);
+        String ext = FileCategories.extractExt(originalName);
+        String category = FileCategories.categorize(ext);
         String key = category + "/" + userId + "/" + UUID.randomUUID() + "_" + originalName;
         String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
         qiniuStorageService.upload(key, file.getBytes(), contentType);
@@ -70,22 +69,20 @@ public class UploadQueueController {
         return ApiResponse.ok(Map.of("url", url, "fileName", task.getFileName()));
     }
 
-    /**
-     * 按文件扩展名分类到不同目录。
-     */
-    private String categorizeFile(String ext) {
-        return switch (ext) {
-            case "pdf" -> "documents/pdf";
-            case "doc", "docx" -> "documents/word";
-            case "ppt", "pptx" -> "documents/ppt";
-            case "xls", "xlsx" -> "documents/excel";
-            case "md", "txt", "rst" -> "documents/text";
-            case "py", "java", "kt", "js", "ts", "go", "rs", "c", "cpp", "h" -> "code";
-            case "png", "jpg", "jpeg", "gif", "webp", "svg" -> "images";
-            case "mp4", "avi", "mov" -> "media/video";
-            case "mp3", "wav", "ogg" -> "media/audio";
-            case "json", "yaml", "yml", "toml", "xml", "csv" -> "data";
-            default -> "documents/other";
-        };
+    @Operation(summary = "测试七牛云连接", description = "验证 AK/SK 和 Bucket 是否可用")
+    @PostMapping("/test-qiniu")
+    public ApiResponse<Map<String, Object>> testQiniu() {
+        Map<String, Object> result = new java.util.HashMap<>();
+        try {
+            String testKey = "_test/connection_" + System.currentTimeMillis() + ".txt";
+            qiniuStorageService.upload(testKey, "ok".getBytes(), "text/plain");
+            qiniuStorageService.delete(testKey);
+            result.put("success", true);
+            result.put("message", "七牛云连接正常，bucket 可写可删");
+        } catch (Exception e) {
+            result.put("success", false);
+            result.put("message", e.getMessage());
+        }
+        return ApiResponse.ok(result);
     }
 }

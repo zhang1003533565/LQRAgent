@@ -33,9 +33,16 @@ public class AiServerEnvSyncService {
     private static final List<String> AI_SERVER_DIR_CANDIDATES = List.of("ai-server", "../ai-server");
 
     private final AppRuntimeConfig runtimeConfig;
+    private com.lqragent.backend.config.AIServerRunner aiServerRunner;
 
     public AiServerEnvSyncService(AppRuntimeConfig runtimeConfig) {
         this.runtimeConfig = runtimeConfig;
+    }
+
+    /** 注入 AIServerRunner（避免循环依赖，用 setter） */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setAiServerRunner(com.lqragent.backend.config.AIServerRunner runner) {
+        this.aiServerRunner = runner;
     }
 
     public Optional<Path> resolveEnvFile() {
@@ -56,6 +63,12 @@ public class AiServerEnvSyncService {
         Map<String, String> updates = buildUpdates();
         mergeEnvFile(envPath, updates);
         log.info("[AiServerEnvSync] 已同步模型配置到 {}", envPath.toAbsolutePath());
+
+        // 自动重启 ai-server 使新配置生效
+        if (aiServerRunner != null) {
+            log.info("[AiServerEnvSync] 正在重启 ai-server 使配置生效...");
+            new Thread(() -> aiServerRunner.restart(), "ai-server-restart").start();
+        }
     }
 
     private Map<String, String> buildUpdates() {

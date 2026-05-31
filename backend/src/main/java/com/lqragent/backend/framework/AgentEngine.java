@@ -177,6 +177,17 @@ public class AgentEngine {
             if (toolCalls == null || toolCalls.isEmpty()) {
                 // 最终答案
                 String content = (String) assistantMsg.get("content");
+
+                // 如果 LLM 只回复了"处理完成"之类的短文本，尝试用最后一条工具结果替代
+                if (content != null && isPlaceholderResponse(content)) {
+                    String toolContent = getLastToolResultContent(messages);
+                    if (toolContent != null && !toolContent.isBlank()) {
+                        log.info("[AgentEngine] LLM 回复为占位文本，使用工具结果替代: agent={}, toolLen={}",
+                                agent.agentId(), toolContent.length());
+                        content = toolContent;
+                    }
+                }
+
                 log.info("[AgentEngine] 完成: agent={}, rounds={}, len={}",
                         agent.agentId(), round + 1, content != null ? content.length() : 0);
                 return AgentResult.builder()
@@ -371,21 +382,51 @@ public class AgentEngine {
         }
         if (lastAssistantIdx < 0) return messages;
 
-        Map<String, Object> lastAssistant = messages.get(lastAssistantIdx);
-        List<Map<String, Object>> toolCalls = (List<Map<String, Object>>) lastAssistant.get("tool_calls");
-        if (toolCalls == null || toolCalls.isEmpty()) return messages;
+        // 检查所有 assistant 消息的 tool_calls 是否有对应的 tool 消息
+        int repairIdx = -1;
+        for (int i = 0; i <= lastAssistantIdx; i++) {
+            Map<String, Object> msg = messages.get(i);
+            if (!"assistant".equals(msg.get("role"))) continue;
+            List<Map<String, Object>> toolCalls = (List<Map<String, Object>>) msg.get("tool_calls");
+            if (toolCalls == null || toolCalls.isEmpty()) continue;
 
-        // 统计 assistant 之后的 tool 消息数
-        long toolMsgCount = messages.subList(lastAssistantIdx + 1, messages.size()).stream()
-                .filter(m -> "tool".equals(m.get("role")))
-                .count();
+            // 统计此 assistant 之后的 tool 消息数
+            long toolMsgCount = messages.subList(i + 1, messages.size()).stream()
+                    .filter(m -> "tool".equals(m.get("role")))
+                    .count();
+            if (toolMsgCount < toolCalls.size()) {
+                repairIdx = i;
+                break;
+            }
+        }
 
-        if (toolMsgCount < toolCalls.size()) {
-            log.warn("[AgentEngine] 修复不完整消息: lastAssistantIdx={}, tool_calls={}, tool_msgs={}",
-                    lastAssistantIdx, toolCalls.size(), toolMsgCount);
-            return new ArrayList<>(messages.subList(0, lastAssistantIdx));
+        if (repairIdx >= 0) {
+            log.warn("[AgentEngine] 修复不完整消息: repairIdx={}, truncating", repairIdx);
+            return new ArrayList<>(messages.subList(0, repairIdx));
         }
         return messages;
+    }
+
+    /** 判断 LLM 回复是否为无意义的占位文本 */
+    private static boolean isPlaceholderResponse(String content) {
+        if (content == null) return true;
+        String trimmed = content.trim();
+        return trimmed.isEmpty()
+                || "处理完成".equals(trimmed)
+                || "已完成".equals(trimmed)
+                || trimmed.length() < 5;
+    }
+
+    /** 从消息列表中提取最后一条 tool 消息的完整内容 */
+    private static String getLastToolResultContent(List<Map<String, Object>> messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            Map<String, Object> msg = messages.get(i);
+            if ("tool".equals(msg.get("role"))) {
+                Object content = msg.get("content");
+                if (content != null) return content.toString();
+            }
+        }
+        return null;
     }
 
     private void addSessionMessage(String sessionId, Map<String, Object> message) {

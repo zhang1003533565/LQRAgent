@@ -44,8 +44,13 @@ public class QiniuStorageService {
         String region = runtimeConfig.get(ConfigKeys.QINIU_REGION, "cn-south");
         this.bucket = runtimeConfig.get(ConfigKeys.QINIU_BUCKET, "lqragent");
 
+        log.info("[QiniuStorage] init: ak={}, sk={}, region={}, bucket={}",
+                ak.isEmpty() ? "<empty>" : ak.substring(0, Math.min(6, ak.length())) + "...",
+                sk.isEmpty() ? "<empty>" : "***",
+                region, bucket);
+
         if (ak.isEmpty() || sk.isEmpty()) {
-            log.warn("[QiniuStorage] Access Key 或 Secret Key 未配置，存储服务不可用");
+            log.warn("[QiniuStorage] Access Key 或 Secret Key 未配置，存储服务不可用。请在 application.properties 或 sys_config 表中配置 qiniu.access-key / qiniu.secret-key");
             return;
         }
 
@@ -64,18 +69,25 @@ public class QiniuStorageService {
         this.uploadManager = new UploadManager(config);
         this.bucketManager = new BucketManager(auth, config);
 
-        this.domain = "http://" + bucket + ".qiniucdn.com";
-        log.info("[QiniuStorage] 初始化完成: bucket={}, region={}", bucket, region);
+        // 下载域名（从配置读取，控制台的外链域名）
+        this.domain = runtimeConfig.get("qiniu.domain", "http://" + bucket + ".qiniudn.com");
+        log.info("[QiniuStorage] 初始化完成: bucket={}, region={}, domain={}", bucket, region, this.domain);
     }
 
     /**
      * 上传文件到七牛云。
      */
     public String upload(String key, byte[] data, String contentType) {
+        if (uploadManager == null) {
+            throw new RuntimeException("七牛云未配置（AK/SK 为空），请在 application.properties 或 sys_config 中配置 qiniu.access-key / qiniu.secret-key");
+        }
+        log.info("[QiniuStorage] uploading: key={}, size={}, type={}", key, data.length, contentType);
         StringMap params = new StringMap().put("mime-type", contentType);
+        String token = getUploadToken();
+        log.info("[QiniuStorage] upload token generated: {}", token.substring(0, Math.min(20, token.length())) + "...");
         try (var is = new ByteArrayInputStream(data)) {
-            uploadManager.put(is, key, getUploadToken(), params, null);
-            log.debug("[QiniuStorage] uploaded: key={}, size={}", key, data.length);
+            uploadManager.put(is, key, token, params, null);
+            log.info("[QiniuStorage] uploaded OK: key={}, size={}", key, data.length);
             return key;
         } catch (Exception e) {
             throw new RuntimeException("七牛云上传失败: " + key, e);
@@ -86,7 +98,10 @@ public class QiniuStorageService {
      * 从七牛云下载文件。
      */
     public byte[] download(String key) {
+        if (auth == null) throw new RuntimeException("七牛云未配置");
+        // 公开 bucket 直接用域名访问
         String url = domain + "/" + key;
+        log.info("[QiniuStorage] downloading: key={}, url={}", key, url);
         try {
             var client = HttpClient.newHttpClient();
             var request = HttpRequest.newBuilder().uri(URI.create(url)).GET().build();
@@ -94,6 +109,7 @@ public class QiniuStorageService {
             if (response.statusCode() != 200) {
                 throw new RuntimeException("七牛云下载失败: HTTP " + response.statusCode() + ", key=" + key);
             }
+            log.info("[QiniuStorage] downloaded OK: key={}, size={}", key, response.body().length);
             return response.body();
         } catch (Exception e) {
             if (e instanceof RuntimeException re) throw re;
@@ -125,7 +141,6 @@ public class QiniuStorageService {
      * 生成上传凭证（有效期 3600 秒）。
      */
     private String getUploadToken() {
-        StringMap policy = new StringMap().put("insertOnly", 1);
-        return auth.uploadToken(bucket, null, 3600, policy);
+        return auth.uploadToken(bucket);
     }
 }

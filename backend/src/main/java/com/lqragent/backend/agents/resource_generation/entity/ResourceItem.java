@@ -25,6 +25,10 @@ public class ResourceItem {
     @Comment("关联知识点ID")
     private String kpId;
 
+    @Column(length = 64)
+    @Comment("所属科目（从知识点继承）")
+    private String subject;
+
     @Column(name = "resource_type", nullable = false, length = 32)
     @Comment("资源类型：LESSON/QUIZ/CODE_CASE/ILLUSTRATION/VIDEO_CLIP")
     private String resourceType;

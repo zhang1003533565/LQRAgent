@@ -189,8 +189,9 @@ export async function listAdminProfiles(): Promise<AdminProfile[]> {
   return res.data.data
 }
 
-export async function getKnowledgeGraph(): Promise<KnowledgeGraphData> {
-  const res = await http.get<{ data: KnowledgeGraphData }>('/admin/knowledge-graph')
+export async function getKnowledgeGraph(subject?: string): Promise<KnowledgeGraphData & { subjects?: string[] }> {
+  const params = subject ? { subject } : {}
+  const res = await http.get<{ data: KnowledgeGraphData & { subjects?: string[] } }>('/admin/knowledge-graph', { params })
   return res.data.data
 }
 
@@ -199,11 +200,18 @@ export async function listAdminLearningPaths(): Promise<LearningPathItem[]> {
   return res.data.data
 }
 
-export async function listAdminResources(type?: string, kpId?: string): Promise<AdminResourceItem[]> {
+export interface ResourceListResponse {
+  items: AdminResourceItem[]
+  subjects: string[]
+  total: number
+}
+
+export async function listAdminResources(type?: string, kpId?: string, subject?: string): Promise<ResourceListResponse> {
   const params: Record<string, string> = {}
   if (type) params.type = type
   if (kpId) params.kpId = kpId
-  const res = await http.get<{ data: AdminResourceItem[] }>('/admin/resources', { params })
+  if (subject) params.subject = subject
+  const res = await http.get<{ data: ResourceListResponse }>('/admin/resources', { params })
   return res.data.data
 }
 

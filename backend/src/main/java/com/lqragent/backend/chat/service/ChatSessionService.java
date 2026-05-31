@@ -55,4 +55,13 @@ public class ChatSessionService {
             chatSessionRepository.save(session);
         });
     }
+
+    @Transactional
+    public boolean deleteSession(String sessionId) {
+        return chatSessionRepository.findById(sessionId).map(session -> {
+            chatSessionRepository.delete(session);
+            log.info("[ChatSession] deleted: id={}", sessionId);
+            return true;
+        }).orElse(false);
+    }
 }
