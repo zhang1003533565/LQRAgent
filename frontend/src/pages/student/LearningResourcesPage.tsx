@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { usePathStore } from '@/utils/store/pathStore'
 import { getResources, generateResource } from '@/api/student/resources'
 import type { LearningResource, ResourceType } from '@/utils/types/media-resource'
+import LearningResourcesEmptyPage from './LearningResourcesEmptyPage'
 import styles from './LearningResourcesPage.module.css'
 
 const TABS: { label: string; icon: string; type: ResourceType | 'ALL' }[] = [
@@ -24,7 +25,7 @@ export default function LearningResourcesPage() {
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
 
-  const kpId = selectedKpId || nodes[0]?.kpId || ''
+  const kpId = selectedKpId || ''
   const currentNode = nodes.find((n) => n.kpId === kpId)
 
   useEffect(() => {
@@ -151,15 +152,8 @@ export default function LearningResourcesPage() {
     )
   }
 
-  if (!kpId) {
-    return (
-      <section className={styles.page}>
-        <div className={styles.glow} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60%', color: '#8b9ab6', fontSize: 16 }}>
-          请先在「学习路径」页面生成学习路径，再查看资源
-        </div>
-      </section>
-    )
+  if (!selectedKpId) {
+    return <LearningResourcesEmptyPage />
   }
 
   return (
