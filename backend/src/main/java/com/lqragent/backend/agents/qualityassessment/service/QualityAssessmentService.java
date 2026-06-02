@@ -1,7 +1,7 @@
-package com.lqragent.backend.agents.quality_assessment.service;
+package com.lqragent.backend.agents.qualityassessment.service;
 
-import com.lqragent.backend.agents.resource_generation.entity.ResourceItem;
-import com.lqragent.backend.framework.llm.LlmContentGenerator;
+import com.lqragent.backend.agents.resourcegeneration.entity.ResourceItem;
+import com.lqragent.backend.core.llm.LlmContentGenerator;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import com.lqragent.backend.systemconfig.ConfigKeys;
 import lombok.RequiredArgsConstructor;

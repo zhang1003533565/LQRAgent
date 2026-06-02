@@ -1,6 +1,6 @@
-package com.lqragent.backend.agents.knowledgegraph.repository;
+package com.lqragent.backend.shared.knowledgegraph.repository;
 
-import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 

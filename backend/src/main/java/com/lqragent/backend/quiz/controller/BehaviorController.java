@@ -1,6 +1,6 @@
 package com.lqragent.backend.quiz.controller;
 
-import com.lqragent.backend.framework.RequestContext;
+import com.lqragent.backend.core.session.RequestContext;
 import com.lqragent.backend.quiz.service.BehaviorService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;

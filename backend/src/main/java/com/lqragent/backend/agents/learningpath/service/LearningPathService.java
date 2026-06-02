@@ -1,15 +1,15 @@
-package com.lqragent.backend.agents.learning_path.service;
+package com.lqragent.backend.agents.learningpath.service;
 
-import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgePoint;
-import com.lqragent.backend.agents.knowledgegraph.service.KnowledgeGraphService;
-import com.lqragent.backend.framework.llm.LlmContentGenerator;
-import com.lqragent.backend.agents.learner_profile.dto.ProfileSummaryDto;
-import com.lqragent.backend.agents.learner_profile.service.LearnerProfileService;
-import com.lqragent.backend.agents.learning_path.dto.LearningPathDto;
-import com.lqragent.backend.agents.learning_path.entity.LearningPath;
-import com.lqragent.backend.agents.learning_path.entity.LearningPathStep;
-import com.lqragent.backend.agents.learning_path.repository.LearningPathRepository;
-import com.lqragent.backend.agents.learning_path.repository.LearningPathStepRepository;
+import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.shared.knowledgegraph.service.KnowledgeGraphService;
+import com.lqragent.backend.core.llm.LlmContentGenerator;
+import com.lqragent.backend.agents.learnerprofile.dto.ProfileSummaryDto;
+import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
+import com.lqragent.backend.agents.learningpath.dto.LearningPathDto;
+import com.lqragent.backend.agents.learningpath.entity.LearningPath;
+import com.lqragent.backend.agents.learningpath.entity.LearningPathStep;
+import com.lqragent.backend.agents.learningpath.repository.LearningPathRepository;
+import com.lqragent.backend.agents.learningpath.repository.LearningPathStepRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

@@ -1,7 +1,7 @@
 package com.lqragent.backend.uploadqueue.service;
 
 import com.lqragent.backend.chat.proxy.AiServerClient;
-import com.lqragent.backend.agents.content_analyzer.service.ContentAnalyzerService;
+import com.lqragent.backend.agents.contentanalyzer.service.ContentAnalyzerService;
 import com.lqragent.backend.storage.QiniuStorageService;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import com.lqragent.backend.systemconfig.ConfigKeys;

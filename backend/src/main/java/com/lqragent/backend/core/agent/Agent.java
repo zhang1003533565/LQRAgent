@@ -1,5 +1,7 @@
-package com.lqragent.backend.framework;
+package com.lqragent.backend.core.agent;
 
+import com.lqragent.backend.core.tool.ToolSchema;
+import com.lqragent.backend.core.tool.ToolRegistry;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;

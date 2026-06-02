@@ -1,4 +1,4 @@
-package com.lqragent.backend.framework;
+package com.lqragent.backend.core.session;
 
 /**
  * 请求上下文 — 全链路传递 userId + requestId。

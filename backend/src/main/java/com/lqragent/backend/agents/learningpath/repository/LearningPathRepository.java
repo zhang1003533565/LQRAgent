@@ -1,6 +1,6 @@
-package com.lqragent.backend.agents.learning_path.repository;
+package com.lqragent.backend.agents.learningpath.repository;
 
-import com.lqragent.backend.agents.learning_path.entity.LearningPath;
+import com.lqragent.backend.agents.learningpath.entity.LearningPath;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;

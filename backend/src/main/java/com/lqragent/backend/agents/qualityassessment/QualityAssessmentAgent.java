@@ -1,13 +1,13 @@
-package com.lqragent.backend.agents.quality_assessment;
+package com.lqragent.backend.agents.qualityassessment;
 
-import com.lqragent.backend.framework.Agent;
-import com.lqragent.backend.framework.AgentIds;
-import com.lqragent.backend.framework.AgentResult;
-import com.lqragent.backend.framework.AgentTask;
-import com.lqragent.backend.framework.ToolRegistry;
-import com.lqragent.backend.framework.ToolSchema;
-import com.lqragent.backend.agents.quality_assessment.service.QualityAssessmentService;
-import com.lqragent.backend.agents.resource_generation.entity.ResourceItem;
+import com.lqragent.backend.core.agent.Agent;
+import com.lqragent.backend.core.agent.AgentIds;
+import com.lqragent.backend.core.agent.AgentResult;
+import com.lqragent.backend.core.agent.AgentTask;
+import com.lqragent.backend.core.tool.ToolRegistry;
+import com.lqragent.backend.core.tool.ToolSchema;
+import com.lqragent.backend.agents.qualityassessment.service.QualityAssessmentService;
+import com.lqragent.backend.agents.resourcegeneration.entity.ResourceItem;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 

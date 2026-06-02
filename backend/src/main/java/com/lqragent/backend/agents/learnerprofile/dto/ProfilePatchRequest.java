@@ -1,4 +1,4 @@
-package com.lqragent.backend.agents.learner_profile.dto;
+package com.lqragent.backend.agents.learnerprofile.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;

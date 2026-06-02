@@ -1,15 +1,15 @@
 package com.lqragent.backend.agents.orchestrator;
 
-import com.lqragent.backend.framework.Agent;
-import com.lqragent.backend.framework.AgentIds;
-import com.lqragent.backend.framework.AgentBus;
-import com.lqragent.backend.framework.AgentPipeline;
-import com.lqragent.backend.framework.AgentResult;
-import com.lqragent.backend.framework.AgentTask;
-import com.lqragent.backend.framework.QualityGate;
-import com.lqragent.backend.framework.RequestContext;
-import com.lqragent.backend.framework.ToolRegistry;
-import com.lqragent.backend.framework.ToolSchema;
+import com.lqragent.backend.core.agent.Agent;
+import com.lqragent.backend.core.agent.AgentIds;
+import com.lqragent.backend.core.agent.AgentBus;
+import com.lqragent.backend.core.agent.AgentPipeline;
+import com.lqragent.backend.core.agent.AgentResult;
+import com.lqragent.backend.core.agent.AgentTask;
+import com.lqragent.backend.core.quality.QualityGate;
+import com.lqragent.backend.core.session.RequestContext;
+import com.lqragent.backend.core.tool.ToolRegistry;
+import com.lqragent.backend.core.tool.ToolSchema;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;

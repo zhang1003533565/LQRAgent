@@ -1,9 +1,9 @@
-package com.lqragent.backend.agents.learner_profile.service;
+package com.lqragent.backend.agents.learnerprofile.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lqragent.backend.agents.learner_profile.entity.LearnerProfile;
+import com.lqragent.backend.agents.learnerprofile.entity.LearnerProfile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

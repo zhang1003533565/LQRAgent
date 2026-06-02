@@ -1,13 +1,18 @@
 package com.lqragent.backend.admin.controller;
 
-import com.lqragent.backend.framework.*;
+import com.lqragent.backend.core.agent.AgentBus;
+import com.lqragent.backend.core.agent.AgentIds;
+import com.lqragent.backend.core.agent.AgentResult;
+import com.lqragent.backend.core.agent.AgentTask;
+import com.lqragent.backend.core.session.RequestContext;
+import com.lqragent.backend.core.session.SessionContext;
 import com.lqragent.backend.chat.entity.AgentRunLog;
-import com.lqragent.backend.agents.effect_assessment.service.EffectAssessmentService;
-import com.lqragent.backend.agents.learning_path.service.LearningPathService;
-import com.lqragent.backend.agents.learning_path.dto.LearningPathDto;
-import com.lqragent.backend.agents.resource_generation.dto.ResourceGenerateRequest;
-import com.lqragent.backend.agents.resource_generation.dto.ResourceGenerateResponse;
-import com.lqragent.backend.agents.resource_generation.service.ResourceGenerationService;
+import com.lqragent.backend.agents.effectassessment.service.EffectAssessmentService;
+import com.lqragent.backend.agents.learningpath.service.LearningPathService;
+import com.lqragent.backend.agents.learningpath.dto.LearningPathDto;
+import com.lqragent.backend.agents.resourcegeneration.dto.ResourceGenerateRequest;
+import com.lqragent.backend.agents.resourcegeneration.dto.ResourceGenerateResponse;
+import com.lqragent.backend.agents.resourcegeneration.service.ResourceGenerationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 

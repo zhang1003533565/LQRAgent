@@ -1,7 +1,12 @@
-package com.lqragent.backend.framework;
+package com.lqragent.backend.core.agent;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lqragent.backend.core.tool.ToolRegistry;
+import com.lqragent.backend.core.tool.ToolResult;
+import com.lqragent.backend.core.tool.ToolSchema;
+import com.lqragent.backend.core.session.RedisSessionStore;
+import com.lqragent.backend.core.session.SessionContext;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import com.lqragent.backend.systemconfig.ConfigKeys;
 import lombok.RequiredArgsConstructor;

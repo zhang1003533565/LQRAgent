@@ -1,12 +1,12 @@
-package com.lqragent.backend.agents.effect_assessment.service;
+package com.lqragent.backend.agents.effectassessment.service;
 
-import com.lqragent.backend.agents.learning_path.entity.LearningPath;
-import com.lqragent.backend.agents.learning_path.entity.LearningPathStep;
-import com.lqragent.backend.agents.learning_path.repository.LearningPathRepository;
-import com.lqragent.backend.agents.learning_path.repository.LearningPathStepRepository;
+import com.lqragent.backend.agents.learningpath.entity.LearningPath;
+import com.lqragent.backend.agents.learningpath.entity.LearningPathStep;
+import com.lqragent.backend.agents.learningpath.repository.LearningPathRepository;
+import com.lqragent.backend.agents.learningpath.repository.LearningPathStepRepository;
 import com.lqragent.backend.quiz.entity.StudyBehavior;
 import com.lqragent.backend.quiz.repository.StudyBehaviorRepository;
-import com.lqragent.backend.framework.llm.LlmContentGenerator;
+import com.lqragent.backend.core.llm.LlmContentGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;

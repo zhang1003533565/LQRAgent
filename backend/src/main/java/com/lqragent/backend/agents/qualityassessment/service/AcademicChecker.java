@@ -1,4 +1,4 @@
-package com.lqragent.backend.agents.quality_assessment.service;
+package com.lqragent.backend.agents.qualityassessment.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

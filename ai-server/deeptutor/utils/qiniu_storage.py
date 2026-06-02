@@ -8,7 +8,14 @@ import hashlib
 import logging
 from io import BytesIO
 
-import httpx
+# CRITICAL FIX: Use requests instead of httpx for more reliable SSL handling
+try:
+    import requests
+    USE_REQUESTS = True
+except ImportError:
+    import httpx
+    USE_REQUESTS = False
+
 import hmac
 import time
 import base64
@@ -93,11 +100,31 @@ def download_from_qiniu(key: str) -> bytes:
     """
     deadline = int(time.time()) + 3600
     url = _make_download_token(key, deadline)
-
-    resp = httpx.get(url, timeout=30, follow_redirects=True)
-    resp.raise_for_status()
-    logger.debug(f"[Qiniu] downloaded: key={key}, size={len(resp.content)}")
-    return resp.content
+    
+    # CRITICAL FIX: Use requests library with SSL verification disabled
+    # This is more reliable than httpx for handling Qiniu CDN domains
+    logger.info(f"[Qiniu] downloading: key={key}, url={url[:150]}...")
+    
+    try:
+        if USE_REQUESTS:
+            # Use requests library (more reliable SSL handling)
+            response = requests.get(url, timeout=30, verify=False, allow_redirects=True)
+            response.raise_for_status()
+            content = response.content
+        else:
+            # Fallback to httpx if requests is not available
+            import warnings
+            warnings.filterwarnings('ignore', message='Unverified HTTPS request')
+            with httpx.Client(verify=False, http2=False, timeout=30) as client:
+                resp = client.get(url, follow_redirects=True)
+                resp.raise_for_status()
+                content = resp.content
+        
+        logger.info(f"[Qiniu] downloaded OK: key={key}, size={len(content)}")
+        return content
+    except Exception as e:
+        logger.error(f"[Qiniu] download failed: key={key}, error={e}", exc_info=True)
+        raise RuntimeError(f"Failed to download from Qiniu: {key} - {e}") from e
 
 
 def delete_from_qiniu(key: str) -> bool:

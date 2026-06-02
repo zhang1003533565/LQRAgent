@@ -1,12 +1,12 @@
-package com.lqragent.backend.agents.knowledgegraph.service;
+package com.lqragent.backend.shared.knowledgegraph.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgeEdge;
-import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgePoint;
-import com.lqragent.backend.agents.knowledgegraph.repository.KnowledgeEdgeRepository;
-import com.lqragent.backend.agents.knowledgegraph.repository.KnowledgePointRepository;
+import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgeEdge;
+import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.shared.knowledgegraph.repository.KnowledgeEdgeRepository;
+import com.lqragent.backend.shared.knowledgegraph.repository.KnowledgePointRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;

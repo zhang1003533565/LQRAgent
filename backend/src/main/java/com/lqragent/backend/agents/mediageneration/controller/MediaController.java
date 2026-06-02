@@ -1,8 +1,8 @@
-package com.lqragent.backend.agents.media_generation.controller;
+package com.lqragent.backend.agents.mediageneration.controller;
 
 import com.lqragent.backend.common.dto.ApiResponse;
-import com.lqragent.backend.agents.media_generation.dto.MediaResult;
-import com.lqragent.backend.agents.media_generation.service.MediaGenerationService;
+import com.lqragent.backend.agents.mediageneration.dto.MediaResult;
+import com.lqragent.backend.agents.mediageneration.service.MediaGenerationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;

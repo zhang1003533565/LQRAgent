@@ -1,5 +1,6 @@
-package com.lqragent.backend.framework;
+package com.lqragent.backend.core.tool;
 
+import com.lqragent.backend.core.agent.Agent;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;

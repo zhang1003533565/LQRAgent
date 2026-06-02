@@ -1,13 +1,13 @@
-package com.lqragent.backend.agents.resource_generation.service;
+package com.lqragent.backend.agents.resourcegeneration.service;
 
-import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgePoint;
-import com.lqragent.backend.agents.knowledgegraph.service.KnowledgeGraphService;
-import com.lqragent.backend.agents.resource_generation.dto.ResourceGenerateRequest;
-import com.lqragent.backend.agents.resource_generation.dto.ResourceGenerateResponse;
-import com.lqragent.backend.agents.resource_generation.entity.ResourceItem;
-import com.lqragent.backend.agents.resource_generation.repository.ResourceItemRepository;
-import com.lqragent.backend.agents.quality_assessment.service.QualityAssessmentService;
-import com.lqragent.backend.framework.llm.LlmContentGenerator;
+import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.shared.knowledgegraph.service.KnowledgeGraphService;
+import com.lqragent.backend.agents.resourcegeneration.dto.ResourceGenerateRequest;
+import com.lqragent.backend.agents.resourcegeneration.dto.ResourceGenerateResponse;
+import com.lqragent.backend.agents.resourcegeneration.entity.ResourceItem;
+import com.lqragent.backend.agents.resourcegeneration.repository.ResourceItemRepository;
+import com.lqragent.backend.agents.qualityassessment.service.QualityAssessmentService;
+import com.lqragent.backend.core.llm.LlmContentGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

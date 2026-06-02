@@ -1,4 +1,4 @@
-package com.lqragent.backend.agents.learner_profile.entity;
+package com.lqragent.backend.agents.learnerprofile.entity;
 
 import jakarta.persistence.*;
 import lombok.*;

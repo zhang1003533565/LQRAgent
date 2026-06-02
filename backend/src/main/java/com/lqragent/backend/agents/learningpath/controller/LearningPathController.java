@@ -1,8 +1,8 @@
-package com.lqragent.backend.agents.learning_path.controller;
+package com.lqragent.backend.agents.learningpath.controller;
 
 import com.lqragent.backend.common.dto.ApiResponse;
-import com.lqragent.backend.agents.learning_path.dto.LearningPathDto;
-import com.lqragent.backend.agents.learning_path.service.LearningPathService;
+import com.lqragent.backend.agents.learningpath.dto.LearningPathDto;
+import com.lqragent.backend.agents.learningpath.service.LearningPathService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;

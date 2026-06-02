@@ -1,4 +1,4 @@
-package com.lqragent.backend.framework.llm;
+package com.lqragent.backend.core.llm;
 
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import com.lqragent.backend.systemconfig.ConfigKeys;

@@ -1,13 +1,13 @@
-package com.lqragent.backend.agents.intelligent_qa;
+package com.lqragent.backend.agents.intelligentqa;
 
-import com.lqragent.backend.framework.Agent;
-import com.lqragent.backend.framework.AgentIds;
-import com.lqragent.backend.framework.AgentResult;
-import com.lqragent.backend.framework.AgentTask;
-import com.lqragent.backend.framework.ToolRegistry;
-import com.lqragent.backend.framework.ToolSchema;
-import com.lqragent.backend.agents.intelligent_qa.service.QaAgentService;
-import com.lqragent.backend.agents.intelligent_qa.service.MermaidGenerator;
+import com.lqragent.backend.core.agent.Agent;
+import com.lqragent.backend.core.agent.AgentIds;
+import com.lqragent.backend.core.agent.AgentResult;
+import com.lqragent.backend.core.agent.AgentTask;
+import com.lqragent.backend.core.tool.ToolRegistry;
+import com.lqragent.backend.core.tool.ToolSchema;
+import com.lqragent.backend.agents.intelligentqa.service.QaAgentService;
+import com.lqragent.backend.agents.intelligentqa.service.MermaidGenerator;
 import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

@@ -1,12 +1,12 @@
-package com.lqragent.backend.agents.media_generation;
+package com.lqragent.backend.agents.mediageneration;
 
-import com.lqragent.backend.framework.Agent;
-import com.lqragent.backend.framework.AgentIds;
-import com.lqragent.backend.framework.AgentResult;
-import com.lqragent.backend.framework.AgentTask;
-import com.lqragent.backend.framework.ToolRegistry;
-import com.lqragent.backend.framework.ToolSchema;
-import com.lqragent.backend.agents.media_generation.service.MediaGenerationService;
+import com.lqragent.backend.core.agent.Agent;
+import com.lqragent.backend.core.agent.AgentIds;
+import com.lqragent.backend.core.agent.AgentResult;
+import com.lqragent.backend.core.agent.AgentTask;
+import com.lqragent.backend.core.tool.ToolRegistry;
+import com.lqragent.backend.core.tool.ToolSchema;
+import com.lqragent.backend.agents.mediageneration.service.MediaGenerationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 

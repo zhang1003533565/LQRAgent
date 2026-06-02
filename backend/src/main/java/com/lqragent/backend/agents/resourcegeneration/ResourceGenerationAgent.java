@@ -1,14 +1,14 @@
-package com.lqragent.backend.agents.resource_generation;
+package com.lqragent.backend.agents.resourcegeneration;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lqragent.backend.framework.Agent;
-import com.lqragent.backend.framework.AgentIds;
-import com.lqragent.backend.framework.AgentResult;
-import com.lqragent.backend.framework.AgentTask;
-import com.lqragent.backend.framework.ToolRegistry;
-import com.lqragent.backend.framework.ToolSchema;
-import com.lqragent.backend.agents.resource_generation.dto.ResourceGenerateRequest;
-import com.lqragent.backend.agents.resource_generation.service.ResourceGenerationService;
+import com.lqragent.backend.core.agent.Agent;
+import com.lqragent.backend.core.agent.AgentIds;
+import com.lqragent.backend.core.agent.AgentResult;
+import com.lqragent.backend.core.agent.AgentTask;
+import com.lqragent.backend.core.tool.ToolRegistry;
+import com.lqragent.backend.core.tool.ToolSchema;
+import com.lqragent.backend.agents.resourcegeneration.dto.ResourceGenerateRequest;
+import com.lqragent.backend.agents.resourcegeneration.service.ResourceGenerationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

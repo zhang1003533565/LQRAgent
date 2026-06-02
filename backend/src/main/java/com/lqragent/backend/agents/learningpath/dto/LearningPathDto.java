@@ -1,4 +1,4 @@
-package com.lqragent.backend.agents.learning_path.dto;
+package com.lqragent.backend.agents.learningpath.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;

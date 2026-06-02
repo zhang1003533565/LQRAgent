@@ -1,8 +1,8 @@
-package com.lqragent.backend.agents.content_analyzer.service;
+package com.lqragent.backend.agents.contentanalyzer.service;
 
-import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgePoint;
-import com.lqragent.backend.agents.knowledgegraph.repository.KnowledgePointRepository;
-import com.lqragent.backend.framework.llm.LlmContentGenerator;
+import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.shared.knowledgegraph.repository.KnowledgePointRepository;
+import com.lqragent.backend.core.llm.LlmContentGenerator;
 import com.lqragent.backend.storage.QiniuStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

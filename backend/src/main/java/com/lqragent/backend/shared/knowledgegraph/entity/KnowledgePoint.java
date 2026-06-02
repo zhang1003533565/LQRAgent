@@ -1,4 +1,4 @@
-package com.lqragent.backend.agents.knowledgegraph.entity;
+package com.lqragent.backend.shared.knowledgegraph.entity;
 
 import jakarta.persistence.*;
 import lombok.*;

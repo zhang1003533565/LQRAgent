@@ -1,10 +1,10 @@
-package com.lqragent.backend.agents.resource_generation.controller;
+package com.lqragent.backend.agents.resourcegeneration.controller;
 
 import com.lqragent.backend.common.dto.ApiResponse;
-import com.lqragent.backend.agents.resource_generation.dto.ResourceGenerateRequest;
-import com.lqragent.backend.agents.resource_generation.dto.ResourceGenerateResponse;
-import com.lqragent.backend.agents.resource_generation.entity.ResourceItem;
-import com.lqragent.backend.agents.resource_generation.service.ResourceGenerationService;
+import com.lqragent.backend.agents.resourcegeneration.dto.ResourceGenerateRequest;
+import com.lqragent.backend.agents.resourcegeneration.dto.ResourceGenerateResponse;
+import com.lqragent.backend.agents.resourcegeneration.entity.ResourceItem;
+import com.lqragent.backend.agents.resourcegeneration.service.ResourceGenerationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;

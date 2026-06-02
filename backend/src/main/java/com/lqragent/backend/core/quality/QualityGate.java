@@ -1,5 +1,7 @@
-package com.lqragent.backend.framework;
+package com.lqragent.backend.core.quality;
 
+import com.lqragent.backend.core.agent.AgentIds;
+import com.lqragent.backend.core.agent.AgentResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 

@@ -1,6 +1,6 @@
-package com.lqragent.backend.agents.resource_generation.repository;
+package com.lqragent.backend.agents.resourcegeneration.repository;
 
-import com.lqragent.backend.agents.resource_generation.entity.ResourceItem;
+import com.lqragent.backend.agents.resourcegeneration.entity.ResourceItem;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 

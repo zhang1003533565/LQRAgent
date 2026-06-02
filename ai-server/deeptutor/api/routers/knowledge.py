@@ -172,15 +172,17 @@ def _save_uploaded_files(
     kb_name: str | None = None,
 ) -> tuple[list[str], list[str]]:
     """
-    Save uploaded files to Qiniu object storage.
+    Save uploaded files to local filesystem (not Qiniu).
+    
+    CRITICAL FIX: Backend already uploaded files to Qiniu and sent them via HTTP.
+    We should save them locally instead of uploading to Qiniu again and downloading back.
+    This avoids SSL issues with Qiniu CDN domains.
 
-    Returns (filenames, qiniu_keys) where qiniu_keys are the object keys
-    used to download files later for processing.
+    Returns (filenames, local_paths) where local_paths are the local file paths
+    used for processing.
     """
-    from deeptutor.utils.qiniu_storage import upload_to_qiniu
-
     uploaded_files: list[str] = []
-    uploaded_file_paths: list[str] = []  # Qiniu keys
+    uploaded_file_paths: list[str] = []  # Local file paths
 
     try:
         for file in files:
@@ -207,24 +209,15 @@ def _save_uploaded_files(
                     sanitized_filename, len(file_bytes), allowed_extensions=allowed_extensions
                 )
 
-                # Categorize by extension and upload to Qiniu
-                ext = sanitized_filename.lower().rsplit(".", 1)[-1] if "." in sanitized_filename else ""
-                category = _categorize_file(ext)
-                qiniu_key = f"{category}/{kb_name or 'default'}/{sanitized_filename}"
-
-                # Detect content type
-                content_type_map = {
-                    "pdf": "application/pdf", "md": "text/markdown", "txt": "text/plain",
-                    "py": "text/x-python", "json": "application/json", "csv": "text/csv",
-                    "html": "text/html", "xml": "application/xml",
-                }
-                content_type = content_type_map.get(ext, "application/octet-stream")
-
-                upload_to_qiniu(qiniu_key, file_bytes, content_type)
+                # CRITICAL FIX: Save file locally instead of uploading to Qiniu
+                # Backend already uploaded to Qiniu and sent via HTTP, so we just save locally
+                local_file_path = target_dir / sanitized_filename
+                local_file_path.write_bytes(file_bytes)
+                
                 uploaded_files.append(sanitized_filename)
-                uploaded_file_paths.append(qiniu_key)
+                uploaded_file_paths.append(str(local_file_path))
 
-                logger.info(f"Uploaded to Qiniu: {sanitized_filename} -> {qiniu_key}")
+                logger.info(f"Saved locally: {sanitized_filename} -> {local_file_path}")
 
             except HTTPException:
                 raise
@@ -529,27 +522,12 @@ async def run_upload_processing_task(
         try:
             _task_log(task_id, f"Processing {len(uploaded_file_paths)} file(s) for KB '{kb_name}'")
 
-            # Download from Qiniu to temp directory for processing
-            import tempfile
-            import shutil as _shutil
-            from deeptutor.utils.qiniu_storage import download_from_qiniu
-
-            temp_dir = Path(tempfile.mkdtemp(prefix="qiniu_dl_"))
-            local_paths: list[str] = []
-
-            for qiniu_key in uploaded_file_paths:
-                try:
-                    file_bytes = await run_in_thread(download_from_qiniu, qiniu_key)
-                    filename = qiniu_key.split("_", 1)[-1] if "_" in qiniu_key else qiniu_key.split("/")[-1]
-                    local_path = temp_dir / filename
-                    local_path.write_bytes(file_bytes)
-                    local_paths.append(str(local_path))
-                    _task_log(task_id, f"Downloaded from Qiniu: {filename}")
-                except Exception as dl_err:
-                    _task_log(task_id, f"Failed to download {qiniu_key}: {dl_err}", level="warning")
-
+            # CRITICAL FIX: Files are already saved locally by _save_uploaded_files
+            # No need to download from Qiniu anymore
+            local_paths = uploaded_file_paths  # These are now local file paths
+            
             if not local_paths:
-                _task_log(task_id, "No files downloaded from Qiniu")
+                _task_log(task_id, "No files to process")
                 progress_tracker.update(ProgressStage.COMPLETED, "No files to process", current=0, total=0)
                 task_manager.update_task_status(task_id, "completed")
                 task_stream_manager.emit_complete(task_id, "No files to process")
@@ -1470,6 +1448,50 @@ async def clear_progress(kb_name: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{kb_name}/search")
+async def search_knowledge(
+    kb_name: str,
+    query: str = Form(...),
+    top_k: int = Form(5),
+):
+    """
+    Vector search in knowledge base.
+    
+    Args:
+        kb_name: Knowledge base name
+        query: Search query text
+        top_k: Number of results to return (default 5)
+    
+    Returns:
+        Dictionary with 'answer', 'sources', and 'content' fields
+    """
+    try:
+        # Resolve knowledge base
+        resource = resolve_kb(kb_name)
+        
+        logger.info(f"[KnowledgeSearch] Searching KB '{kb_name}' for: {query[:50]}...")
+        
+        # Use RAG service to search
+        from deeptutor.services.rag.service import RAGService
+        
+        rag_service = RAGService(kb_base_dir=str(resource.base_dir))
+        result = await rag_service.search(
+            query=query,
+            kb_name=kb_name,
+            top_k=top_k,
+        )
+        
+        logger.info(f"[KnowledgeSearch] Found {len(result.get('sources', []))} sources")
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[KnowledgeSearch] Search failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}") from e
 
 
 @router.websocket("/{kb_name}/progress/ws")

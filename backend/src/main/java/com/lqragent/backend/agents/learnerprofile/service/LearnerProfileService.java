@@ -1,14 +1,14 @@
-package com.lqragent.backend.agents.learner_profile.service;
+package com.lqragent.backend.agents.learnerprofile.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.chat.entity.ChatMessage;
 import com.lqragent.backend.chat.handler.WebSocketSessionManager;
 import com.lqragent.backend.chat.repository.ChatMessageRepository;
-import com.lqragent.backend.agents.learner_profile.dto.ProfileDetailDto;
-import com.lqragent.backend.agents.learner_profile.dto.ProfilePatchRequest;
-import com.lqragent.backend.agents.learner_profile.dto.ProfileSummaryDto;
-import com.lqragent.backend.agents.learner_profile.entity.LearnerProfile;
-import com.lqragent.backend.agents.learner_profile.repository.LearnerProfileRepository;
+import com.lqragent.backend.agents.learnerprofile.dto.ProfileDetailDto;
+import com.lqragent.backend.agents.learnerprofile.dto.ProfilePatchRequest;
+import com.lqragent.backend.agents.learnerprofile.dto.ProfileSummaryDto;
+import com.lqragent.backend.agents.learnerprofile.entity.LearnerProfile;
+import com.lqragent.backend.agents.learnerprofile.repository.LearnerProfileRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;

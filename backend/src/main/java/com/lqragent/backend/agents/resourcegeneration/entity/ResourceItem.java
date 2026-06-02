@@ -1,4 +1,4 @@
-package com.lqragent.backend.agents.resource_generation.entity;
+package com.lqragent.backend.agents.resourcegeneration.entity;
 
 import jakarta.persistence.*;
 import lombok.*;

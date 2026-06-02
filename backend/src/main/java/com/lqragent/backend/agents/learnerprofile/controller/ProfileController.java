@@ -1,10 +1,10 @@
-package com.lqragent.backend.agents.learner_profile.controller;
+package com.lqragent.backend.agents.learnerprofile.controller;
 
 import com.lqragent.backend.common.dto.ApiResponse;
-import com.lqragent.backend.agents.learner_profile.dto.ProfileDetailDto;
-import com.lqragent.backend.agents.learner_profile.dto.ProfilePatchRequest;
-import com.lqragent.backend.agents.learner_profile.dto.ProfileSummaryDto;
-import com.lqragent.backend.agents.learner_profile.service.LearnerProfileService;
+import com.lqragent.backend.agents.learnerprofile.dto.ProfileDetailDto;
+import com.lqragent.backend.agents.learnerprofile.dto.ProfilePatchRequest;
+import com.lqragent.backend.agents.learnerprofile.dto.ProfileSummaryDto;
+import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
 import com.lqragent.backend.user.service.CurrentUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;

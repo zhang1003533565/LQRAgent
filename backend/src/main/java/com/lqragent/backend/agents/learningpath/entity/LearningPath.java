@@ -1,4 +1,4 @@
-package com.lqragent.backend.agents.learning_path.entity;
+package com.lqragent.backend.agents.learningpath.entity;
 
 import jakarta.persistence.*;
 import lombok.*;

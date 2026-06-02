@@ -1,6 +1,6 @@
-package com.lqragent.backend.agents.intelligent_qa.service;
+package com.lqragent.backend.agents.intelligentqa.service;
 
-import com.lqragent.backend.framework.llm.LlmContentGenerator;
+import com.lqragent.backend.core.llm.LlmContentGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

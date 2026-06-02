@@ -1,4 +1,4 @@
-package com.lqragent.backend.framework;
+package com.lqragent.backend.core.agent;
 
 import com.lqragent.backend.chat.entity.AgentRunLog;
 import jakarta.annotation.PostConstruct;

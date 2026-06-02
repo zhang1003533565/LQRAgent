@@ -1,4 +1,4 @@
-package com.lqragent.backend.agents.intelligent_qa.service;
+package com.lqragent.backend.agents.intelligentqa.service;
 
 import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import com.lqragent.backend.chat.service.ChatSessionService;

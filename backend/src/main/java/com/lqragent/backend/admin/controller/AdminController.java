@@ -9,19 +9,19 @@ import com.lqragent.backend.admin.dto.SysConfigSaveRequest;
 import com.lqragent.backend.admin.service.AdminService;
 import com.lqragent.backend.admin.service.ModelConfigService;
 import com.lqragent.backend.common.dto.ApiResponse;
-import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgeEdge;
-import com.lqragent.backend.agents.knowledgegraph.entity.KnowledgePoint;
-import com.lqragent.backend.agents.knowledgegraph.repository.KnowledgeEdgeRepository;
-import com.lqragent.backend.agents.knowledgegraph.repository.KnowledgePointRepository;
-import com.lqragent.backend.agents.learner_profile.dto.ProfileSummaryDto;
-import com.lqragent.backend.agents.learner_profile.repository.LearnerProfileRepository;
-import com.lqragent.backend.agents.learning_path.entity.LearningPath;
-import com.lqragent.backend.agents.learning_path.entity.LearningPathStep;
-import com.lqragent.backend.agents.learning_path.repository.LearningPathRepository;
-import com.lqragent.backend.agents.learning_path.repository.LearningPathStepRepository;
-import com.lqragent.backend.agents.resource_generation.entity.ResourceItem;
-import com.lqragent.backend.agents.resource_generation.repository.ResourceItemRepository;
-import com.lqragent.backend.framework.AgentBus;
+import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgeEdge;
+import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.shared.knowledgegraph.repository.KnowledgeEdgeRepository;
+import com.lqragent.backend.shared.knowledgegraph.repository.KnowledgePointRepository;
+import com.lqragent.backend.agents.learnerprofile.dto.ProfileSummaryDto;
+import com.lqragent.backend.agents.learnerprofile.repository.LearnerProfileRepository;
+import com.lqragent.backend.agents.learningpath.entity.LearningPath;
+import com.lqragent.backend.agents.learningpath.entity.LearningPathStep;
+import com.lqragent.backend.agents.learningpath.repository.LearningPathRepository;
+import com.lqragent.backend.agents.learningpath.repository.LearningPathStepRepository;
+import com.lqragent.backend.agents.resourcegeneration.entity.ResourceItem;
+import com.lqragent.backend.agents.resourcegeneration.repository.ResourceItemRepository;
+import com.lqragent.backend.core.agent.AgentBus;
 import com.lqragent.backend.chat.entity.AgentRunLog;
 import com.lqragent.backend.admin.repository.AgentRunLogRepository;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask;
@@ -250,9 +250,9 @@ public class AdminController {
         String sessionId = "admin-test-" + System.nanoTime();
 
         Long userId = currentUserService.requireUserId(userDetails);
-        com.lqragent.backend.framework.RequestContext.init(userId);
+        com.lqragent.backend.core.session.RequestContext.init(userId);
 
-        var task = com.lqragent.backend.framework.AgentTask.builder()
+        var task = com.lqragent.backend.core.agent.AgentTask.builder()
                 .agentType(agentType)
                 .userId(userId)
                 .sessionId(sessionId)

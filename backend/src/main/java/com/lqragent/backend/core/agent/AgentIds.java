@@ -1,4 +1,4 @@
-package com.lqragent.backend.framework;
+package com.lqragent.backend.core.agent;
 
 /**
  * 全系统智能体标识符（与 WS agent_step、AgentBus 路由一致）。

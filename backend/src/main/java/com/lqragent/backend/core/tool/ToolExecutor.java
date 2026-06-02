@@ -1,4 +1,4 @@
-package com.lqragent.backend.framework;
+package com.lqragent.backend.core.tool;
 
 /**
  * 工具执行器 — 接收 JSON 参数字符串，返回执行结果。

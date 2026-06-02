@@ -140,6 +140,9 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
     async def embed(self, request: EmbeddingRequest) -> EmbeddingResponse:
         import asyncio
 
+        # DEBUG: Log send_dimensions value
+        logger.info(f"[DEBUG] openai_compatible embed: model={request.model or self.model}, send_dimensions={self.send_dimensions}, type={type(self.send_dimensions)}")
+
         headers = {"Content-Type": "application/json"}
         api_key = self._auth_api_key()
         if self.api_version:
@@ -166,9 +169,22 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         # heuristic since only OpenAI's text-embedding-3* family officially
         # supports the param — other providers (e.g. Qwen text-embedding-v4 via
         # litellm gateway) return HTTP 400 if we send it.
-        dim_value = request.dimensions or self.dimensions
-        if dim_value and self._should_send_dimensions(request.model or self.model):
-            payload["dimensions"] = dim_value
+        
+        # CRITICAL FIX: BAAI/bge models do NOT support dimensions parameter at all.
+        # Force disable for these models regardless of config.
+        model_name = request.model or self.model
+        if model_name and "bge" in model_name.lower():
+            # Never send dimensions for BAAI/bge models - they always reject it
+            logger.info(f"[DEBUG] BAAI/bge model detected ({model_name}), skipping dimensions parameter")
+        elif self.send_dimensions is False:
+            # User explicitly opted out
+            logger.info(f"[DEBUG] send_dimensions=False, skipping dimensions parameter")
+        else:
+            dim_value = request.dimensions or self.dimensions
+            logger.info(f"[DEBUG] dimensions check: request.dimensions={request.dimensions}, self.dimensions={self.dimensions}, dim_value={dim_value}, should_send={self._should_send_dimensions(model_name)}")
+            if dim_value and self._should_send_dimensions(model_name):
+                payload["dimensions"] = dim_value
+                logger.info(f"[DEBUG] Added dimensions={dim_value} to payload")
 
         # URL transparency: hit `base_url` verbatim. Azure's `?api-version=...`
         # is a query param (not a path component) so we still append it.

@@ -1,4 +1,4 @@
-package com.lqragent.backend.agents.resource_generation.dto;
+package com.lqragent.backend.agents.resourcegeneration.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
