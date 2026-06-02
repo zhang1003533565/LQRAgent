@@ -23,6 +23,7 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -228,6 +229,25 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                                 .put("detail", error)
                                 .toString());
                         sendEvent(session, "error", error);
+                    }
+
+                    @Override
+                    public void onSources(List<Map<String, Object>> sources) {
+                        // 推送 RAG 引用来源给前端："本回答参考了以下资料"
+                        if (sources != null && !sources.isEmpty()) {
+                            try {
+                                var artifactNode = objectMapper.createObjectNode()
+                                        .put("type", "artifact")
+                                        .put("kind", "rag_sources");
+                                var sourcesArray = objectMapper.valueToTree(sources);
+                                artifactNode.set("payload", sourcesArray);
+                                synchronized (session) {
+                                    session.sendMessage(new TextMessage(artifactNode.toString()));
+                                }
+                            } catch (IOException e) {
+                                log.warn("[WS] rag_sources push failed", e);
+                            }
+                        }
                     }
                 });
     }

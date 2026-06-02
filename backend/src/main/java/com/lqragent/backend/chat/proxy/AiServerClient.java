@@ -14,6 +14,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestTemplate;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -28,6 +29,9 @@ public class AiServerClient {
 
     private final AppRuntimeConfig runtimeConfig;
 
+    /**
+     * 创建带超时配置的 RestClient（connect=5s, read=30s）。
+     */
     private RestClient client() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(5000);
@@ -37,6 +41,21 @@ public class AiServerClient {
                 .requestFactory(factory)
                 .build();
     }
+
+    /**
+     * 创建用于大文件上传的 RestClient（connect=5s, read=120s）。
+     */
+    private RestClient uploadClient() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);
+        factory.setReadTimeout(120000);
+        return RestClient.builder()
+                .baseUrl(runtimeConfig.getAiServerBaseUrl())
+                .requestFactory(factory)
+                .build();
+    }
+
+    // ==================== 基础探测 ====================
 
     /** 探测 AI Server 是否可达 */
     public boolean ping() {
@@ -49,16 +68,72 @@ public class AiServerClient {
         }
     }
 
-    /** 列出知识库 */
+    /** 获取系统完整状态（LLM / Embedding / Search 连通性） */
     @SuppressWarnings("unchecked")
-    public java.util.List<Map<String, Object>> listKnowledgeBases() {
-        return client().get()
-                .uri("/api/v1/knowledge/list")
-                .retrieve()
-                .body(java.util.List.class);
+    public Map<String, Object> getSystemStatus() {
+        try {
+            return client().get()
+                    .uri("/api/v1/system/status")
+                    .retrieve()
+                    .body(Map.class);
+        } catch (Exception e) {
+            log.warn("[AiServerClient] system status 失败: {}", e.getMessage());
+            return Map.of();
+        }
     }
 
-    /** 创建知识库 */
+    // ==================== Embedding 配置 ====================
+
+    /**
+     * 测试 Embedding 连通性。
+     * 调用后 ai-server 会自动填充 embedding 维度到 model_catalog.json。
+     */
+    public boolean testEmbedding() {
+        try {
+            var resp = client().post()
+                    .uri("/api/v1/system/test/embeddings")
+                    .retrieve()
+                    .toBodilessEntity();
+            return resp.getStatusCode().is2xxSuccessful();
+        } catch (Exception e) {
+            log.warn("[AiServerClient] embedding test failed: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * 重建知识库索引（更换 Embedding 模型或修复索引后需要）。
+     */
+    public boolean reindex(String kbName) {
+        try {
+            var resp = client().post()
+                    .uri("/api/v1/knowledge/{kbName}/reindex", kbName)
+                    .retrieve()
+                    .toBodilessEntity();
+            return resp.getStatusCode().is2xxSuccessful();
+        } catch (Exception e) {
+            log.warn("[AiServerClient] reindex failed for {}: {}", kbName, e.getMessage());
+            return false;
+        }
+    }
+
+    // ==================== 知识库管理 ====================
+
+    /** 列出知识库 */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> listKnowledgeBases() {
+        try {
+            return client().get()
+                    .uri("/api/v1/knowledge/list")
+                    .retrieve()
+                    .body(List.class);
+        } catch (Exception e) {
+            log.warn("[AiServerClient] listKnowledgeBases 失败: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 创建知识库（multipart/form-data） */
     @SuppressWarnings("unchecked")
     public Map<?, ?> createKnowledgeBase(String name) {
         log.info("[AiServerClient] createKnowledgeBase: {}", name);
@@ -82,7 +157,11 @@ public class AiServerClient {
         String baseUrl = runtimeConfig.getAiServerBaseUrl();
         String url = baseUrl + "/api/v1/knowledge/create";
 
-        RestTemplate restTemplate = new RestTemplate();
+        // 使用带超时的 RestTemplate
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);
+        factory.setReadTimeout(30000);
+        RestTemplate restTemplate = new RestTemplate(factory);
         try {
             return restTemplate.postForObject(url, request, Map.class);
         } catch (Exception e) {
@@ -91,7 +170,7 @@ public class AiServerClient {
         }
     }
 
-    /** 上传文档到知识库（multipart/form-data） */
+    /** 上传文档到知识库（multipart/form-data），read 超时 120s */
     @SuppressWarnings("unchecked")
     public Map<?, ?> uploadDocument(String kbName, String fileName, byte[] content, String mimeType) {
         log.info("[AiServerClient] uploadDocument: kb={}, file={}, size={}", kbName, fileName, content.length);
@@ -113,11 +192,102 @@ public class AiServerClient {
         String baseUrl = runtimeConfig.getAiServerBaseUrl();
         String url = baseUrl + "/api/v1/knowledge/" + kbName + "/upload";
 
-        RestTemplate restTemplate = new RestTemplate();
+        // 大文件上传需要更长超时
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);
+        factory.setReadTimeout(120000);
+        RestTemplate restTemplate = new RestTemplate(factory);
         return restTemplate.postForObject(url, request, Map.class);
     }
 
+    /** 删除整个知识库 */
+    public boolean deleteKnowledgeBase(String kbName) {
+        try {
+            client().delete()
+                    .uri("/api/v1/knowledge/{kbName}", kbName)
+                    .retrieve()
+                    .toBodilessEntity();
+            return true;
+        } catch (Exception e) {
+            log.warn("[AiServerClient] delete KB failed: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /** 查看知识库中的文件列表 */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getKnowledgeBaseFiles(String kbName) {
+        try {
+            return client().get()
+                    .uri("/api/v1/knowledge/{kbName}/files", kbName)
+                    .retrieve()
+                    .body(List.class);
+        } catch (Exception e) {
+            log.warn("[AiServerClient] list KB files failed: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** 查看知识库向量化处理进度 */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getProgress(String kbName) {
+        try {
+            return client().get()
+                    .uri("/api/v1/knowledge/{kbName}/progress", kbName)
+                    .retrieve()
+                    .body(Map.class);
+        } catch (Exception e) {
+            log.warn("[AiServerClient] get progress failed: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    // ==================== RAG 检索 ====================
+
+    /**
+     * 在知识库中搜索最相关的文档片段（RAG 语义检索）。
+     * 注意：ai-server 的 search 接口接受 Form 表单（multipart/form-data），不是 JSON。
+     *
+     * @param kbName 知识库名称
+     * @param query  查询文本
+     * @param topK   返回结果数量
+     * @return 检索结果列表，每个元素包含 text、score、metadata 等
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> searchKnowledgeBase(String kbName, String query, int topK) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("query", query);
+            body.add("top_k", String.valueOf(topK));
+
+            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+
+            String baseUrl = runtimeConfig.getAiServerBaseUrl();
+            String url = baseUrl + "/api/v1/knowledge/" + kbName + "/search";
+
+            SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+            factory.setConnectTimeout(5000);
+            factory.setReadTimeout(30000);
+            RestTemplate restTemplate = new RestTemplate(factory);
+            Map<String, Object> result = restTemplate.postForObject(url, request, Map.class);
+
+            if (result != null && result.containsKey("sources")) {
+                return (List<Map<String, Object>>) result.get("sources");
+            }
+            return List.of();
+        } catch (Exception e) {
+            log.warn("[AiServerClient] KB search failed: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    // ==================== 画像记忆 ====================
+
     /** 获取画像记忆（DeepTutor Persistent Memory） */
+    @SuppressWarnings("unchecked")
     public Map<?, ?> getMemory(Long userId) {
         return client().get()
                 .uri("/api/v1/memory")
@@ -126,6 +296,7 @@ public class AiServerClient {
     }
 
     /** 更新画像记忆 */
+    @SuppressWarnings("unchecked")
     public Map<?, ?> updateMemory(Long userId, Map<String, Object> payload) {
         return client().post()
                 .uri("/api/v1/memory")

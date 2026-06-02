@@ -158,6 +158,28 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         # and providers correctly.
         input_payload: Any = request.contents if request.contents else request.texts
 
+        # Guard against input texts exceeding the model's token limit.
+        # Many embedding models (BGE, etc.) have a hard 512-token cap.
+        # SentenceSplitter can produce chunks larger than the configured
+        # chunk_size in characters, causing HTTP 400 from the provider.
+        # 480 chars ≈ 320–480 tokens for CJK/English, safe within 512 tokens.
+        _MAX_CHARS_PER_TEXT = 480
+        if isinstance(input_payload, list) and input_payload:
+            truncated_count = 0
+            sanitized: list[Any] = []
+            for item in input_payload:
+                if isinstance(item, str) and len(item) > _MAX_CHARS_PER_TEXT:
+                    sanitized.append(item[:_MAX_CHARS_PER_TEXT])
+                    truncated_count += 1
+                else:
+                    sanitized.append(item)
+            if truncated_count:
+                logger.warning(
+                    f"Truncated {truncated_count}/{len(input_payload)} input texts "
+                    f"to {_MAX_CHARS_PER_TEXT} chars to stay within model token limit"
+                )
+            input_payload = sanitized
+
         payload = {
             "input": input_payload,
             "model": request.model or self.model,

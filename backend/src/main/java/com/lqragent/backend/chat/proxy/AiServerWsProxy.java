@@ -7,9 +7,13 @@ import com.lqragent.backend.systemconfig.ConfigKeys;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -44,6 +48,8 @@ public class AiServerWsProxy {
             CountDownLatch doneLatch = new CountDownLatch(1);
             StringBuilder fullResponse = new StringBuilder();
             String[] aiServerSessionId = {null};
+            // Buffer for WebSocket text-frame fragmentation (Java HttpClient may split large messages)
+            StringBuilder messageBuffer = new StringBuilder();
 
             WebSocket ws = httpClient.newWebSocketBuilder()
                     .buildAsync(URI.create(wsUrl), new WebSocket.Listener() {
@@ -70,49 +76,77 @@ public class AiServerWsProxy {
 
                         @Override
                         public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
-                            String text = data.toString();
+                            // Handle WebSocket frame fragmentation: accumulate until last=true
+                            messageBuffer.append(data);
+                            if (!last) {
+                                return WebSocket.Listener.super.onText(webSocket, data, last);
+                            }
+                            String text = messageBuffer.toString();
+                            messageBuffer.setLength(0);
+
                             log.debug("[AiServerWsProxy] received: {}",
                                     text.length() > 200 ? text.substring(0, 200) + "..." : text);
 
                             try {
                                 JsonNode node = objectMapper.readTree(text);
                                 if (!node.has("type")) {
+                                    // JSON without type field — skip silently
+                                    log.debug("[AiServerWsProxy] skipping event without type field");
                                     return WebSocket.Listener.super.onText(webSocket, data, last);
                                 }
 
                                 String type = node.get("type").asText();
                                 switch (type) {
                                     case "content" -> {
-                                        // Streaming response chunk (main assistant text)
+                                        // Streaming response chunk — the actual assistant text
                                         String content = node.has("content") ? node.get("content").asText() : "";
-                                        fullResponse.append(content);
-                                        callback.onChunk(content);
+                                        if (!content.isEmpty()) {
+                                            fullResponse.append(content);
+                                            callback.onChunk(content);
+                                        }
                                     }
                                     case "thinking" -> {
-                                        // LLM reasoning — forward as chunk for transparency
-                                        String thinking = node.has("content") ? node.get("content").asText() : "";
-                                        if (!thinking.isBlank()) {
-                                            fullResponse.append(thinking);
-                                            callback.onChunk(thinking);
-                                        }
+                                        // LLM internal reasoning — do NOT forward to user
+                                        // (thinking is internal chain-of-thought, not part of the response)
+                                        log.debug("[AiServerWsProxy] thinking event suppressed ({} chars)",
+                                                node.has("content") ? node.get("content").asText().length() : 0);
                                     }
                                     case "result" -> {
-                                        // Final result (alternative to done, may contain full text)
+                                        // Final result — ai-server puts full text in metadata.response
+                                        // Only use as fallback if no content chunks were received
                                         String result = node.has("content") ? node.get("content").asText() : "";
+                                        if (result.isBlank() && node.has("metadata")) {
+                                            JsonNode meta = node.get("metadata");
+                                            if (meta.has("response")) {
+                                                result = meta.get("response").asText();
+                                            }
+                                        }
                                         if (!result.isBlank() && fullResponse.isEmpty()) {
                                             callback.onChunk(result);
+                                            fullResponse.append(result);
+                                            log.info("[AiServerWsProxy] using result.metadata.response as fallback ({} chars)",
+                                                    result.length());
                                         }
-                                        callback.onDone(aiServerSessionId[0]);
-                                        doneLatch.countDown();
                                     }
                                     case "done" -> {
-                                        callback.onDone(aiServerSessionId[0]);
+                                        // Check metadata.status — failed turns send error+done pair
+                                        String status = "completed";
+                                        if (node.has("metadata") && node.get("metadata").has("status")) {
+                                            status = node.get("metadata").get("status").asText();
+                                        }
+                                        if ("failed".equals(status) || "cancelled".equals(status)) {
+                                            log.warn("[AiServerWsProxy] turn ended with status={}", status);
+                                            // error event already handled; skip duplicate onDone
+                                        } else {
+                                            callback.onDone(aiServerSessionId[0]);
+                                        }
                                         doneLatch.countDown();
                                     }
                                     case "error" -> {
                                         String errorMsg = node.has("content") ? node.get("content").asText()
                                                 : node.has("message") ? node.get("message").asText()
                                                 : "AI server error";
+                                        log.warn("[AiServerWsProxy] error event: {}", errorMsg);
                                         callback.onError(errorMsg);
                                         doneLatch.countDown();
                                     }
@@ -121,21 +155,27 @@ public class AiServerWsProxy {
                                             aiServerSessionId[0] = node.get("session_id").asText();
                                         }
                                     }
-                                    // stage_start, stage_end, progress, sources, tool_call,
-                                    // tool_result, observation — silently skip for P0
+                                    case "sources" -> {
+                                        try {
+                                            JsonNode sourcesNode = node.get("sources");
+                                            if (sourcesNode != null && sourcesNode.isArray()) {
+                                                List<Map<String, Object>> sources = objectMapper
+                                                        .convertValue(sourcesNode, new TypeReference<>() {});
+                                                callback.onSources(sources);
+                                            }
+                                        } catch (Exception e) {
+                                            log.warn("[AiServerWsProxy] parse sources error: {}", e.getMessage());
+                                        }
+                                    }
                                     default -> {
-                                        log.debug("[AiServerWsProxy] skipping event type: {}", type);
+                                        // stage_start, stage_end, progress, tool_call,
+                                        // tool_result, observation — silently skip
                                     }
                                 }
                             } catch (Exception e) {
-                                // Non-JSON frame — could be raw text
-                                fullResponse.append(text);
-                                callback.onChunk(text);
-                            }
-
-                            if (last && doneLatch.getCount() > 0) {
-                                callback.onDone(aiServerSessionId[0]);
-                                doneLatch.countDown();
+                                // Non-JSON frame — log and skip (do NOT append to response)
+                                log.warn("[AiServerWsProxy] non-JSON frame skipped: {}",
+                                        text.length() > 100 ? text.substring(0, 100) + "..." : text);
                             }
 
                             return WebSocket.Listener.super.onText(webSocket, data, last);
@@ -181,5 +221,8 @@ public class AiServerWsProxy {
         void onChunk(String content);
         void onDone(String aiServerSessionId);
         void onError(String error);
+
+        /** 接收 RAG 引用来源（知识库检索结果），默认空实现 */
+        default void onSources(List<Map<String, Object>> sources) {}
     }
 }

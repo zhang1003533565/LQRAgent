@@ -8,6 +8,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * P0 默认答疑通道：用户消息直接转发 ai-server 进行流式对话。
  * P1 之后由 Orchestrator 接管意图路由，本 Service 仅处理闲聊/答疑意图。
@@ -36,6 +39,8 @@ public class QaAgentService {
 
         log.info("[QaAgent] handling message: userId={}, sessionId={}, content={}", userId, sessionId, userMessage);
 
+        final boolean[] errorOccurred = {false};
+
         aiServerWsProxy.streamChat(sessionId, userMessage, userId, new AiServerWsProxy.StreamCallback() {
             @Override
             public void onChunk(String content) {
@@ -44,6 +49,9 @@ public class QaAgentService {
 
             @Override
             public void onDone(String aiServerSessionId) {
+                if (errorOccurred[0]) {
+                    return; // Don't overwrite the error with "complete"
+                }
                 int durationMs = (int) (System.currentTimeMillis() - startTime);
                 agentRunLogService.completeRun(runLog.getId(), durationMs, null);
                 if (aiServerSessionId != null) {
@@ -54,9 +62,15 @@ public class QaAgentService {
 
             @Override
             public void onError(String error) {
+                errorOccurred[0] = true;
                 int durationMs = (int) (System.currentTimeMillis() - startTime);
                 agentRunLogService.failRun(runLog.getId(), error);
                 callback.onError(error);
+            }
+
+            @Override
+            public void onSources(List<Map<String, Object>> sources) {
+                callback.onSources(sources);
             }
         });
     }

@@ -1,23 +1,28 @@
 package com.lqragent.backend.agents.contentanalyzer.service;
 
+import com.lqragent.backend.chat.proxy.AiServerClient;
 import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
 import com.lqragent.backend.shared.knowledgegraph.repository.KnowledgePointRepository;
 import com.lqragent.backend.core.llm.LlmContentGenerator;
 import com.lqragent.backend.storage.QiniuStorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
  * 内容分析智能体。
- * 读取上传文档内容，通过关键词匹配提取相关知识点。
- * P3 实现简单文本匹配，后续可升级为 LLM 调用。
+ * 读取上传文档内容，通过 RAG 检索 + 关键词匹配提取相关知识点。
+ * PDF 文件使用 PDFBox 提取文本，语义检索优先使用 ai-server RAG。
  */
 @Slf4j
 @Service
@@ -27,6 +32,7 @@ public class ContentAnalyzerService {
     private final KnowledgePointRepository knowledgePointRepo;
     private final LlmContentGenerator llmGenerator;
     private final QiniuStorageService qiniuStorageService;
+    private final AiServerClient aiServerClient;
 
     /**
      * 对上传文件执行内容分析。
@@ -38,7 +44,7 @@ public class ContentAnalyzerService {
     public AnalysisResult analyze(String filePath, String fileName) {
         log.info("[ContentAnalyzer] analyzing: file={}", fileName);
 
-        String content = readFileContent(filePath);
+        String content = readFileContent(filePath, fileName);
         if (content == null || content.isBlank()) {
             return new AnalysisResult("无法读取文件内容", List.of());
         }
@@ -58,19 +64,67 @@ public class ContentAnalyzerService {
         return new AnalysisResult(summary, matchedKpIds);
     }
 
-    /** 从七牛云下载文件并读取文本内容 */
-    private String readFileContent(String objectKey) {
+    /** 从七牛云下载文件并读取文本内容，PDF 使用 PDFBox 提取 */
+    private String readFileContent(String objectKey, String fileName) {
         try {
             byte[] bytes = qiniuStorageService.download(objectKey);
+            if (fileName != null && fileName.toLowerCase().endsWith(".pdf")) {
+                // PDF 用 PDFBox 提取文本
+                try (PDDocument doc = Loader.loadPDF(bytes)) {
+                    return new PDFTextStripper().getText(doc);
+                }
+            }
             return new String(bytes, StandardCharsets.UTF_8);
         } catch (Exception e) {
-            log.warn("[ContentAnalyzer] R2 download error: key={}, error={}", objectKey, e.getMessage());
+            log.warn("[ContentAnalyzer] read error: key={}, error={}", objectKey, e.getMessage());
             return null;
         }
     }
 
-    /** 关键词匹配：扫描知识点标题/描述中的词是否出现在文档里 */
+    /**
+     * 知识点匹配：优先 RAG 语义检索，降级子串匹配。
+     * RAG 检索将文档内容作为 query 在公共知识库中搜索相关片段，
+     * 再从检索结果中匹配知识点标题。
+     */
     private List<String> matchKnowledgePoints(String content) {
+        // 尝试 RAG 语义检索
+        try {
+            String truncated = content.length() > 2000 ? content.substring(0, 2000) : content;
+            List<Map<String, Object>> results = aiServerClient.searchKnowledgeBase(
+                    "kb-public", truncated, 5
+            );
+
+            if (results != null && !results.isEmpty()) {
+                // 从检索结果中提取文本，再映射到知识点
+                String retrievedText = results.stream()
+                        .map(r -> String.valueOf(r.getOrDefault("text", "")))
+                        .collect(Collectors.joining("\n"));
+                List<String> ragMatched = mapTextToKnowledgePoints(retrievedText);
+                if (!ragMatched.isEmpty()) {
+                    log.info("[ContentAnalyzer] RAG matched {} KPs", ragMatched.size());
+                    return ragMatched;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[ContentAnalyzer] RAG search failed, fallback to substring: {}", e.getMessage());
+        }
+
+        // 降级：子串匹配
+        return matchBySubstring(content);
+    }
+
+    /** 从文本中匹配知识点标题（规则匹配） */
+    private List<String> mapTextToKnowledgePoints(String text) {
+        List<KnowledgePoint> allKps = knowledgePointRepo.findAll();
+        String lower = text.toLowerCase();
+        return allKps.stream()
+                .filter(kp -> lower.contains(kp.getTitle().toLowerCase()))
+                .map(KnowledgePoint::getKpId)
+                .collect(Collectors.toList());
+    }
+
+    /** 原始子串匹配（降级方案） */
+    private List<String> matchBySubstring(String content) {
         List<KnowledgePoint> allKps = knowledgePointRepo.findAll();
         String lowerContent = content.toLowerCase();
         List<String> matched = new ArrayList<>();
@@ -82,6 +136,7 @@ public class ContentAnalyzerService {
                 matched.add(kp.getKpId());
             }
         }
+        log.info("[ContentAnalyzer] substring matched {} KPs (fallback)", matched.size());
         return matched;
     }
 

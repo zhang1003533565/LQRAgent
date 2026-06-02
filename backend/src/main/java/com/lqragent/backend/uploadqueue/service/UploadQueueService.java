@@ -164,7 +164,39 @@ public class UploadQueueService {
                 }
             }
 
-            // 5. 内容分析 → 映射知识点（公共库也做，方便管理后台查看）
+            // 5. 上传成功后，轮询等待向量化完成（最多 3 分钟，每 5 秒查一次）
+            if (uploadSuccess) {
+                task.setStatus(TaskStatus.PROCESSING);
+                taskRepository.save(task);
+
+                boolean indexed = false;
+                for (int i = 0; i < 36; i++) {
+                    Map<String, Object> progress = aiServerClient.getProgress(kbName);
+                    // ai-server progress endpoint returns "stage" (not "status")
+                    String stage = String.valueOf(progress.getOrDefault("stage", ""));
+                    if ("completed".equals(stage) || progress.isEmpty()) {
+                        indexed = true;
+                        log.info("[UploadQueue] KB '{}' indexing completed", kbName);
+                        break;
+                    }
+                    if ("error".equals(stage)) {
+                        log.error("[UploadQueue] KB indexing error for {}: {}", kbName, progress);
+                        break;
+                    }
+                    // 仍在处理中，等待 3 秒后重试
+                    try {
+                        Thread.sleep(3000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+                if (!indexed) {
+                    log.warn("[UploadQueue] KB indexing timeout for {}, proceeding anyway", kbName);
+                }
+            }
+
+            // 6. 内容分析 → 映射知识点（公共库也做，方便管理后台查看）
             var analysis = contentAnalyzerService.analyze(task.getFilePath(), task.getFileName());
             task.setAnalysisResult(analysis.toJson());
             task.setMappedKpIds(String.join(",", analysis.mappedKpIds()));

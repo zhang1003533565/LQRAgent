@@ -139,13 +139,16 @@ def configure_llamaindex_settings(logger=None) -> None:
     else:
         Settings.embed_model = CustomEmbedding(embedding_config=embedding_cfg)
         configured = True
-    Settings.chunk_size = 512
+    # chunk_size=300 keeps SentenceSplitter output under the 512-token limit
+    # that most embedding models (BGE, etc.) enforce, even when a single chunk
+    # happens to consist entirely of multi-byte CJK characters (~1.5 tok/char).
+    Settings.chunk_size = 300
     Settings.chunk_overlap = 50
 
     if logger is not None:
         message = (
             f"LlamaIndex configured: embedding={embedding_cfg.model} "
-            f"({embedding_cfg.dim}D, {embedding_cfg.binding}), chunk_size=512"
+            f"({embedding_cfg.dim}D, {embedding_cfg.binding}), chunk_size=300"
         )
         if configured:
             logger.info(message)
