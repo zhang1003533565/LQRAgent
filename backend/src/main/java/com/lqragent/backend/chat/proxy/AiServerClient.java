@@ -59,13 +59,36 @@ public class AiServerClient {
     }
 
     /** 创建知识库 */
+    @SuppressWarnings("unchecked")
     public Map<?, ?> createKnowledgeBase(String name) {
         log.info("[AiServerClient] createKnowledgeBase: {}", name);
-        return client().post()
-                .uri("/api/v1/knowledge/create")
-                .body(Map.of("name", name, "files", java.util.Collections.emptyList()))
-                .retrieve()
-                .body(Map.class);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("name", name);
+        // 必须提供至少一个文件，使用虚拟文件
+        ByteArrayResource dummyFile = new ByteArrayResource("placeholder".getBytes()) {
+            @Override
+            public String getFilename() {
+                return "placeholder.txt";
+            }
+        };
+        body.add("files", dummyFile);
+
+        HttpEntity<MultiValueMap<String, Object>> request = new HttpEntity<>(body, headers);
+
+        String baseUrl = runtimeConfig.getAiServerBaseUrl();
+        String url = baseUrl + "/api/v1/knowledge/create";
+
+        RestTemplate restTemplate = new RestTemplate();
+        try {
+            return restTemplate.postForObject(url, request, Map.class);
+        } catch (Exception e) {
+            log.warn("[AiServerClient] createKnowledgeBase failed (may already exist): {}", e.getMessage());
+            return null;
+        }
     }
 
     /** 上传文档到知识库（multipart/form-data） */

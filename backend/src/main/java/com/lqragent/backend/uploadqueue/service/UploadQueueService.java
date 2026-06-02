@@ -138,30 +138,46 @@ public class UploadQueueService {
         try {
             // 1. 根据 scope 确定 KB 名称
             String kbName = resolveKbName(task);
-            try {
-                aiServerClient.createKnowledgeBase(kbName);
-            } catch (Exception e) {
-                log.warn("[UploadQueue] KB may already exist: {}", e.getMessage());
-            }
 
-            // 2. 从七牛云下载文件，发送到 ai-server
+            // 2. 从七牛云下载文件
             byte[] content = qiniuStorageService.download(task.getFilePath());
             String mimeType = detectMimeType(task.getFileName());
+
+            // 3. 尝试上传文档到 ai-server
+            boolean uploadSuccess = false;
             try {
                 aiServerClient.uploadDocument(kbName, task.getFileName(), content, mimeType);
+                uploadSuccess = true;
                 log.info("[UploadQueue] Uploaded to KB '{}': {}", kbName, task.getFileName());
             } catch (Exception e) {
-                log.warn("[UploadQueue] ai-server upload failed (non-fatal): {}", e.getMessage());
+                log.warn("[UploadQueue] Upload failed, trying to create KB first: {}", e.getMessage());
+
+                // 4. 如果上传失败，尝试创建知识库后重新上传
+                try {
+                    aiServerClient.createKnowledgeBase(kbName);
+                    log.info("[UploadQueue] Created KB '{}', retrying upload", kbName);
+                    aiServerClient.uploadDocument(kbName, task.getFileName(), content, mimeType);
+                    uploadSuccess = true;
+                    log.info("[UploadQueue] Retry upload to KB '{}' succeeded: {}", kbName, task.getFileName());
+                } catch (Exception retryEx) {
+                    log.error("[UploadQueue] Retry also failed: {}", retryEx.getMessage());
+                }
             }
 
-            // 3. 内容分析 → 映射知识点（公共库也做，方便管理后台查看）
+            // 5. 内容分析 → 映射知识点（公共库也做，方便管理后台查看）
             var analysis = contentAnalyzerService.analyze(task.getFilePath(), task.getFileName());
             task.setAnalysisResult(analysis.toJson());
             task.setMappedKpIds(String.join(",", analysis.mappedKpIds()));
 
-            task.setStatus(TaskStatus.COMPLETED);
-            log.info("[UploadQueue] Task {} completed, KB={}, mapped KPs: {}",
-                    task.getId(), kbName, analysis.mappedKpIds());
+            if (uploadSuccess) {
+                task.setStatus(TaskStatus.COMPLETED);
+                log.info("[UploadQueue] Task {} completed, KB={}, mapped KPs: {}",
+                        task.getId(), kbName, analysis.mappedKpIds());
+            } else {
+                task.setStatus(TaskStatus.FAILED);
+                task.setErrorMessage("上传到 AI Server 失败");
+                log.error("[UploadQueue] Task {} failed: upload to ai-server failed", task.getId());
+            }
         } catch (Exception e) {
             task.setStatus(TaskStatus.FAILED);
             task.setErrorMessage(e.getMessage());
