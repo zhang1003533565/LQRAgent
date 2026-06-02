@@ -1,3 +1,4 @@
+﻿import { useNavigate } from 'react-router-dom'
 import styles from './LearningResourcesEmptyPage.module.css'
 
 type ResourceCard = {
@@ -116,24 +117,16 @@ function SearchIcon() {
   )
 }
 
-function BellIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className={styles.bellIcon}>
-      <path
-        d="M12 4.5a4 4 0 0 1 4 4v2.2c0 1 .28 1.97.81 2.82l1.01 1.63A1.2 1.2 0 0 1 16.8 17H7.2a1.2 1.2 0 0 1-1.02-1.85l1.01-1.63A5.4 5.4 0 0 0 8 10.7V8.5a4 4 0 0 1 4-4Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
-      <path d="M10 19a2 2 0 0 0 4 0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  )
-}
-
 function SparkIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={styles.sectionIcon}>
-      <path d="M12 2l2.1 5.9L20 10l-5.9 2.1L12 18l-2.1-5.9L4 10l5.9-2.1L12 2Z" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" />
+      <path
+        d="M12 2l2.1 5.9L20 10l-5.9 2.1L12 18l-2.1-5.9L4 10l5.9-2.1L12 2Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.9"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }
@@ -141,8 +134,19 @@ function SparkIcon() {
 function TopicIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={styles.sectionIcon}>
-      <path d="M10.5 4a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Zm6 7a2 2 0 1 1 0 4 2 2 0 0 1 0-4ZM7 14a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z" fill="none" stroke="currentColor" strokeWidth="1.8" />
-      <path d="M12.7 8.2l2.2 3M9.2 9l-1 5m1.6 2h4.7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path
+        d="M10.5 4a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Zm6 7a2 2 0 1 1 0 4 2 2 0 0 1 0-4ZM7 14a2 2 0 1 1 0 4 2 2 0 0 1 0-4Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M12.7 8.2l2.2 3M9.2 9l-1 5m1.6 2h4.7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
     </svg>
   )
 }
@@ -151,7 +155,13 @@ function ProjectIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={styles.sectionIcon}>
       <path d="M12 4v6M12 20v-6M4 12h6M20 12h-6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M12 7.2l1 3.8 3.8 1-3.8 1-1 3.8-1-3.8-3.8-1 3.8-1 1-3.8Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path
+        d="M12 7.2l1 3.8 3.8 1-3.8 1-1 3.8-1-3.8-3.8-1 3.8-1 1-3.8Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }
@@ -181,6 +191,8 @@ function ProjectArtwork({ icon, tone }: { icon: ProjectCard['icon']; tone: Proje
 }
 
 export default function LearningResourcesEmptyPage() {
+  const navigate = useNavigate()
+
   return (
     <section className={styles.page}>
       <div className={styles.heroGlow} />
@@ -213,13 +225,17 @@ export default function LearningResourcesEmptyPage() {
             </div>
 
             <div className={styles.bannerBody}>
-              <p className={styles.bannerTitle}>
-                暂无学习路径，学习资源将随路径自动生成，可定制路径或浏览基础资源
-              </p>
+              <p className={styles.bannerTitle}>暂无学习路径，学习资源将随路径自动生成，可定制路径或浏览基础资源</p>
             </div>
 
             <div className={styles.bannerActions}>
-              <button type="button" className={styles.primaryButton}>去定制学习路径</button>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => navigate('/workspace/learning-path')}
+              >
+                去定制学习路径
+              </button>
             </div>
           </section>
 
@@ -241,7 +257,10 @@ export default function LearningResourcesEmptyPage() {
                     {item.subtitle ? <p className={styles.cardSubtitle}>{item.subtitle}</p> : null}
                     <div className={styles.tagRow}>
                       {item.tags.map((tag) => (
-                        <span key={tag} className={`${styles.tag} ${tag === '视频' ? styles.tagBlue : tag === '文档' ? styles.tagBlueSoft : tag === '项目' ? styles.tagBlueSoft : tag === '入门' ? styles.tagGold : styles.tagGreen}`}>
+                        <span
+                          key={tag}
+                          className={`${styles.tag} ${tag === '视频' ? styles.tagBlue : tag === '文档' ? styles.tagBlueSoft : tag === '项目' ? styles.tagBlueSoft : tag === '入门' ? styles.tagGold : styles.tagGreen}`}
+                        >
                           {tag}
                         </span>
                       ))}
@@ -302,7 +321,10 @@ export default function LearningResourcesEmptyPage() {
                     <p className={styles.projectSubtitle}>{item.subtitle}</p>
                     <div className={styles.tagRow}>
                       {item.tags.map((tag) => (
-                        <span key={tag} className={`${styles.tag} ${tag === '项目' ? styles.tagBlueSoft : tag === '中级' ? styles.tagBlueSoft : styles.tagGreen}`}>
+                        <span
+                          key={tag}
+                          className={`${styles.tag} ${tag === '项目' ? styles.tagBlueSoft : tag === '中级' ? styles.tagBlueSoft : styles.tagGreen}`}
+                        >
                           {tag}
                         </span>
                       ))}
