@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { usePathStore } from '@/utils/store/pathStore'
 import { getQuizQuestions, submitQuiz } from '@/api/student/quiz'
 import type { LearningResource } from '@/utils/types/media-resource'
+import QuizEmptyPage from './QuizEmptyPage'
 import styles from './QuizPage.module.css'
 
 interface Question {
@@ -45,7 +46,7 @@ export default function QuizPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const kpId = selectedKpId || nodes[0]?.kpId || ''
+  const kpId = selectedKpId || ''
   const currentNode = nodes.find((n) => n.kpId === kpId)
 
   useEffect(() => {
@@ -114,15 +115,8 @@ export default function QuizPage() {
     setCorrectSet(correct)
   }, [questions, answers, kpId, currentQuestion])
 
-  if (!kpId) {
-    return (
-      <section className={styles.page}>
-        <div className={styles.glow} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60%', color: '#8b9ab6', fontSize: 16 }}>
-          请先在「学习路径」页面生成学习路径，再进入答题
-        </div>
-      </section>
-    )
+  if (!selectedKpId) {
+    return <QuizEmptyPage />
   }
 
   return (
