@@ -15,9 +15,11 @@ import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 
 /**
@@ -100,7 +102,11 @@ public class QiniuStorageService {
     public byte[] download(String key) {
         if (auth == null) throw new RuntimeException("七牛云未配置");
         // 公开 bucket 直接用域名访问
-        String url = domain + "/" + key;
+        // 对中文字符进行 URL 编码
+        String encodedKey = URLEncoder.encode(key, StandardCharsets.UTF_8)
+                .replace("+", "%20")  // 空格编码为 %20 而非 +
+                .replace("%2F", "/");  // 保持路径分隔符
+        String url = domain + "/" + encodedKey;
         log.info("[QiniuStorage] downloading: key={}, url={}", key, url);
         try {
             var client = HttpClient.newHttpClient();
