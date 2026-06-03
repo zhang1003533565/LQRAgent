@@ -27,12 +27,16 @@ const suggestions = [
 type ParsedAnalysis = {
   summary: string
   mappedKpIds: string[]
+  matchedKnowledgePoints: {
+    kpId: string
+    score: number | null
+  }[]
 }
 
 type DisplayKnowledgePoint = {
   id: string
   name: string
-  value: number
+  value: number | null
   tone: 'blue' | 'amber' | 'orange'
 }
 
@@ -51,6 +55,7 @@ function FileBadge({ fileName }: { fileName: string }) {
 function parseAnalysis(task: UploadTask): ParsedAnalysis {
   let summary = ''
   let mappedFromJson: string[] = []
+  let matchedKnowledgePoints: ParsedAnalysis['matchedKnowledgePoints'] = []
 
   if (task.analysisResult) {
     try {
@@ -60,6 +65,54 @@ function parseAnalysis(task: UploadTask): ParsedAnalysis {
         mappedFromJson = result.mappedKpIds
           .map((item: unknown) => String(item || '').trim())
           .filter(Boolean)
+      }
+      if (Array.isArray(result?.matchedKnowledgePoints)) {
+        matchedKnowledgePoints = result.matchedKnowledgePoints
+          .map((item: unknown) => {
+            if (!item || typeof item !== 'object') return null
+            const point = item as {
+              kpId?: unknown
+              id?: unknown
+              knowledgePointId?: unknown
+              score?: unknown
+              matchScore?: unknown
+              matchingScore?: unknown
+              similarity?: unknown
+              relevance?: unknown
+              confidence?: unknown
+            }
+            const kpId = String(point.kpId || point.id || point.knowledgePointId || '').trim()
+            if (!kpId) return null
+            const rawScore =
+              point.score ??
+              point.matchScore ??
+              point.matchingScore ??
+              point.similarity ??
+              point.relevance ??
+              point.confidence
+            const score =
+              typeof rawScore === 'number'
+                ? Math.max(0, Math.min(100, Math.round(rawScore <= 1 ? rawScore * 100 : rawScore)))
+                : typeof rawScore === 'string' && rawScore.trim() !== '' && !Number.isNaN(Number(rawScore))
+                  ? Math.max(0, Math.min(100, Math.round(Number(rawScore) <= 1 ? Number(rawScore) * 100 : Number(rawScore))))
+                  : null
+            return { kpId, score }
+          })
+          .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      } else if (result?.matchedKnowledgePoints && typeof result.matchedKnowledgePoints === 'object') {
+        matchedKnowledgePoints = Object.entries(result.matchedKnowledgePoints as Record<string, unknown>)
+          .map(([kpId, rawScore]) => {
+            const normalizedId = String(kpId || '').trim()
+            if (!normalizedId) return null
+            const score =
+              typeof rawScore === 'number'
+                ? Math.max(0, Math.min(100, Math.round(rawScore <= 1 ? rawScore * 100 : rawScore)))
+                : typeof rawScore === 'string' && rawScore.trim() !== '' && !Number.isNaN(Number(rawScore))
+                  ? Math.max(0, Math.min(100, Math.round(Number(rawScore) <= 1 ? Number(rawScore) * 100 : Number(rawScore))))
+                  : null
+            return { kpId: normalizedId, score }
+          })
+          .filter((item): item is NonNullable<typeof item> => Boolean(item))
       }
     } catch {
       // ignore malformed payload
@@ -74,6 +127,7 @@ function parseAnalysis(task: UploadTask): ParsedAnalysis {
   return {
     summary,
     mappedKpIds: Array.from(new Set([...mappedFromJson, ...mappedFromField])),
+    matchedKnowledgePoints,
   }
 }
 
@@ -88,13 +142,17 @@ export default function UploadPage() {
   const [dragOver, setDragOver] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [knowledgePointTitles, setKnowledgePointTitles] = useState<Record<string, string>>({})
+  const [animatedKnowledgeValues, setAnimatedKnowledgeValues] = useState<Record<string, number>>({})
 
   const completedTasks = useMemo(
     () => tasks.filter((t) => t.status === 'COMPLETED'),
     [tasks],
   )
   const latestCompletedTask = completedTasks[0] ?? null
-  const latestAnalysis = latestCompletedTask ? parseAnalysis(latestCompletedTask) : null
+  const latestAnalysis = useMemo(
+    () => (latestCompletedTask ? parseAnalysis(latestCompletedTask) : null),
+    [latestCompletedTask?.id, latestCompletedTask?.analysisResult, latestCompletedTask?.mappedKpIds],
+  )
   const hasCompleted = completedTasks.length > 0
   const mappedKpIdsKey = useMemo(
     () => (latestAnalysis?.mappedKpIds ?? []).join('|'),
@@ -133,13 +191,48 @@ export default function UploadPage() {
   const mappedKnowledgePoints = useMemo<DisplayKnowledgePoint[]>(() => {
     if (!latestAnalysis) return []
     const tones: DisplayKnowledgePoint['tone'][] = ['blue', 'amber', 'orange']
-    return latestAnalysis.mappedKpIds.map((kpId, index) => ({
-      id: kpId,
-      name: knowledgePointTitles[kpId] || kpId,
-      value: Math.max(42, 92 - index * 8),
-      tone: tones[Math.min(index, tones.length - 1)],
-    }))
+    const scoreMap = new Map(
+      latestAnalysis.matchedKnowledgePoints.map((item) => [item.kpId, item.score] as const),
+    )
+    return latestAnalysis.mappedKpIds.map((kpId, index) => {
+      const score = scoreMap.get(kpId)
+      return {
+        id: kpId,
+        name: knowledgePointTitles[kpId] || kpId,
+        value: typeof score === 'number' ? score : null,
+        tone: tones[Math.min(index, tones.length - 1)],
+      }
+    })
   }, [knowledgePointTitles, latestAnalysis])
+  const mappedKnowledgePointsAnimationKey = useMemo(
+    () => mappedKnowledgePoints.map((point) => `${point.id}:${point.value ?? 'null'}`).join('|'),
+    [mappedKnowledgePoints],
+  )
+
+  useEffect(() => {
+    if (mappedKnowledgePoints.length === 0) {
+      setAnimatedKnowledgeValues({})
+      return
+    }
+
+    setAnimatedKnowledgeValues(
+      mappedKnowledgePoints.reduce<Record<string, number>>((acc, point) => {
+        acc[point.id] = 0
+        return acc
+      }, {}),
+    )
+
+    const frame = window.requestAnimationFrame(() => {
+      setAnimatedKnowledgeValues(
+        mappedKnowledgePoints.reduce<Record<string, number>>((acc, point) => {
+          acc[point.id] = point.value ?? 0
+          return acc
+        }, {}),
+      )
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [mappedKnowledgePointsAnimationKey])
 
   const combinedSummary = useMemo(() => {
     if (latestAnalysis?.summary) return latestAnalysis.summary
@@ -433,7 +526,7 @@ export default function UploadPage() {
                   <button
                     key={point.id}
                     type="button"
-                    className={styles.knowledgeRow}
+                    className={`${styles.knowledgeRow} ${point.value != null ? styles.knowledgeRowAnimated : ''}`}
                     onClick={() => navigate('/workspace/learning-path')}
                     title={point.id}
                   >
@@ -450,10 +543,12 @@ export default function UploadPage() {
                               ? `${styles.knowledgeFill} ${styles.knowledgeAmber}`
                               : `${styles.knowledgeFill} ${styles.knowledgeOrange}`
                         }
-                        style={{ width: `${point.value}%` }}
+                        style={{ width: `${animatedKnowledgeValues[point.id] ?? 0}%` }}
                       />
                     </div>
-                    <strong className={styles.knowledgeValue}>{point.value}%</strong>
+                    <strong className={styles.knowledgeValue}>
+                      {point.value == null ? '待分析' : `${Math.round(animatedKnowledgeValues[point.id] ?? 0)}%`}
+                    </strong>
                     <span className={styles.knowledgeArrow}>→</span>
                   </button>
                 ))
