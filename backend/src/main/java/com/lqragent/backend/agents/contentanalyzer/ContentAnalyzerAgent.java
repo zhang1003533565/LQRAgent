@@ -31,7 +31,11 @@ public class ContentAnalyzerAgent implements Agent {
         var result = contentAnalyzerService.analyze(filePath, fileName);
         return AgentResult.builder()
                 .success(true)
-                .data(Map.of("summary", result.summary(), "mappedKpIds", result.mappedKpIds()))
+                .data(Map.of(
+                        "summary", result.summary(),
+                        "mappedKpIds", result.mappedKpIds(),
+                        "matchedKnowledgePoints", result.matchedKnowledgePoints()
+                ))
                 .build();
     }
 
@@ -58,7 +62,11 @@ public class ContentAnalyzerAgent implements Agent {
             String fp = (String) p.getOrDefault("filePath", "");
             String fn = (String) p.getOrDefault("fileName", "");
             var result = contentAnalyzerService.analyze(fp, fn);
-            return Map.of("summary", result.summary(), "mappedKpIds", result.mappedKpIds());
+            return Map.of(
+                    "summary", result.summary(),
+                    "mappedKpIds", result.mappedKpIds(),
+                    "matchedKnowledgePoints", result.matchedKnowledgePoints()
+            );
         });
     }
 }

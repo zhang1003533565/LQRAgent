@@ -278,6 +278,42 @@ PREPARE stmt_add_analysis_result FROM @sql_add_analysis_result;
 EXECUTE stmt_add_analysis_result;
 DEALLOCATE PREPARE stmt_add_analysis_result;
 
+SET @add_status_message := (
+    SELECT COUNT(*) = 1 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'kb_upload_task'
+) AND (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'kb_upload_task'
+      AND column_name = 'status_message'
+);
+SET @sql_add_status_message := IF(
+    @add_status_message,
+    'ALTER TABLE `kb_upload_task` ADD COLUMN `status_message` VARCHAR(512) NULL COMMENT ''浠诲姟鐘舵€佹彁绀轰俊鎭紙濡傞樁娈点€佽繘搴︼級'' AFTER `error_message`',
+    'SELECT ''skip: kb_upload_task.status_message exists or table missing'''
+);
+PREPARE stmt_add_status_message FROM @sql_add_status_message;
+EXECUTE stmt_add_status_message;
+DEALLOCATE PREPARE stmt_add_status_message;
+
+SET @add_progress_percent := (
+    SELECT COUNT(*) = 1 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'kb_upload_task'
+) AND (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'kb_upload_task'
+      AND column_name = 'progress_percent'
+);
+SET @sql_add_progress_percent := IF(
+    @add_progress_percent,
+    'ALTER TABLE `kb_upload_task` ADD COLUMN `progress_percent` INT NULL COMMENT ''浠诲姟杩涘害鐧惧垎姣?'' AFTER `status_message`',
+    'SELECT ''skip: kb_upload_task.progress_percent exists or table missing'''
+);
+PREPARE stmt_add_progress_percent FROM @sql_add_progress_percent;
+EXECUTE stmt_add_progress_percent;
+DEALLOCATE PREPARE stmt_add_progress_percent;
+
 SET @add_mapped_kp_ids := (
     SELECT COUNT(*) = 1 FROM information_schema.tables
     WHERE table_schema = DATABASE() AND table_name = 'kb_upload_task'

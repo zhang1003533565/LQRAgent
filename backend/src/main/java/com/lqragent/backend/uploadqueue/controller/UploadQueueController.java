@@ -49,6 +49,7 @@ public class UploadQueueController {
 
         // filePath 存七牛云 object key
         KbUploadTask task = uploadQueueService.enqueue(userId, originalName, key, scope);
+        uploadQueueService.processImmediatelyAsync(task);
 
         return ApiResponse.ok(task);
     }

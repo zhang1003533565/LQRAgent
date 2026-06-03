@@ -10,6 +10,8 @@ export interface UploadTask {
   kbScope: KbScope
   status: TaskStatus
   errorMessage?: string
+  statusMessage?: string
+  progressPercent?: number
   analysisResult?: string
   mappedKpIds?: string
   createdAt: string

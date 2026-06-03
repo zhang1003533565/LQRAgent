@@ -111,8 +111,13 @@ export default function UploadQueuePanel() {
                   className={styles.status}
                   style={{ color: STATUS_COLOR[task.status] }}
                 >
-                  {STATUS_LABEL[task.status] ?? task.status}
+                  {task.status === 'PROCESSING' && task.progressPercent != null
+                    ? `${STATUS_LABEL[task.status] ?? task.status} ${task.progressPercent}%`
+                    : STATUS_LABEL[task.status] ?? task.status}
                 </span>
+                {task.status === 'PROCESSING' && task.statusMessage && (
+                  <span className={styles.errMsg}>{task.statusMessage}</span>
+                )}
                 {task.status === 'FAILED' && task.errorMessage && (
                   <span className={styles.errMsg}>{task.errorMessage}</span>
                 )}

@@ -13,6 +13,8 @@ public interface KnowledgePointRepository extends JpaRepository<KnowledgePoint, 
 
     boolean existsByKpId(String kpId);
 
+    List<KnowledgePoint> findByKpIdIn(List<String> kpIds);
+
     List<KnowledgePoint> findBySubject(String subject);
 
     @Query("SELECT DISTINCT kp.subject FROM KnowledgePoint kp WHERE kp.subject IS NOT NULL ORDER BY kp.subject")
