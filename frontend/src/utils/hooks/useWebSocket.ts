@@ -6,7 +6,7 @@ import { useArtifactStore } from '@/utils/store/artifactStore'
 import { usePathStore } from '@/utils/store/pathStore'
 import { useProfileStore } from '@/utils/store/profileStore'
 import type { AgentId, AgentStepStatus } from '@/utils/types/agent-events'
-import type { ArtifactKind } from '@/utils/types/artifact'
+import type { ArtifactKind, RagSource } from '@/utils/types/artifact'
 import type { WsRawMessage } from '@/utils/types/agent-events'
 import type { LearningPathArtifactPayload } from '@/utils/types/artifact'
 import type { MultiCardBlock } from '@/utils/types/multi-card'
@@ -40,6 +40,18 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
         contentType: 'multi_card',
         cards: payload as MultiCardBlock[],
         streaming: false,
+      })
+    }
+  }
+
+  if (kind === 'rag_sources' && Array.isArray(payload)) {
+    const sources = payload as RagSource[]
+    // Attach sources to the last assistant message
+    const msgs = useChatStore.getState().messages
+    const last = [...msgs].reverse().find((m) => m.role === 'assistant')
+    if (last) {
+      useChatStore.getState().updateMessage(last.id, {
+        ragSources: sources,
       })
     }
   }
@@ -184,9 +196,10 @@ export function useWebSocket() {
 
     ws.onmessage = (event) => {
       try {
-        dispatch(JSON.parse(event.data as string) as WsRawMessage)
+        const data = JSON.parse(event.data as string) as WsRawMessage
+        dispatch(data)
       } catch {
-        console.warn('[WebSocket] non-JSON:', event.data)
+        // non-JSON frame — ignore silently
       }
     }
   }, [token, dispatch, setConnected, cleanup])

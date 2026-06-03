@@ -215,6 +215,37 @@ class AgenticChatPipeline:
         all_sources: list[dict[str, Any]] = []
         for trace in tool_traces:
             all_sources.extend(trace.sources)
+
+        # Fallback: if LLM skipped RAG but KBs are available, do a retrieval
+        # so the frontend always receives source references for educational queries.
+        if not all_sources and "rag" in enabled_tools:
+            selected_kbs = self._selected_kbs(context)
+            if selected_kbs:
+                fallback_query = (context.user_message or "").strip()
+                if fallback_query:
+                    try:
+                        from deeptutor.tools.rag_tool import rag_search
+
+                        logger.info(
+                            "[agentic_pipeline] LLM skipped RAG; running fallback retrieval kb=%s query=%s",
+                            selected_kbs[0], fallback_query[:80],
+                        )
+                        fallback_result = await rag_search(
+                            query=fallback_query,
+                            kb_name=selected_kbs[0],
+                        )
+                        fallback_sources = fallback_result.get("sources", [])
+                        if fallback_sources and isinstance(fallback_sources, list):
+                            all_sources = fallback_sources
+                            logger.info(
+                                "[agentic_pipeline] fallback RAG retrieved %d sources",
+                                len(all_sources),
+                            )
+                    except Exception as e:
+                        logger.warning(
+                            "[agentic_pipeline] fallback RAG retrieval failed: %s", e
+                        )
+
         if all_sources:
             await stream.sources(
                 all_sources,

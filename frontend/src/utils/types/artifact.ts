@@ -8,6 +8,7 @@ export type ArtifactKind =
   | 'media_image'
   | 'media_video'
   | 'multi_card'
+  | 'rag_sources'
 
 export interface ArtifactEvent {
   type: 'artifact'
@@ -20,4 +21,14 @@ export interface LearningPathArtifactPayload {
   goal: string
   nodes: import('./learning-path').PathNode[]
   planDescription?: string
+}
+
+/** RAG 引用来源（知识库检索结果片段） */
+export interface RagSource {
+  title: string
+  content: string
+  source: string
+  page?: string
+  chunk_id?: string
+  score?: number | string
 }

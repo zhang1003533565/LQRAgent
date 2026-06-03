@@ -95,9 +95,19 @@ class RAGTool(_PromptHintsMixin, BaseTool):
             **extra_kwargs,
         )
         content = result.get("answer") or result.get("content", "")
+
+        # Forward actual document-level sources from the RAG pipeline
+        # (title, content snippet, source file, page, chunk_id, score).
+        raw_sources = result.get("sources", [])
+        if raw_sources and isinstance(raw_sources, list) and isinstance(raw_sources[0], dict) and "title" in raw_sources[0]:
+            sources = raw_sources
+        else:
+            # Fallback: minimal metadata stub when pipeline returns no doc sources
+            sources = [{"type": "rag", "query": query, "kb_name": kb_name}]
+
         return ToolResult(
             content=content,
-            sources=[{"type": "rag", "query": query, "kb_name": kb_name}],
+            sources=sources,
             metadata=result,
         )
 

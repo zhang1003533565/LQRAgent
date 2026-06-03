@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Scope;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -115,7 +116,12 @@ public class AgentEngine {
                 .toList();
 
         String url = (host.endsWith("/") ? host : host + "/") + "chat/completions";
-        RestClient client = RestClient.builder().build();
+        SimpleClientHttpRequestFactory httpFactory = new SimpleClientHttpRequestFactory();
+        httpFactory.setConnectTimeout(10_000);  // 10s connect timeout
+        httpFactory.setReadTimeout(90_000);     // 90s read timeout (LLM inference can be slow)
+        RestClient client = RestClient.builder()
+                .requestFactory(httpFactory)
+                .build();
 
         // 3. 推理循环
         for (int round = 0; round < MAX_ROUNDS; round++) {

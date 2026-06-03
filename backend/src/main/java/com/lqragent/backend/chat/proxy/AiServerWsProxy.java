@@ -2,6 +2,7 @@ package com.lqragent.backend.chat.proxy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import com.lqragent.backend.systemconfig.ConfigKeys;
 import lombok.extern.slf4j.Slf4j;
@@ -111,13 +112,19 @@ public class AiServerWsProxy {
                                     }
                                     case "sources" -> {
                                         try {
-                                            if (node.has("rag") && node.get("rag").isArray()) {
-                                                @SuppressWarnings("unchecked")
-                                                List<Map<String, Object>> ragSources = objectMapper.convertValue(
-                                                        node.get("rag"),
-                                                        objectMapper.getTypeFactory().constructCollectionType(List.class, Map.class)
-                                                );
-                                                callback.onSources(ragSources);
+                                            // ai-server puts sources in metadata.sources (StreamEvent protocol)
+                                            JsonNode sourcesNode = null;
+                                            if (node.has("metadata") && node.get("metadata").has("sources")) {
+                                                sourcesNode = node.get("metadata").get("sources");
+                                            } else if (node.has("sources")) {
+                                                // Fallback: top-level sources field
+                                                sourcesNode = node.get("sources");
+                                            }
+                                            if (sourcesNode != null && sourcesNode.isArray() && sourcesNode.size() > 0) {
+                                                List<Map<String, Object>> sources = objectMapper
+                                                        .convertValue(sourcesNode, new TypeReference<>() {});
+                                                callback.onSources(sources);
+                                                log.info("[AiServerWsProxy] forwarded {} RAG sources", sources.size());
                                             }
                                         } catch (Exception e) {
                                             log.warn("[AiServerWsProxy] parse sources error: {}", e.getMessage());
@@ -182,7 +189,15 @@ public class AiServerWsProxy {
                     })
                     .get(10, TimeUnit.SECONDS);
 
-            doneLatch.await(120, TimeUnit.SECONDS);
+            boolean completed = doneLatch.await(120, TimeUnit.SECONDS);
+            if (!completed) {
+                log.warn("[AiServerWsProxy] turn timed out after 120s, response length={}", fullResponse.length());
+                if (fullResponse.length() > 0) {
+                    callback.onDone(aiServerSessionId[0]);
+                } else {
+                    callback.onError("AI 服务响应超时，请稍后重试");
+                }
+            }
             ws.sendClose(WebSocket.NORMAL_CLOSURE, "");
         } catch (Exception e) {
             log.error("[AiServerWsProxy] failed to connect: {}", e.getMessage());
