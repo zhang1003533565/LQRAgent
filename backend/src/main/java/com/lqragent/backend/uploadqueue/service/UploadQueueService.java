@@ -8,7 +8,9 @@ import com.lqragent.backend.systemconfig.ConfigKeys;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask.KbScope;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask.TaskStatus;
+import com.lqragent.backend.uploadqueue.entity.UploadAnalysisHistory;
 import com.lqragent.backend.uploadqueue.repository.KbUploadTaskRepository;
+import com.lqragent.backend.uploadqueue.repository.UploadAnalysisHistoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -31,6 +33,7 @@ public class UploadQueueService {
     private static final int BATCH_SIZE = 5;
 
     private final KbUploadTaskRepository taskRepository;
+    private final UploadAnalysisHistoryRepository uploadAnalysisHistoryRepository;
     private final AiServerClient aiServerClient;
     private final ContentAnalyzerService contentAnalyzerService;
     private final AppRuntimeConfig runtimeConfig;
@@ -154,7 +157,8 @@ public class UploadQueueService {
             log.error("[UploadQueue] Task {} failed: {}", task.getId(), e.getMessage(), e);
         } finally {
             task.setFinishedAt(LocalDateTime.now());
-            taskRepository.save(task);
+            KbUploadTask savedTask = taskRepository.save(task);
+            saveAnalysisHistory(savedTask);
         }
     }
 
@@ -265,5 +269,78 @@ public class UploadQueueService {
             }
         }
         return "";
+    }
+
+    private void saveAnalysisHistory(KbUploadTask task) {
+        try {
+            UploadAnalysisHistory history = UploadAnalysisHistory.builder()
+                    .userId(task.getUserId())
+                    .uploadTaskId(task.getId())
+                    .fileName(task.getFileName())
+                    .filePath(task.getFilePath())
+                    .summary(extractSummary(task.getAnalysisResult()))
+                    .mappedKpIds(toJsonArray(task.getMappedKpIds()))
+                    .matchedKnowledgePoints(extractMatchedKnowledgePoints(task.getAnalysisResult()))
+                    .status(task.getStatus().name())
+                    .errorMessage(task.getErrorMessage())
+                    .finishedAt(task.getFinishedAt())
+                    .build();
+            uploadAnalysisHistoryRepository.save(history);
+        } catch (Exception e) {
+            log.warn("[UploadQueue] Failed to save analysis history for task {}: {}", task.getId(), e.getMessage());
+        }
+    }
+
+    private String extractSummary(String analysisResult) {
+        if (analysisResult == null || analysisResult.isBlank()) {
+            return null;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode root =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(analysisResult);
+            String summary = root.path("summary").asText("").trim();
+            return summary.isBlank() ? null : summary;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String extractMatchedKnowledgePoints(String analysisResult) {
+        if (analysisResult == null || analysisResult.isBlank()) {
+            return null;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode root =
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(analysisResult);
+            com.fasterxml.jackson.databind.JsonNode matchedNode = root.path("matchedKnowledgePoints");
+            if (matchedNode.isMissingNode() || matchedNode.isNull()) {
+                return null;
+            }
+            return matchedNode.toString();
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String toJsonArray(String mappedKpIds) {
+        if (mappedKpIds == null || mappedKpIds.isBlank()) {
+            return null;
+        }
+        String[] parts = mappedKpIds.split(",");
+        StringBuilder json = new StringBuilder("[");
+        boolean first = true;
+        for (String part : parts) {
+            String value = part == null ? "" : part.trim();
+            if (value.isBlank()) {
+                continue;
+            }
+            if (!first) {
+                json.append(',');
+            }
+            json.append('"').append(value.replace("\\", "\\\\").replace("\"", "\\\"")).append('"');
+            first = false;
+        }
+        json.append(']');
+        return first ? null : json.toString();
     }
 }

@@ -240,6 +240,56 @@ CREATE TABLE IF NOT EXISTS `agent_run_log` (
 
 -- ========== 旧库增量补丁（须在 CREATE 之后；新库多为 no-op）==========
 
+-- 13. 上传分析历史
+CREATE TABLE IF NOT EXISTS `upload_analysis_history` (
+    `id`                       BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `user_id`                  BIGINT        NOT NULL COMMENT '用户ID',
+    `upload_task_id`           BIGINT        DEFAULT NULL COMMENT '关联上传任务ID',
+    `file_name`                VARCHAR(256)  NOT NULL COMMENT '文件名',
+    `file_path`                VARCHAR(512)  DEFAULT NULL COMMENT '文件存储路径或对象key',
+    `summary`                  TEXT          DEFAULT NULL COMMENT '内容摘要',
+    `mapped_kp_ids`            TEXT          DEFAULT NULL COMMENT '映射知识点ID列表（JSON数组）',
+    `matched_knowledge_points` TEXT          DEFAULT NULL COMMENT '知识点匹配详情（JSON）',
+    `status`                   VARCHAR(16)   NOT NULL DEFAULT 'COMPLETED' COMMENT '分析状态：COMPLETED/FAILED',
+    `error_message`            VARCHAR(1024) DEFAULT NULL COMMENT '失败原因',
+    `created_at`               DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `finished_at`              DATETIME      DEFAULT NULL COMMENT '分析完成时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_history_user_created` (`user_id`, `created_at`),
+    KEY `idx_history_task` (`upload_task_id`),
+    KEY `idx_history_status` (`status`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='上传分析历史表';
+
+SET @create_upload_analysis_history := (
+    SELECT COUNT(*) = 0 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'upload_analysis_history'
+);
+SET @sql_create_upload_analysis_history := IF(
+    @create_upload_analysis_history,
+    'CREATE TABLE `upload_analysis_history` (
+        `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT ''主键ID'',
+        `user_id` BIGINT NOT NULL COMMENT ''用户ID'',
+        `upload_task_id` BIGINT DEFAULT NULL COMMENT ''关联上传任务ID'',
+        `file_name` VARCHAR(256) NOT NULL COMMENT ''文件名'',
+        `file_path` VARCHAR(512) DEFAULT NULL COMMENT ''文件存储路径或对象key'',
+        `summary` TEXT DEFAULT NULL COMMENT ''内容摘要'',
+        `mapped_kp_ids` TEXT DEFAULT NULL COMMENT ''映射知识点ID列表（JSON数组）'',
+        `matched_knowledge_points` TEXT DEFAULT NULL COMMENT ''知识点匹配详情（JSON）'',
+        `status` VARCHAR(16) NOT NULL DEFAULT ''COMPLETED'' COMMENT ''分析状态：COMPLETED/FAILED'',
+        `error_message` VARCHAR(1024) DEFAULT NULL COMMENT ''失败原因'',
+        `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT ''创建时间'',
+        `finished_at` DATETIME DEFAULT NULL COMMENT ''分析完成时间'',
+        PRIMARY KEY (`id`),
+        KEY `idx_history_user_created` (`user_id`, `created_at`),
+        KEY `idx_history_task` (`upload_task_id`),
+        KEY `idx_history_status` (`status`, `created_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT=''上传分析历史表''',
+    'SELECT ''skip: upload_analysis_history exists'''
+);
+PREPARE stmt_create_upload_analysis_history FROM @sql_create_upload_analysis_history;
+EXECUTE stmt_create_upload_analysis_history;
+DEALLOCATE PREPARE stmt_create_upload_analysis_history;
+
 -- learning_path_step.status
 SET @add_step_status := (
     SELECT COUNT(*) = 1 FROM information_schema.tables

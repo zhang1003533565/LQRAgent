@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { uploadFile, listUploadTasks } from '@/api/student/upload'
 import { listKnowledgePointsByIds } from '@/api/student/knowledge'
+import FileHistoryDrawer from '@/components/student/upload/FileHistoryDrawer'
 import type { UploadTask, KbScope, TaskStatus } from '@/api/student/upload'
 import styles from './UploadPage.module.css'
 
@@ -143,6 +144,7 @@ export default function UploadPage() {
   const [error, setError] = useState<string | null>(null)
   const [knowledgePointTitles, setKnowledgePointTitles] = useState<Record<string, string>>({})
   const [animatedKnowledgeValues, setAnimatedKnowledgeValues] = useState<Record<string, number>>({})
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null)
 
   const completedTasks = useMemo(
     () => tasks.filter((t) => t.status === 'COMPLETED'),
@@ -152,6 +154,14 @@ export default function UploadPage() {
   const latestAnalysis = useMemo(
     () => (latestCompletedTask ? parseAnalysis(latestCompletedTask) : null),
     [latestCompletedTask?.id, latestCompletedTask?.analysisResult, latestCompletedTask?.mappedKpIds],
+  )
+  const selectedTask = useMemo(
+    () => tasks.find((task) => task.id === selectedTaskId) ?? null,
+    [selectedTaskId, tasks],
+  )
+  const selectedTaskAnalysis = useMemo(
+    () => (selectedTask ? parseAnalysis(selectedTask) : null),
+    [selectedTask?.id, selectedTask?.analysisResult, selectedTask?.mappedKpIds],
   )
   const hasCompleted = completedTasks.length > 0
   const mappedKpIdsKey = useMemo(
@@ -313,7 +323,20 @@ export default function UploadPage() {
 
   const handleRemoveTask = (id: number) => {
     setTasks((prev) => prev.filter((t) => t.id !== id))
+    setSelectedTaskId((prev) => (prev === id ? null : prev))
   }
+
+  const selectedTaskKnowledgePoints = useMemo(() => {
+    if (!selectedTaskAnalysis) return []
+    const scoreMap = new Map(
+      selectedTaskAnalysis.matchedKnowledgePoints.map((item) => [item.kpId, item.score] as const),
+    )
+    return selectedTaskAnalysis.mappedKpIds.map((kpId) => ({
+      id: kpId,
+      name: knowledgePointTitles[kpId] || kpId,
+      value: scoreMap.get(kpId) ?? null,
+    }))
+  }, [knowledgePointTitles, selectedTaskAnalysis])
 
   return (
     <section className={styles.page}>
@@ -436,7 +459,19 @@ export default function UploadPage() {
               ) : (
                 <div className={styles.fileList}>
                   {tasks.map((task) => (
-                    <article key={task.id} className={styles.fileRow}>
+                    <article
+                      key={task.id}
+                      className={`${styles.fileRow} ${styles.fileRowClickable}`}
+                      onClick={() => setSelectedTaskId(task.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSelectedTaskId(task.id)
+                        }
+                      }}
+                    >
                       <div className={styles.fileMain}>
                         <FileBadge fileName={task.fileName} />
                         <span className={styles.fileName}>{task.fileName}</span>
@@ -461,7 +496,10 @@ export default function UploadPage() {
                       <button
                         type="button"
                         className={styles.fileDelete}
-                        onClick={() => handleRemoveTask(task.id)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleRemoveTask(task.id)
+                        }}
                         title="移除记录"
                       >
                         ✕
@@ -604,6 +642,14 @@ export default function UploadPage() {
           ))}
         </div>
       </section>
+
+      <FileHistoryDrawer
+        open={selectedTask != null}
+        task={selectedTask}
+        summary={selectedTaskAnalysis?.summary ?? ''}
+        knowledgePoints={selectedTaskKnowledgePoints}
+        onClose={() => setSelectedTaskId(null)}
+      />
     </section>
   )
 }
