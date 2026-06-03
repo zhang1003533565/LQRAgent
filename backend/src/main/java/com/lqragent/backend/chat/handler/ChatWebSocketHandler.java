@@ -26,6 +26,8 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * /ws/chat WebSocket 端点处理器。
@@ -130,7 +132,30 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 .put("label", "正在分析问题...")
                 .put("status", "running")
                 .toString());
-        AgentResult orchestratorResult = agentBus.dispatch(orchestratorTask).join();
+        AgentResult orchestratorResult;
+        try {
+            orchestratorResult = agentBus.dispatch(orchestratorTask).get(120, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            log.warn("[WS] orchestrator 超时(120s): taskId={}", orchestratorTask.getTaskId());
+            sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                    .put("agent", AgentIds.ORCHESTRATOR)
+                    .put("label", "处理超时")
+                    .put("status", "failed")
+                    .toString());
+            sendEvent(session, "error", "处理超时，请稍后重试");
+            persistAiMessage(userInfo.userId(), finalSessionId, "抱歉，处理超时，请稍后重试。");
+            return;
+        } catch (Exception e) {
+            log.error("[WS] orchestrator 执行异常: taskId={}", orchestratorTask.getTaskId(), e);
+            sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                    .put("agent", AgentIds.ORCHESTRATOR)
+                    .put("label", "处理异常")
+                    .put("status", "failed")
+                    .toString());
+            sendEvent(session, "error", "处理异常: " + e.getMessage());
+            persistAiMessage(userInfo.userId(), finalSessionId, "抱歉，处理异常: " + e.getMessage());
+            return;
+        }
 
         // ── 处理失败（LLM 调用失败 / 无配置 / 超时）→ 返回错误信息 ──
         if (!orchestratorResult.isSuccess()) {
@@ -241,9 +266,13 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                                         .put("kind", "rag_sources");
                                 var sourcesArray = objectMapper.valueToTree(sources);
                                 artifactNode.set("payload", sourcesArray);
+                                String msgText = artifactNode.toString();
+                                log.info("[WS] sending rag_sources artifact: {} sources, payloadLen={}",
+                                        sources.size(), msgText.length());
                                 synchronized (session) {
-                                    session.sendMessage(new TextMessage(artifactNode.toString()));
+                                    session.sendMessage(new TextMessage(msgText));
                                 }
+                                log.info("[WS] rag_sources artifact sent successfully");
                             } catch (IOException e) {
                                 log.warn("[WS] rag_sources push failed", e);
                             }

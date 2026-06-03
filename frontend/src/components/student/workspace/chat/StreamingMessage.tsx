@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import type { ChatMessage } from '@/utils/types/chat'
 import MultiCardMessage from './MultiCardMessage'
 import MermaidRenderer from './MermaidRenderer'
+import RagSourcesCard from './RagSourcesCard'
 import styles from './StreamingMessage.module.css'
 
 interface Props {
@@ -72,6 +73,11 @@ export default function StreamingMessage({ message }: Props) {
             </>
           )}
         </div>
+
+        {/* RAG 引用来源卡片 */}
+        {!isUser && message.ragSources && message.ragSources.length > 0 && (
+          <RagSourcesCard sources={message.ragSources} />
+        )}
 
         {/* 操作按钮 — 仅 AI 消息显示 */}
         {!isUser && message.content && !message.streaming && (

@@ -1,4 +1,5 @@
 import type { MultiCardBlock } from './multi-card'
+import type { RagSource } from './artifact'
 
 export type ChatRole = 'user' | 'assistant'
 
@@ -10,6 +11,7 @@ export interface ChatMessage {
   content: string
   contentType?: MessageContentType
   cards?: MultiCardBlock[]
+  ragSources?: RagSource[]
   streaming?: boolean
   createdAt: Date
 }
