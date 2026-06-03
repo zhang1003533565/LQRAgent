@@ -1,7 +1,18 @@
 package com.lqragent.backend.uploadqueue.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.hibernate.annotations.Comment;
 import org.hibernate.annotations.CreationTimestamp;
 
@@ -31,13 +42,13 @@ public class KbUploadTask {
     private String fileName;
 
     @Column(nullable = false, length = 512)
-    @Comment("临时存储路径或对象存储Key")
+    @Comment("对象存储 key")
     private String filePath;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     @Builder.Default
-    @Comment("知识库范围：PUBLIC公开/PERSONAL个人")
+    @Comment("知识库范围：PUBLIC/PERSONAL")
     private KbScope kbScope = KbScope.PERSONAL;
 
     @Enumerated(EnumType.STRING)
@@ -55,12 +66,20 @@ public class KbUploadTask {
     @Comment("失败原因说明")
     private String errorMessage;
 
+    @Column(name = "status_message", length = 512)
+    @Comment("任务状态提示信息")
+    private String statusMessage;
+
+    @Column(name = "progress_percent")
+    @Comment("任务进度百分比")
+    private Integer progressPercent;
+
     @Column(name = "analysis_result", columnDefinition = "TEXT")
-    @Comment("内容分析智能体输出（JSON）")
+    @Comment("内容分析结果 JSON")
     private String analysisResult;
 
     @Column(name = "mapped_kp_ids", columnDefinition = "TEXT")
-    @Comment("映射到的知识点ID列表（JSON数组）")
+    @Comment("映射到的知识点 ID 列表")
     private String mappedKpIds;
 
     @CreationTimestamp

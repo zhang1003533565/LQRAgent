@@ -1,7 +1,7 @@
 package com.lqragent.backend.uploadqueue.service;
 
-import com.lqragent.backend.chat.proxy.AiServerClient;
 import com.lqragent.backend.agents.contentanalyzer.service.ContentAnalyzerService;
+import com.lqragent.backend.chat.proxy.AiServerClient;
 import com.lqragent.backend.storage.QiniuStorageService;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import com.lqragent.backend.systemconfig.ConfigKeys;
@@ -21,17 +21,14 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
-/**
- * 上传任务队列服务。
- * - enqueue()：接收上传请求，落库返回 PENDING 状态
- * - processNext()：定时轮询，批量取 PENDING 任务处理（30 秒一次，最多 5 条）
- * - scope 路由：PUBLIC → kb-public，PERSONAL → kb-private-{userId}
- */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class UploadQueueService {
+
+    private static final int BATCH_SIZE = 5;
 
     private final KbUploadTaskRepository taskRepository;
     private final AiServerClient aiServerClient;
@@ -39,11 +36,6 @@ public class UploadQueueService {
     private final AppRuntimeConfig runtimeConfig;
     private final QiniuStorageService qiniuStorageService;
 
-    private static final int BATCH_SIZE = 5;
-
-    /**
-     * 将上传任务入队，立即返回，不阻塞前端。
-     */
     @Transactional
     public KbUploadTask enqueue(Long userId, String fileName, String filePath, KbScope scope) {
         KbUploadTask task = KbUploadTask.builder()
@@ -56,9 +48,6 @@ public class UploadQueueService {
         return taskRepository.save(task);
     }
 
-    /**
-     * 查询某用户的所有上传任务（按时间倒序）。
-     */
     public List<KbUploadTask> listByUser(Long userId) {
         return taskRepository.findByUserIdOrderByCreatedAtDesc(userId);
     }
@@ -108,9 +97,6 @@ public class UploadQueueService {
                 .orElse(false);
     }
 
-    /**
-     * 定时轮询：每 30 秒批量取最多 5 条 PENDING 任务处理。
-     */
     @Scheduled(fixedDelayString = "${upload.queue.worker-interval-ms:30000}")
     @Transactional
     public void processNext() {
@@ -125,106 +111,98 @@ public class UploadQueueService {
         }
     }
 
-    /**
-     * 处理单条任务：按 scope 路由到不同 KB。
-     */
     private void processTask(KbUploadTask task) {
         log.info("[UploadQueue] Processing task id={}, file={}, scope={}",
                 task.getId(), task.getFileName(), task.getKbScope());
+
         task.setStatus(TaskStatus.PROCESSING);
         task.setStartedAt(LocalDateTime.now());
-        taskRepository.save(task);
+        task.setFinishedAt(null);
+        task.setErrorMessage(null);
+        updateTaskProgress(task, 0, "正在下载文件");
 
         try {
-            // 1. 根据 scope 确定 KB 名称
             String kbName = resolveKbName(task);
 
-            // 2. 从七牛云下载文件
             byte[] content = qiniuStorageService.download(task.getFilePath());
             String mimeType = detectMimeType(task.getFileName());
 
-            // 3. 尝试上传文档到 ai-server
-            boolean uploadSuccess = false;
-            try {
-                aiServerClient.uploadDocument(kbName, task.getFileName(), content, mimeType);
-                uploadSuccess = true;
-                log.info("[UploadQueue] Uploaded to KB '{}': {}", kbName, task.getFileName());
-            } catch (Exception e) {
-                log.warn("[UploadQueue] Upload failed, trying to create KB first: {}", e.getMessage());
+            boolean kbExists = knowledgeBaseExists(kbName);
+            updateTaskProgress(task, 10, kbExists ? "正在上传到已有知识库" : "正在创建知识库并上传");
 
-                // 4. 如果上传失败，尝试创建知识库后重新上传
-                try {
-                    aiServerClient.createKnowledgeBase(kbName);
-                    log.info("[UploadQueue] Created KB '{}', retrying upload", kbName);
-                    aiServerClient.uploadDocument(kbName, task.getFileName(), content, mimeType);
-                    uploadSuccess = true;
-                    log.info("[UploadQueue] Retry upload to KB '{}' succeeded: {}", kbName, task.getFileName());
-                } catch (Exception retryEx) {
-                    log.error("[UploadQueue] Retry also failed: {}", retryEx.getMessage());
-                }
-            }
+            Map<String, Object> submitResponse = kbExists
+                    ? aiServerClient.uploadDocument(kbName, task.getFileName(), content, mimeType)
+                    : aiServerClient.createKnowledgeBase(kbName, task.getFileName(), content, mimeType);
 
-            // 5. 上传成功后，轮询等待向量化完成（最多 3 分钟，每 5 秒查一次）
-            if (uploadSuccess) {
-                task.setStatus(TaskStatus.PROCESSING);
-                taskRepository.save(task);
+            String aiTaskId = asText(submitResponse.get("task_id"));
+            waitForKnowledgeProcessing(task, kbName, aiTaskId);
 
-                boolean indexed = false;
-                for (int i = 0; i < 36; i++) {
-                    Map<String, Object> progress = aiServerClient.getProgress(kbName);
-                    // ai-server progress endpoint returns "stage" (not "status")
-                    String stage = String.valueOf(progress.getOrDefault("stage", ""));
-                    if ("completed".equals(stage) || progress.isEmpty()) {
-                        indexed = true;
-                        log.info("[UploadQueue] KB '{}' indexing completed", kbName);
-                        break;
-                    }
-                    if ("error".equals(stage)) {
-                        log.error("[UploadQueue] KB indexing error for {}: {}", kbName, progress);
-                        break;
-                    }
-                    // 仍在处理中，等待 3 秒后重试
-                    try {
-                        Thread.sleep(3000);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                }
-                if (!indexed) {
-                    log.warn("[UploadQueue] KB indexing timeout for {}, proceeding anyway", kbName);
-                }
-            }
-
-            // 6. 内容分析 → 映射知识点（公共库也做，方便管理后台查看）
-            var analysis = contentAnalyzerService.analyze(task.getFilePath(), task.getFileName());
+            updateTaskProgress(task, 95, "正在生成摘要与知识点映射");
+            var analysis = contentAnalyzerService.analyze(kbName, task.getFileName());
             task.setAnalysisResult(analysis.toJson());
             task.setMappedKpIds(String.join(",", analysis.mappedKpIds()));
+            task.setStatus(TaskStatus.COMPLETED);
+            task.setStatusMessage("已完成");
+            task.setProgressPercent(100);
 
-            if (uploadSuccess) {
-                task.setStatus(TaskStatus.COMPLETED);
-                log.info("[UploadQueue] Task {} completed, KB={}, mapped KPs: {}",
-                        task.getId(), kbName, analysis.mappedKpIds());
-            } else {
-                task.setStatus(TaskStatus.FAILED);
-                task.setErrorMessage("上传到 AI Server 失败");
-                log.error("[UploadQueue] Task {} failed: upload to ai-server failed", task.getId());
-            }
+            log.info("[UploadQueue] Task {} completed, KB={}, mapped KPs: {}",
+                    task.getId(), kbName, analysis.mappedKpIds());
         } catch (Exception e) {
             task.setStatus(TaskStatus.FAILED);
+            task.setStatusMessage("处理失败");
             task.setErrorMessage(e.getMessage());
-            log.error("[UploadQueue] Task {} failed: {}", task.getId(), e.getMessage());
+            log.error("[UploadQueue] Task {} failed: {}", task.getId(), e.getMessage(), e);
         } finally {
             task.setFinishedAt(LocalDateTime.now());
             taskRepository.save(task);
         }
     }
 
-    /**
-     * 根据 scope 决定 KB 名称。
-     * PUBLIC → kb-public（公共资料库，所有用户共享）
-     * PERSONAL → kb-private-{userId}（用户私有知识库）
-     */
+    private void waitForKnowledgeProcessing(KbUploadTask task, String kbName, String expectedTaskId) throws InterruptedException {
+        while (true) {
+            Map<String, Object> progress = aiServerClient.getProgress(kbName);
+            String progressTaskId = asText(progress.get("task_id"));
+            if (expectedTaskId != null && progressTaskId != null && !expectedTaskId.equals(progressTaskId)) {
+                Thread.sleep(2000);
+                continue;
+            }
+
+            String stage = asText(progress.get("stage"));
+            Integer percent = asInteger(progress.get("progress_percent"));
+            String message = firstNonBlank(
+                    asText(progress.get("message")),
+                    asText(progress.get("status")),
+                    stage != null ? "处理中: " + stage : "处理中"
+            );
+            updateTaskProgress(task, percent != null ? percent : 10, message);
+
+            if ("completed".equalsIgnoreCase(stage)) {
+                return;
+            }
+            if ("error".equalsIgnoreCase(stage)) {
+                throw new IllegalStateException(firstNonBlank(
+                        asText(progress.get("error")),
+                        asText(progress.get("message")),
+                        "知识库处理失败"
+                ));
+            }
+            Thread.sleep(2000);
+        }
+    }
+
+    private boolean knowledgeBaseExists(String kbName) {
+        return aiServerClient.listKnowledgeBases().stream()
+                .map(item -> asText(item.get("name")))
+                .filter(Objects::nonNull)
+                .anyMatch(kbName::equals);
+    }
+
+    private void updateTaskProgress(KbUploadTask task, Integer progressPercent, String statusMessage) {
+        task.setProgressPercent(progressPercent);
+        task.setStatusMessage(statusMessage);
+        taskRepository.save(task);
+    }
+
     private String resolveKbName(KbUploadTask task) {
         if (task.getKbScope() == KbScope.PUBLIC) {
             return runtimeConfig.get(ConfigKeys.KB_PUBLIC, "kb-public");
@@ -233,17 +211,11 @@ public class UploadQueueService {
         return prefix + task.getUserId();
     }
 
-    /**
-     * 立即处理指定任务（同步，阻塞）。
-     */
     @Transactional
     public void processImmediately(KbUploadTask task) {
         processTask(task);
     }
 
-    /**
-     * 异步处理指定任务（不阻塞 HTTP 响应）。
-     */
     @Async
     public void processImmediatelyAsync(KbUploadTask task) {
         try {
@@ -261,6 +233,37 @@ public class UploadQueueService {
         if (lower.endsWith(".py")) return "text/x-python";
         if (lower.endsWith(".json")) return "application/json";
         if (lower.endsWith(".csv")) return "text/csv";
+        if (lower.endsWith(".doc")) return "application/msword";
+        if (lower.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        if (lower.endsWith(".ppt")) return "application/vnd.ms-powerpoint";
+        if (lower.endsWith(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
         return "application/octet-stream";
+    }
+
+    private String asText(Object value) {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private Integer asInteger(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return Integer.parseInt(text);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
     }
 }
