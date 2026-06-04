@@ -10,12 +10,19 @@ export type WsInboundType =
 
 export type AgentId =
   | 'orchestrator'
+  | 'profile_agent'
+  | 'learning_path_agent'
+  | 'resource_agent'
+  | 'quality_agent'
+  | 'effect_agent'
+  | 'qa_agent'
+  | 'content_analysis_agent'
+  | 'intelligent_qa'
+  | 'learner_profile'
   | 'content_analyzer'
   | 'path_planner'
   | 'resource_facade'
   | 'quality_assessment'
-  | 'learner_profile'
-  | 'qa_agent'
   | 'effect_assessment'
 
 export type AgentStepStatus = 'running' | 'done' | 'failed'

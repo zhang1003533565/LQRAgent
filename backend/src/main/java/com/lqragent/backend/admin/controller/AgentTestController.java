@@ -3,12 +3,12 @@ package com.lqragent.backend.admin.controller;
 import com.lqragent.backend.orchestrator.OrchestratorCore;
 import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.core.session.RequestContext;
-import com.lqragent.backend.agents.effectassessment.service.EffectAssessmentService;
-import com.lqragent.backend.agents.learningpath.service.LearningPathService;
-import com.lqragent.backend.agents.learningpath.dto.LearningPathDto;
-import com.lqragent.backend.agents.resourcegeneration.dto.ResourceGenerateRequest;
-import com.lqragent.backend.agents.resourcegeneration.dto.ResourceGenerateResponse;
-import com.lqragent.backend.agents.resourcegeneration.service.ResourceGenerationService;
+import com.lqragent.backend.agents.learn.stateassessment.service.EffectAssessmentService;
+import com.lqragent.backend.agents.learn.path.service.LearningPathService;
+import com.lqragent.backend.agents.learn.path.dto.LearningPathDto;
+import com.lqragent.backend.agents.content.summary.lessongeneration.dto.ResourceGenerateRequest;
+import com.lqragent.backend.agents.content.summary.lessongeneration.dto.ResourceGenerateResponse;
+import com.lqragent.backend.agents.content.summary.lessongeneration.service.ResourceGenerationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 

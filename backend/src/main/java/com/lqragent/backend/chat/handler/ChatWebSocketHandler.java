@@ -11,7 +11,7 @@ import com.lqragent.backend.chat.repository.ChatMessageRepository;
 import com.lqragent.backend.chat.service.ChatSessionService;
 import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
 import com.lqragent.backend.agents.intelligentqa.service.QaAgentService;
-import com.lqragent.backend.agents.learningpath.service.LearningPathService;
+import com.lqragent.backend.agents.learn.path.service.LearningPathService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;

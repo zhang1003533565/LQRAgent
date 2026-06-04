@@ -1,6 +1,6 @@
 package com.lqragent.backend.quiz.service;
 
-import com.lqragent.backend.agents.effectassessment.service.EffectAssessmentService;
+import com.lqragent.backend.agents.learn.stateassessment.service.EffectAssessmentService;
 import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
 import com.lqragent.backend.quiz.dto.QuizResultDto;
 import com.lqragent.backend.quiz.dto.QuizSubmitRequest;

@@ -1,4 +1,4 @@
-package com.lqragent.backend.agents.contentanalyzer.service;
+package com.lqragent.backend.agents.content.summaryanalyzer.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
