@@ -88,8 +88,14 @@
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(760px, 1fr) 320px;
+  grid-template-columns: 1fr 320px;
   gap: 18px;
+}
+
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 .mainColumn,
@@ -287,9 +293,12 @@
 
 .flowCanvas {
   position: relative;
-  height: 360px;
+  min-height: 360px;
+  height: auto;
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.46), rgba(243, 248, 255, 0.58));
+  overflow: visible;
+  padding: 20px;
 }
 
 .flowLines {
@@ -321,8 +330,8 @@
 }
 
 .nodeCard {
-  position: absolute;
-  width: 152px;
+  position: relative;
+  width: 100%;
   min-height: 76px;
   border-radius: 16px;
   border: 1px solid rgba(212, 225, 245, 0.96);
@@ -330,6 +339,13 @@
   padding: 14px 16px 12px;
   box-sizing: border-box;
   box-shadow: 0 12px 24px rgba(188, 204, 232, 0.18);
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.nodeCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 32px rgba(188, 204, 232, 0.28);
 }
 
 .nodedone {

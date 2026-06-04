@@ -7,6 +7,7 @@ import com.lqragent.backend.admin.dto.ModelConfigSaveRequest;
 import com.lqragent.backend.admin.dto.SysConfigDto;
 import com.lqragent.backend.admin.dto.SysConfigSaveRequest;
 import com.lqragent.backend.admin.service.AdminService;
+import com.lqragent.backend.orchestrator.OrchestratorCore;
 import com.lqragent.backend.admin.service.ModelConfigService;
 import com.lqragent.backend.common.dto.ApiResponse;
 import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgeEdge;
@@ -21,7 +22,6 @@ import com.lqragent.backend.agents.learningpath.repository.LearningPathRepositor
 import com.lqragent.backend.agents.learningpath.repository.LearningPathStepRepository;
 import com.lqragent.backend.agents.resourcegeneration.entity.ResourceItem;
 import com.lqragent.backend.agents.resourcegeneration.repository.ResourceItemRepository;
-import com.lqragent.backend.core.agent.AgentBus;
 import com.lqragent.backend.chat.entity.AgentRunLog;
 import com.lqragent.backend.admin.repository.AgentRunLogRepository;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask;
@@ -68,7 +68,7 @@ public class AdminController {
     private final LearningPathStepRepository learningPathStepRepo;
     private final ResourceItemRepository resourceItemRepo;
     private final AgentRunLogRepository agentRunLogRepo;
-    private final AgentBus agentBus;
+    private final OrchestratorCore orchestratorCore;
     private final QuizRecordRepository quizRecordRepo;
     private final StudyBehaviorRepository studyBehaviorRepo;
     private final QiniuStorageService qiniuStorageService;
@@ -239,35 +239,18 @@ public class AdminController {
     public ApiResponse<Map<String, Object>> testAgent(
             @RequestBody Map<String, Object> body,
             @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
-        String agentType = (String) body.getOrDefault("agentType", "orchestrator");
-        Object payloadObj = body.get("payload");
-        java.util.Map<String, Object> payload;
-        if (payloadObj instanceof java.util.Map) {
-            payload = new java.util.HashMap<>((java.util.Map<String, Object>) payloadObj);
-        } else {
-            payload = java.util.Map.of("message", body.getOrDefault("message", ""));
-        }
-        String sessionId = "admin-test-" + System.nanoTime();
-
+        String message = (String) body.getOrDefault("message", "");
         Long userId = currentUserService.requireUserId(userDetails);
-        com.lqragent.backend.core.session.RequestContext.init(userId);
-
-        var task = com.lqragent.backend.core.agent.AgentTask.builder()
-                .agentType(agentType)
-                .userId(userId)
-                .sessionId(sessionId)
-                .payload(payload)
-                .build();
 
         long start = System.currentTimeMillis();
-        var result = agentBus.dispatch(task).join();
+        Map<String, Object> result = orchestratorCore.handleChatMessage(String.valueOf(userId), message);
         long duration = System.currentTimeMillis() - start;
 
         Map<String, Object> data = new HashMap<>();
-        data.put("success", result.isSuccess());
-        data.put("agentType", agentType);
-        data.put("data", result.getData() != null ? result.getData() : Map.of());
-        data.put("errorMessage", result.getErrorMessage() != null ? result.getErrorMessage() : "");
+        data.put("success", true);
+        data.put("route", result.get("route"));
+        data.put("response", result.get("response"));
+        data.put("agent", result.get("agent"));
         data.put("durationMs", duration);
         return ApiResponse.ok(data);
     }
@@ -299,8 +282,8 @@ public class AdminController {
 
         Map<String, Object> result = new HashMap<>();
         result.put("stats", stats);
-        result.put("registeredAgents", agentBus.listAgents());
-        result.put("agentCount", agentBus.agentCount());
+        result.put("registeredAgents", java.util.List.of("profile_agent", "learning_path_agent", "resource_agent", "quality_agent", "effect_agent", "qa_agent", "content_analysis_agent"));
+        result.put("agentCount", 7);
         return ApiResponse.ok(result);
     }
 

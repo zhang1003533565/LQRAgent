@@ -1,5 +1,6 @@
 package com.lqragent.backend.agents.resourcegeneration.service;
 
+import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
 import com.lqragent.backend.shared.knowledgegraph.service.KnowledgeGraphService;
 import com.lqragent.backend.agents.resourcegeneration.dto.ResourceGenerateRequest;
@@ -7,7 +8,7 @@ import com.lqragent.backend.agents.resourcegeneration.dto.ResourceGenerateRespon
 import com.lqragent.backend.agents.resourcegeneration.entity.ResourceItem;
 import com.lqragent.backend.agents.resourcegeneration.repository.ResourceItemRepository;
 import com.lqragent.backend.agents.qualityassessment.service.QualityAssessmentService;
-import com.lqragent.backend.core.llm.LlmContentGenerator;
+import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,7 +28,8 @@ public class ResourceGenerationService {
 
     private final ResourceItemRepository resourceRepo;
     private final KnowledgeGraphService kgService;
-    private final LlmContentGenerator llmGenerator;
+    private final AiServerWsProxy aiServerWsProxy;
+    private final AppRuntimeConfig runtimeConfig;
     private final QualityAssessmentService qualityService;
 
     /**
@@ -116,12 +118,12 @@ public class ResourceGenerationService {
 
     /** 直接调 LLM API 生成，失败时返回模板 */
     private String callGenerateOrFallback(String type, String title, String description, String fallback) {
-        String content = llmGenerator.generate(type, title, description);
+        String content = aiServerWsProxy.generateResource(type, title, description);
         if (content != null) {
-            log.info("[ResourceFacade] LLM 生成成功: type={}, title={}", type, title);
+            log.info("[ResourceFacade] LLM 生成成功(via ai-server): type={}, title={}", type, title);
             return content;
         }
-        log.info("[ResourceFacade] 使用模板兜底: type={}", type);
+        log.info("[ResourceFacade] ai-server 不可用，使用模板兜底: type={}", type);
         return fallback;
     }
 
@@ -247,16 +249,100 @@ if __name__ == "__main__":
 
     private ResourceItem generateIllustration(KnowledgePoint kp, ResourceGenerateRequest req) {
         String title = kp.getTitle() + " — 示意图";
-        // P1: 返回占位内容，P1-8 的 MediaGenerationService 会替换这里的实现
-        String content = "### " + kp.getTitle() + " — 示意图\n\n<!-- 示意图占位，后续由 MediaGenerationService 生成 -->\n\n![占位示意图](PLACEHOLDER)";
+        String prompt = req.getCustomPrompt() != null ? req.getCustomPrompt() : kp.getTitle() + " 概念示意图，教学用，清晰简洁";
+        
+        String provider = runtimeConfig.get("agent.mediagen.image_provider", "mock");
+        String imageUrl;
+        String mime;
+        
+        switch (provider) {
+            case "dalle3" -> {
+                imageUrl = callDalle3(prompt);
+                mime = "image/png";
+            }
+            case "sd3" -> {
+                imageUrl = callStableDiffusion(prompt);
+                mime = "image/webp";
+            }
+            default -> {
+                imageUrl = buildPlaceholderSvg(kp.getTitle());
+                mime = "image/svg+xml";
+            }
+        }
+        
+        log.info("[ResourceGeneration] 示意图生成: kpId={}, provider={}", kp.getKpId(), provider);
 
         return ResourceItem.builder()
                 .kpId(kp.getKpId())
                 .resourceType(ResourceItem.TYPE_ILLUSTRATION)
                 .title(title)
-                .content(content)
-                .generationPrompt(req.getCustomPrompt())
+                .content("### " + title + "\n\n![示意图](" + imageUrl + ")")
+                .mediaUrl(imageUrl)
+                .mediaMime(mime)
+                .generationPrompt(prompt)
                 .build();
+    }
+    
+    private String callDalle3(String prompt) {
+        String apiKey = runtimeConfig.get("llm.api-key", "");
+        if (apiKey.isBlank()) {
+            log.warn("[ResourceGeneration] DALL-E API Key 未配置");
+            return buildPlaceholderSvg("API Key 未配置");
+        }
+        try {
+            var client = org.springframework.web.client.RestClient.builder().build();
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> resp = client.post()
+                    .uri("https://api.openai.com/v1/images/generations")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .body(java.util.Map.of("model", "dall-e-3", "prompt", prompt, "n", 1, "size", "1024x1024"))
+                    .retrieve()
+                    .body(java.util.Map.class);
+            if (resp != null) {
+                @SuppressWarnings("unchecked")
+                var data = (java.util.List<java.util.Map<String, Object>>) resp.get("data");
+                if (data != null && !data.isEmpty()) {
+                    String url = (String) data.get(0).get("url");
+                    if (url != null) return url;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[ResourceGeneration] DALL-E 调用失败: {}", e.getMessage());
+        }
+        return buildPlaceholderSvg("DALL-E 生成失败");
+    }
+    
+    private String callStableDiffusion(String prompt) {
+        String apiKey = runtimeConfig.get("agent.mediagen.api_key", "");
+        if (apiKey.isBlank()) {
+            return buildPlaceholderSvg("API Key 未配置");
+        }
+        try {
+            var client = org.springframework.web.client.RestClient.builder().build();
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> resp = client.post()
+                    .uri("https://api.stability.ai/v2beta/stable-image/generate/ultra")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                    .body(java.util.Map.of("prompt", prompt, "output_format", "webp"))
+                    .retrieve()
+                    .body(java.util.Map.class);
+            if (resp != null && resp.containsKey("image")) {
+                return "data:image/webp;base64," + resp.get("image");
+            }
+        } catch (Exception e) {
+            log.warn("[ResourceGeneration] Stability AI 调用失败: {}", e.getMessage());
+        }
+        return buildPlaceholderSvg("Stability AI 生成失败");
+    }
+    
+    private String buildPlaceholderSvg(String label) {
+        String svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"400\" height=\"300\" viewBox=\"0 0 400 300\">"
+                + "<rect width=\"400\" height=\"300\" rx=\"16\" fill=\"#eef2f7\"/>"
+                + "<text x=\"200\" y=\"150\" text-anchor=\"middle\" font-family=\"sans-serif\" font-size=\"16\" fill=\"#526989\">" + label + "</text>"
+                + "</svg>";
+        return "data:image/svg+xml," + java.net.URLEncoder.encode(svg, java.nio.charset.StandardCharsets.UTF_8);
     }
 
     /** 从 goal 文本模糊匹配知识点ID */

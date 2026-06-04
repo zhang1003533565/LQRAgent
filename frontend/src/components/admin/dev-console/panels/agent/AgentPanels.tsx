@@ -62,7 +62,7 @@ const AGENT_DEFS: Record<string, AgentDef> = {
     ],
   },
   qa: {
-    id: 'qa', name: '答疑智能体 QaAgent', agentLogName: 'qa_agent',
+    id: 'qa', name: '答疑智能体 QaAgent', agentLogName: 'intelligent_qa',
     description: '流式 RAG 问答 + Mermaid 流程图',
     aiSource: '🔗 ai-server WS（DeepTutor 内部 RAG）',
     features: [
@@ -75,7 +75,7 @@ const AGENT_DEFS: Record<string, AgentDef> = {
     ],
   },
   learningpath: {
-    id: 'learningpath', name: '路径规划 LearningPath', agentLogName: 'learningpath',
+    id: 'learningpath', name: '路径规划 LearningPath', agentLogName: 'learning_path',
     description: 'BFS 图谱遍历 + LLM 个性化排序',
     aiSource: '🔗 LLM API — 个性化排序',
     features: [
@@ -91,7 +91,7 @@ const AGENT_DEFS: Record<string, AgentDef> = {
     ],
   },
   resourcefacade: {
-    id: 'resourcefacade', name: '资源生成 ResourceFacade', agentLogName: 'resourcefacade',
+    id: 'resourcefacade', name: '资源生成 ResourceFacade', agentLogName: 'resource_generation',
     description: 'LLM 生成 5 种教学资源，失败模板兜底',
     aiSource: '🔗 LLM API — 资源生成',
     features: [
@@ -112,7 +112,7 @@ const AGENT_DEFS: Record<string, AgentDef> = {
     ],
   },
   learnerprofile: {
-    id: 'learnerprofile', name: '学生画像 LearnerProfile', agentLogName: 'learnerprofile',
+    id: 'learnerprofile', name: '学生画像 LearnerProfile', agentLogName: 'learner_profile',
     description: 'LLM 从对话抽取 6 维度 + ai-server Memory',
     aiSource: '🔗 LLM API（抽取）+ 🔗 ai-server Memory（对话摘要）',
     features: [
@@ -128,7 +128,7 @@ const AGENT_DEFS: Record<string, AgentDef> = {
     ],
   },
   qualityassessment: {
-    id: 'qualityassessment', name: '质量评估 QualityAssessment', agentLogName: 'qualityassessment',
+    id: 'qualityassessment', name: '质量评估 QualityAssessment', agentLogName: 'quality_assessment',
     description: 'LLM 自检 + 敏感词 + 学术规范 + 重试',
     aiSource: '🔗 LLM API（事实校验）+ 🏗️ 本地（敏感词+学术检查）',
     features: [
@@ -143,7 +143,7 @@ const AGENT_DEFS: Record<string, AgentDef> = {
     ],
   },
   contentanalyzer: {
-    id: 'contentanalyzer', name: '内容分析 ContentAnalyzer', agentLogName: 'contentanalyzer',
+    id: 'contentanalyzer', name: '内容分析 ContentAnalyzer', agentLogName: 'content_analyzer',
     description: '上传文档 → 提取知识点 → 关联图谱',
     aiSource: '🔗 ai-server Knowledge Base',
     features: [
@@ -157,7 +157,7 @@ const AGENT_DEFS: Record<string, AgentDef> = {
     ],
   },
   effectassessment: {
-    id: 'effectassessment', name: '效果评估 EffectAssessment', agentLogName: 'effectassessment',
+    id: 'effectassessment', name: '效果评估 EffectAssessment', agentLogName: 'effect_assessment',
     description: '行为追踪 + LLM 薄弱点分析 → 路径调整',
     aiSource: '🔗 LLM API（薄弱点分析）',
     features: [
@@ -171,7 +171,7 @@ const AGENT_DEFS: Record<string, AgentDef> = {
     ],
   },
   mediagen: {
-    id: 'mediagen', name: '媒体生成 MediaGeneration', agentLogName: 'mediagen',
+    id: 'mediagen', name: '媒体生成 MediaGeneration', agentLogName: 'media_generation',
     description: '示意图 + 思维导图导出（视频选做）',
     aiSource: '🔗 第三方 API（生图）+ 🔗 LLM API（思维导图）',
     features: [

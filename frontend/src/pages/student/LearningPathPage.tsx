@@ -1,24 +1,19 @@
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { usePathStore } from '@/utils/store/pathStore'
+import { useOrchestrator } from '@/utils/hooks/useOrchestrator'
 import { getLearningPath, getCurrentPath } from '@/api/student/learningPath'
 import styles from './WorkspacePage.module.css'
 
-function nodePos(i: number, total: number) {
-  const cols = 3
-  const cw = 152, ch = 90, gx = 68, gy = 42
-  const ox = (720 - cols * cw - (cols - 1) * gx) / 2
-  const row = Math.floor(i / cols)
-  const col = i % cols
-  const rowCount = Math.min(cols, total - row * cols)
-  const rowW = rowCount * cw + (rowCount - 1) * gx
-  const rowOx = (720 - rowW) / 2
-  return { x: rowOx + col * (cw + gx), y: 24 + row * (ch + gy) }
-}
+
 
 export default function LearningPathPage() {
+  const navigate = useNavigate()
+  const { start: startOrch, progress: orchProgress, running: orchRunning, error: orchError } = useOrchestrator()
   const { goal, planDescription, nodes, selectedKpId, loading, setPath, setLoading, selectNode } =
     usePathStore()
-  const [inputGoal, setInputGoal] = useState(goal || '两周内完成高等数学导数与微分章节复习')
+  const [inputGoal, setInputGoal] = useState(goal || '学习Python基础语法，包括变量、数据类型、控制流和函数')
+  const [cycle, setCycle] = useState('2周')
   const [error, setError] = useState<string | null>(null)
 
   const totalNodes = nodes.length
@@ -67,16 +62,8 @@ export default function LearningPathPage() {
 
   async function handleGenerate() {
     if (!inputGoal.trim()) return
-    setLoading(true)
-    setError(null)
-    try {
-      const data = await getLearningPath(inputGoal)
-      setPath(data)
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : '路径生成失败')
-    } finally {
-      setLoading(false)
-    }
+    // 使用 Orchestrator 多 Agent 协作
+    startOrch(inputGoal, cycle)
   }
 
   async function handleRestore() {
@@ -103,13 +90,13 @@ export default function LearningPathPage() {
           <p className={styles.subtitle}>根据学习目标自动生成阶段化学习计划</p>
         </div>
         <div className={styles.topActions}>
-          <button type="button" className={styles.secondaryBtn} onClick={handleRestore} disabled={loading}>
+          <button type="button" className={styles.secondaryBtn} onClick={handleRestore} disabled={loading || orchRunning}>
             <span className={styles.btnIcon}>◔</span>
             恢复当前路径
           </button>
-          <button type="button" className={styles.primaryBtn} onClick={handleGenerate} disabled={loading}>
+          <button type="button" className={styles.primaryBtn} onClick={handleGenerate} disabled={loading || orchRunning}>
             <span className={styles.btnIcon}>✦</span>
-            {loading ? '生成中...' : '重新生成路径'}
+            {orchRunning ? 'Agent协作中...' : loading ? '生成中...' : '重新生成路径'}
           </button>
         </div>
       </header>
@@ -138,20 +125,25 @@ export default function LearningPathPage() {
                 </div>
                 <div className={styles.selectWrap}>
                   <label className={styles.inputLabel}>学习周期</label>
-                  <button type="button" className={styles.selectBtn}>
-                    <span className={styles.selectIcon}>🗓</span>
-                    2 周
-                    <span className={styles.chevron}>⌄</span>
-                  </button>
+                  <select
+                    className={styles.selectBtn}
+                    value={cycle}
+                    onChange={(e) => setCycle(e.target.value)}
+                    style={{ cursor: 'pointer', background: 'transparent', border: 'none', font: 'inherit', color: 'inherit', padding: '6px 12px' }}
+                  >
+                    <option value="1周">🗓 1 周</option>
+                    <option value="2周">🗓 2 周</option>
+                    <option value="4周">🗓 4 周</option>
+                  </select>
                 </div>
                 <button
                   type="button"
                   className={styles.generateBtn}
                   onClick={handleGenerate}
-                  disabled={loading}
+                  disabled={loading || orchRunning}
                 >
                   <span className={styles.btnIcon}>⇪</span>
-                  {loading ? '生成中...' : '生成学习路径'}
+                  {orchRunning ? 'Agent协作中...' : loading ? '生成中...' : '生成学习路径'}
                 </button>
               </div>
             </div>
@@ -176,16 +168,14 @@ export default function LearningPathPage() {
           </section>
 
           <section className={`${styles.panel} ${styles.flowPanel}`}>
-            <div className={styles.flowCanvas}>
+            <div className={styles.flowCanvas} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '16px' }}>
               {nodes.length > 0 ? (
                 nodes.map((node, i) => {
                   const ns = nodeState(node)
-                  const pos = nodePos(i, nodes.length)
                   return (
                     <article
                       key={node.kpId}
                       className={`${styles.nodeCard} ${styles[`node${ns}`]}`}
-                      style={{ left: pos.x, top: pos.y }}
                       onClick={() => selectNode(node.kpId)}
                     >
                       <div className={`${styles.nodeIndex} ${styles[`index${ns}`]}`}>{node.order || i + 1}</div>
@@ -199,7 +189,17 @@ export default function LearningPathPage() {
                 })
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#8b9ab6', fontSize: 14 }}>
-                  {loading ? '正在生成学习路径...' : '输入学习目标后点击「生成学习路径」'}
+                  {orchRunning ? (
+                <div style={{ textAlign: 'left', fontSize: '13px', lineHeight: '1.8' }}>
+                  {orchProgress.map((p, i) => (
+                    <div key={i} style={{ color: '#6b7280' }}>
+                      <span style={{ color: '#3b82f6', fontWeight: 500 }}>[{p.agent}]</span> {p.message}
+                    </div>
+                  ))}
+                  {orchError && <div style={{ color: '#ef4444' }}>错误: {orchError}</div>}
+                  <div style={{ color: '#9ca3af', marginTop: '4px' }}>⏳ 多Agent协作中...</div>
+                </div>
+              ) : nodes.length > 0 ? '点击节点查看详情' : '输入学习目标后点击「生成学习路径」'}
                 </div>
               )}
             </div>
@@ -264,11 +264,12 @@ export default function LearningPathPage() {
             <div className={styles.sectionTag}>▣ 资源生成</div>
             <div className={styles.resourceGrid}>
               {[
-                { label: '生成讲解资料', icon: 'doc' },
-                { label: '生成练习题', icon: 'edit' },
-                { label: '查看关联资源', icon: 'folder' },
+                { label: '生成讲解资料', icon: 'doc', path: '/workspace/resources' },
+                { label: '生成练习题', icon: 'edit', path: '/workspace/quiz' },
+                { label: '查看关联资源', icon: 'folder', path: '/workspace/resources' },
               ].map((action) => (
-                <button key={action.label} type="button" className={styles.resourceBtn} disabled={!selectedNode}>
+                <button key={action.label} type="button" className={styles.resourceBtn} disabled={!selectedNode}
+                  onClick={() => { if (selectedNode) navigate(action.path) }}>
                   <span className={`${styles.resourceIcon} ${styles[`icon${action.icon}`]}`} />
                   <span>{action.label}</span>
                 </button>

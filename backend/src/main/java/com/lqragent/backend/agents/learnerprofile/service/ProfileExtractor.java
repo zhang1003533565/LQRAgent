@@ -1,7 +1,7 @@
 package com.lqragent.backend.agents.learnerprofile.service;
 
 import com.lqragent.backend.chat.entity.ChatMessage;
-import com.lqragent.backend.core.llm.LlmContentGenerator;
+import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,7 +17,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ProfileExtractor {
 
-    private final LlmContentGenerator llmGenerator;
+    private final AiServerWsProxy aiServerWsProxy;
 
     /**
      * 从对话记录中抽取画像 6 维度。
@@ -44,7 +44,7 @@ public class ProfileExtractor {
         }
 
         // 调 LLM 抽取
-        String result = llmGenerator.generate("profile_extract", "对话画像抽取", dialogSummary);
+        String result = aiServerWsProxy.extractProfile(dialogSummary);
         if (result != null) {
             log.info("[ProfileExtractor] 画像抽取成功, len={}", result.length());
         } else {

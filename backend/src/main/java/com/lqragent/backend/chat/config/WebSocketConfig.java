@@ -1,6 +1,7 @@
 package com.lqragent.backend.chat.config;
 
 import com.lqragent.backend.chat.handler.ChatWebSocketHandler;
+import com.lqragent.backend.orchestrator.OrchestratorWebSocketHandler;
 import com.lqragent.backend.chat.handler.JwtHandshakeInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
@@ -17,10 +18,14 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final ChatWebSocketHandler chatWebSocketHandler;
+    private final OrchestratorWebSocketHandler orchestratorWebSocketHandler;
     private final JwtHandshakeInterceptor jwtHandshakeInterceptor;
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
+        registry.addHandler(orchestratorWebSocketHandler, "/ws/orchestrator")
+                .setAllowedOrigins("*");
+
         registry.addHandler(chatWebSocketHandler, "/ws/chat")
                 .addInterceptors(jwtHandshakeInterceptor)
                 .setAllowedOrigins("*");

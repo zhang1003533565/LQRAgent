@@ -39,7 +39,7 @@ export default function StreamingMessage({ message }: Props) {
   }
 
   return (
-    <div className={`${styles.wrapper} ${isUser ? styles.user : styles.assistant}`}>
+    <div className={`${styles.wrapper} ${isUser ? styles.user : styles.assistant}`} data-streaming={message.streaming ? 'true' : 'false'}>
       <div className={`${styles.avatar} ${isUser ? styles.userAvatar : styles.aiAvatar}`}>
         {isUser ? '你' : <RobotIcon />}
       </div>

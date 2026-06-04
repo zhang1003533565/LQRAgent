@@ -36,8 +36,22 @@ public class AiServerWsProxy {
         streamChat(sessionId, userMessage, List.of(publicKb, privateKb), callback);
     }
 
+    /**
+     * 获取旧的 /api/v1/chat 端点 URL（streamChat 专用，支持 RAG 参数）。
+     */
+    private String getChatWsUrl() {
+        String base = runtimeConfig.getAiServerBaseUrl();
+        if (base.startsWith("https://")) {
+            return "wss://" + base.substring("https://".length()) + "/api/v1/chat";
+        }
+        if (base.startsWith("http://")) {
+            return "ws://" + base.substring("http://".length()) + "/api/v1/chat";
+        }
+        return "ws://localhost:8001/api/v1/chat";
+    }
+
     public void streamChat(String sessionId, String userMessage, List<String> knowledgeBases, StreamCallback callback) {
-        String wsUrl = runtimeConfig.getAiServerWsUrl();
+        String wsUrl = getChatWsUrl();
         log.info("[AiServerWsProxy] connecting to ai-server WS: {}", wsUrl);
 
         try {
@@ -112,19 +126,36 @@ public class AiServerWsProxy {
                                     }
                                     case "sources" -> {
                                         try {
-                                            // ai-server puts sources in metadata.sources (StreamEvent protocol)
-                                            JsonNode sourcesNode = null;
+                                            List<Map<String, Object>> allSources = new java.util.ArrayList<>();
+                                            // Format 1: metadata.sources (StreamEvent protocol from unified_ws)
                                             if (node.has("metadata") && node.get("metadata").has("sources")) {
-                                                sourcesNode = node.get("metadata").get("sources");
-                                            } else if (node.has("sources")) {
-                                                // Fallback: top-level sources field
-                                                sourcesNode = node.get("sources");
+                                                JsonNode sourcesNode = node.get("metadata").get("sources");
+                                                if (sourcesNode.isArray()) {
+                                                    allSources.addAll(objectMapper.convertValue(sourcesNode, new TypeReference<>() {}));
+                                                }
                                             }
-                                            if (sourcesNode != null && sourcesNode.isArray() && sourcesNode.size() > 0) {
-                                                List<Map<String, Object>> sources = objectMapper
-                                                        .convertValue(sourcesNode, new TypeReference<>() {});
-                                                callback.onSources(sources);
-                                                log.info("[AiServerWsProxy] forwarded {} RAG sources", sources.size());
+                                            // Format 2: top-level "sources" array
+                                            if (node.has("sources") && node.get("sources").isArray()) {
+                                                allSources.addAll(objectMapper.convertValue(node.get("sources"), new TypeReference<>() {}));
+                                            }
+                                            // Format 3: chat.py format {"type":"sources","rag":[...],"web":[...]}
+                                            if (node.has("rag") && node.get("rag").isArray()) {
+                                                for (JsonNode item : node.get("rag")) {
+                                                    Map<String, Object> src = objectMapper.convertValue(item, new TypeReference<>() {});
+                                                    src.putIfAbsent("type", "rag");
+                                                    allSources.add(src);
+                                                }
+                                            }
+                                            if (node.has("web") && node.get("web").isArray()) {
+                                                for (JsonNode item : node.get("web")) {
+                                                    Map<String, Object> src = objectMapper.convertValue(item, new TypeReference<>() {});
+                                                    src.putIfAbsent("type", "web");
+                                                    allSources.add(src);
+                                                }
+                                            }
+                                            if (!allSources.isEmpty()) {
+                                                callback.onSources(allSources);
+                                                log.info("[AiServerWsProxy] forwarded {} sources", allSources.size());
                                             }
                                         } catch (Exception e) {
                                             log.warn("[AiServerWsProxy] parse sources error: {}", e.getMessage());
@@ -203,6 +234,212 @@ public class AiServerWsProxy {
             log.error("[AiServerWsProxy] failed to connect: {}", e.getMessage());
             callback.onError("无法连接 AI 服务: " + e.getMessage());
         }
+    }
+
+    /**
+     * 通用 capability 调用（同步等待完整响应）。
+     * 通过 /api/v1/ws + capability 参数调用 ai-server 的指定 capability。
+     *
+     * @param capability capability 名称（如 llm_generate）
+     * @param config     capability 配置参数（如 prompt_type, title, description 等）
+     * @return LLM 生成的完整文本，失败返回 null
+     */
+    public String callCapability(String capability, Map<String, Object> config) {
+        return callCapability(capability, config, null);
+    }
+
+    /**
+     * 通用 capability 调用（同步等待完整响应），支持知识库。
+     */
+    public String callCapability(String capability, Map<String, Object> config, List<String> knowledgeBases) {
+        String wsUrl = runtimeConfig.getAiServerWsUrl();
+        log.info("[AiServerWsProxy] callCapability: capability={}, wsUrl={}", capability, wsUrl);
+
+        try {
+            HttpClient httpClient = HttpClient.newHttpClient();
+            CountDownLatch doneLatch = new CountDownLatch(1);
+            StringBuilder fullResponse = new StringBuilder();
+            String[] errorMsg = {null};
+
+            WebSocket ws = httpClient.newWebSocketBuilder()
+                    .buildAsync(URI.create(wsUrl), new WebSocket.Listener() {
+                        @Override
+                        public void onOpen(WebSocket webSocket) {
+                            var payloadNode = objectMapper.createObjectNode()
+                                    .put("type", "message")
+                                    .put("capability", capability)
+                                    .put("content", "")
+                                    .put("session_id", "");
+                            // Add config
+                            if (config != null && !config.isEmpty()) {
+                                payloadNode.set("config", objectMapper.valueToTree(config));
+                            }
+                            // Add knowledge_bases if provided
+                            if (knowledgeBases != null && !knowledgeBases.isEmpty()) {
+                                var kbArray = payloadNode.putArray("knowledge_bases");
+                                for (String kb : knowledgeBases) {
+                                    if (kb != null && !kb.isBlank()) {
+                                        kbArray.add(kb);
+                                    }
+                                }
+                            }
+                            String payload = payloadNode.toString();
+                            webSocket.sendText(payload, true);
+                            log.debug("[AiServerWsProxy] sent capability request: {}", payload);
+                            WebSocket.Listener.super.onOpen(webSocket);
+                        }
+
+                        @Override
+                        public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
+                            String text = data.toString();
+                            try {
+                                JsonNode node = objectMapper.readTree(text);
+                                if (!node.has("type")) {
+                                    return WebSocket.Listener.super.onText(webSocket, data, last);
+                                }
+                                String type = node.get("type").asText();
+                                switch (type) {
+                                    case "content", "stream" -> {
+                                        String c = node.has("content") ? node.get("content").asText() : "";
+                                        if (!c.isEmpty()) {
+                                            fullResponse.append(c);
+                                        }
+                                    }
+                                    case "result" -> {
+                                        String r = node.has("content") ? node.get("content").asText() : "";
+                                        if (!r.isBlank() && fullResponse.isEmpty()) {
+                                            fullResponse.append(r);
+                                        }
+                                        doneLatch.countDown();
+                                    }
+                                    case "done" -> doneLatch.countDown();
+                                    case "error" -> {
+                                        errorMsg[0] = node.has("content") ? node.get("content").asText() : "Unknown error";
+                                        doneLatch.countDown();
+                                    }
+                                    default -> { /* skip */ }
+                                }
+                            } catch (Exception e) {
+                                log.debug("[AiServerWsProxy] non-JSON frame: {}", text.length() > 100 ? text.substring(0, 100) : text);
+                            }
+                            return WebSocket.Listener.super.onText(webSocket, data, last);
+                        }
+
+                        @Override
+                        public void onError(WebSocket webSocket, Throwable error) {
+                            log.error("[AiServerWsProxy] WS error: {}", error.getMessage());
+                            errorMsg[0] = "WS error: " + error.getMessage();
+                            doneLatch.countDown();
+                            WebSocket.Listener.super.onError(webSocket, error);
+                        }
+
+                        @Override
+                        public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
+                            if (doneLatch.getCount() > 0) {
+                                if (fullResponse.length() > 0) {
+                                    doneLatch.countDown();
+                                } else {
+                                    errorMsg[0] = "Connection closed unexpectedly";
+                                    doneLatch.countDown();
+                                }
+                            }
+                            return WebSocket.Listener.super.onClose(webSocket, statusCode, reason);
+                        }
+                    })
+                    .get(10, TimeUnit.SECONDS);
+
+            boolean completed = doneLatch.await(120, TimeUnit.SECONDS);
+            ws.sendClose(WebSocket.NORMAL_CLOSURE, "");
+
+            if (!completed) {
+                log.warn("[AiServerWsProxy] capability call timed out: capability={}", capability);
+                return null;
+            }
+            if (errorMsg[0] != null) {
+                log.warn("[AiServerWsProxy] capability call failed: capability={}, error={}", capability, errorMsg[0]);
+                return null;
+            }
+            String result = fullResponse.toString();
+            log.info("[AiServerWsProxy] capability call success: capability={}, resultLen={}", capability, result.length());
+            return result.isBlank() ? null : result;
+        } catch (Exception e) {
+            log.error("[AiServerWsProxy] capability call exception: capability={}, error={}", capability, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 生成教学资源（讲义/练习题/代码示例/思维导图/拓展阅读）。
+     *
+     * @param type        资源类型：lesson / quiz / code_case / mind_map / extended_reading
+     * @param title       知识点名称
+     * @param description 知识点描述
+     * @return 生成的 Markdown 内容，失败返回 null
+     */
+    public String generateResource(String type, String title, String description) {
+        Map<String, Object> config = Map.of(
+                "prompt_type", type,
+                "title", title != null ? title : "",
+                "description", description != null ? description : title != null ? title : ""
+        );
+        return callCapability("llm_generate", config);
+    }
+
+    /**
+     * 从对话中抽取学生画像（6维 + 知识点掌握）。
+     */
+    public String extractProfile(String dialogSummary) {
+        Map<String, Object> config = Map.of(
+                "prompt_type", "profile_extract",
+                "dialog_summary", dialogSummary != null ? dialogSummary : ""
+        );
+        return callCapability("llm_generate", config);
+    }
+
+    /**
+     * 对学习路径做个性化排序。
+     */
+    public String sortPath(List<String> kpIds, String profileHint) {
+        Map<String, Object> config = Map.of(
+                "prompt_type", "path_sort",
+                "kp_ids", kpIds != null ? kpIds : List.of(),
+                "profile_hint", profileHint != null ? profileHint : ""
+        );
+        return callCapability("llm_generate", config);
+    }
+
+    /**
+     * 事实性校验（质检）。
+     */
+    public String qualityCheck(String title, String content) {
+        Map<String, Object> config = Map.of(
+                "prompt_type", "factual_check",
+                "title", title != null ? title : "",
+                "content", content != null ? content : ""
+        );
+        return callCapability("llm_generate", config);
+    }
+
+    /**
+     * 薄弱点分析。
+     */
+    public String analyzeWeakness(String behaviorData) {
+        Map<String, Object> config = Map.of(
+                "prompt_type", "weakness_analysis",
+                "behavior_data", behaviorData != null ? behaviorData : ""
+        );
+        return callCapability("llm_generate", config);
+    }
+
+    /**
+     * 生成 Mermaid 流程图。
+     */
+    public String generateMermaid(String input) {
+        Map<String, Object> config = Map.of(
+                "prompt_type", "mermaid",
+                "input", input != null ? input : ""
+        );
+        return callCapability("llm_generate", config);
     }
 
     public interface StreamCallback {

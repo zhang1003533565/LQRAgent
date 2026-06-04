@@ -33,19 +33,16 @@ public class AppRuntimeConfig {
     public String getAiServerWsUrl() {
         String configured = get(ConfigKeys.AI_SERVER_WS_URL, "");
         if (!configured.isBlank()) {
-            if (configured.endsWith("/api/v1/ws")) {
-                return configured.substring(0, configured.length() - "/api/v1/ws".length()) + "/api/v1/chat";
-            }
             return configured;
         }
         String baseUrl = getAiServerBaseUrl();
         if (baseUrl.startsWith("https://")) {
-            return "wss://" + baseUrl.substring("https://".length()) + "/api/v1/chat";
+            return "wss://" + baseUrl.substring("https://".length()) + "/api/v1/ws";
         }
         if (baseUrl.startsWith("http://")) {
-            return "ws://" + baseUrl.substring("http://".length()) + "/api/v1/chat";
+            return "ws://" + baseUrl.substring("http://".length()) + "/api/v1/ws";
         }
-        return "ws://localhost:8001/api/v1/chat";
+        return "ws://localhost:8001/api/v1/ws";
     }
 
     public boolean isAiServerAutoStart() {

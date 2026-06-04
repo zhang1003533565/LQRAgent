@@ -6,7 +6,7 @@ import com.lqragent.backend.agents.learningpath.repository.LearningPathRepositor
 import com.lqragent.backend.agents.learningpath.repository.LearningPathStepRepository;
 import com.lqragent.backend.quiz.entity.StudyBehavior;
 import com.lqragent.backend.quiz.repository.StudyBehaviorRepository;
-import com.lqragent.backend.core.llm.LlmContentGenerator;
+import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
@@ -34,7 +34,7 @@ public class EffectAssessmentService {
     private final LearningPathRepository learningPathRepo;
     private final LearningPathStepRepository stepRepo;
     private final StudyBehaviorRepository behaviorRepo;
-    private final LlmContentGenerator llmGenerator;
+    private final AiServerWsProxy aiServerWsProxy;
 
     /**
      * 答题后评估，低分时在当前学习位置之后插入复习节点。
@@ -118,9 +118,7 @@ public class EffectAssessmentService {
                 .map(b -> String.format("[%s] %s %ds", b.getAction(), b.getKpId() != null ? b.getKpId() : "-", b.getDurationSec() != null ? b.getDurationSec() : 0))
                 .collect(Collectors.joining("\n"));
 
-        String result = llmGenerator.generate("weakness_analysis",
-                "学生学习行为分析",
-                "以下是学生的学习行为记录，请分析薄弱点：\n" + behaviorSummary);
+        String result = aiServerWsProxy.analyzeWeakness("以下是学生的学习行为记录，请分析薄弱点：\n" + behaviorSummary);
         return result != null ? result : "分析暂不可用（LLM 未配置）";
     }
 }

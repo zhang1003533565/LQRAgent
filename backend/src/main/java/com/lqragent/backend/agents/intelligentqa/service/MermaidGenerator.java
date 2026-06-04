@@ -1,6 +1,6 @@
 package com.lqragent.backend.agents.intelligentqa.service;
 
-import com.lqragent.backend.core.llm.LlmContentGenerator;
+import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class MermaidGenerator {
 
-    private final LlmContentGenerator llmGenerator;
+    private final AiServerWsProxy aiServerWsProxy;
 
     /**
      * 生成 Mermaid 流程图代码。
@@ -26,7 +26,7 @@ public class MermaidGenerator {
         String input = "问题：" + question + "\n回答：" + answer;
         if (input.length() > 3000) input = input.substring(0, 3000);
 
-        String result = llmGenerator.generate("mermaid", "流程图生成", input);
+        String result = aiServerWsProxy.generateMermaid(input);
         if (result != null) {
             // 清理冗余标记
             result = result.replace("```mermaid", "").replace("```", "").trim();
