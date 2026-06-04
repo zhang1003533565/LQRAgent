@@ -9,10 +9,12 @@
 .messages {
   flex: 1;
   overflow-y: auto;
+  overflow-anchor: none;
   padding: clamp(16px, 2vh, 32px) clamp(28px, 3vw, 56px);
   display: flex;
   flex-direction: column;
   gap: 20px;
+  scroll-behavior: auto;
 }
 
 .empty {

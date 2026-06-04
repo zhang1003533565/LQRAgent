@@ -126,3 +126,7 @@ blob-report/
 *.njsproj
 *.sln
 *.sw?
+
+# --- Agent 工作目录 ---
+.hermes/
+docs/specs/

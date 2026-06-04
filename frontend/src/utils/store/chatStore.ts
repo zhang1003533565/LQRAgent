@@ -14,6 +14,27 @@ interface ChatState {
   clearMessages: () => void
 }
 
+// 用于批量处理 chunk 更新
+let pendingChunk = ''
+let rafId: number | null = null
+let pendingSet: ((fn: (state: ChatState) => Partial<ChatState>) => void) | null = null
+
+function flushChunk() {
+  if (pendingChunk && pendingSet) {
+    const chunk = pendingChunk
+    pendingChunk = ''
+    pendingSet((state: ChatState) => {
+      const msgs = [...state.messages]
+      if (msgs.length === 0) return state
+      const last = { ...msgs[msgs.length - 1] }
+      last.content += chunk
+      msgs[msgs.length - 1] = last
+      return { messages: msgs }
+    })
+  }
+  rafId = null
+}
+
 export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   sessionId: null,
@@ -22,15 +43,13 @@ export const useChatStore = create<ChatState>((set) => ({
   addMessage: (msg) =>
     set((state) => ({ messages: [...state.messages, msg] })),
 
-  appendToLastMessage: (chunk) =>
-    set((state) => {
-      const msgs = [...state.messages]
-      if (msgs.length === 0) return state
-      const last = { ...msgs[msgs.length - 1] }
-      last.content += chunk
-      msgs[msgs.length - 1] = last
-      return { messages: msgs }
-    }),
+  appendToLastMessage: (chunk) => {
+    pendingChunk += chunk
+    pendingSet = set as any
+    if (rafId === null) {
+      rafId = requestAnimationFrame(flushChunk)
+    }
+  },
 
   setStreaming: (id, streaming) =>
     set((state) => ({

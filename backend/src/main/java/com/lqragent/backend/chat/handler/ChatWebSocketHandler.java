@@ -2,10 +2,7 @@ package com.lqragent.backend.chat.handler;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lqragent.backend.core.agent.AgentBus;
-import com.lqragent.backend.core.agent.AgentIds;
-import com.lqragent.backend.core.agent.AgentResult;
-import com.lqragent.backend.core.agent.AgentTask;
+import com.lqragent.backend.orchestrator.OrchestratorCore;
 import com.lqragent.backend.core.session.RequestContext;
 import com.lqragent.backend.chat.entity.ChatMessage;
 import com.lqragent.backend.chat.entity.ChatSession;
@@ -14,6 +11,7 @@ import com.lqragent.backend.chat.repository.ChatMessageRepository;
 import com.lqragent.backend.chat.service.ChatSessionService;
 import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
 import com.lqragent.backend.agents.intelligentqa.service.QaAgentService;
+import com.lqragent.backend.agents.learningpath.service.LearningPathService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -34,7 +32,7 @@ import java.util.concurrent.TimeoutException;
  * <p>
  * 职责：
  * - 管理前端 WebSocket 连接
- * - Orchestrator 意图识别 → 路由到对应智能体
+ * - OrchestratorCore 意图识别 → 路由到对应智能体
  * - 流式响应转发给前端
  * </p>
  */
@@ -45,10 +43,11 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private final ChatSessionService chatSessionService;
     private final QaAgentService qaAgentService;
-    private final AgentBus agentBus;
+    private final OrchestratorCore orchestratorCore;
     private final ChatMessageRepository chatMessageRepository;
     private final WebSocketSessionManager sessionManager;
     private final LearnerProfileService learnerProfileService;
+    private final LearningPathService learningPathService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -120,35 +119,21 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         final String finalSessionId = sessionId;
 
-        // OrchestratorAgent: 总调度（意图识别 + 路由派发 + 质量闸门）
-        AgentTask orchestratorTask = AgentTask.builder()
-                .agentType(AgentIds.ORCHESTRATOR)
-                .userId(userInfo.userId())
-                .sessionId(finalSessionId)
-                .payload(Map.of("message", content))
-                .build();
+        // OrchestratorCore: 意图识别 + 路由
         sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                .put("agent", AgentIds.ORCHESTRATOR)
+                .put("agent", "orchestrator")
                 .put("label", "正在分析问题...")
                 .put("status", "running")
                 .toString());
-        AgentResult orchestratorResult;
+
+        Map<String, Object> routeResult;
         try {
-            orchestratorResult = agentBus.dispatch(orchestratorTask).get(120, TimeUnit.SECONDS);
-        } catch (TimeoutException e) {
-            log.warn("[WS] orchestrator 超时(120s): taskId={}", orchestratorTask.getTaskId());
-            sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                    .put("agent", AgentIds.ORCHESTRATOR)
-                    .put("label", "处理超时")
-                    .put("status", "failed")
-                    .toString());
-            sendEvent(session, "error", "处理超时，请稍后重试");
-            persistAiMessage(userInfo.userId(), finalSessionId, "抱歉，处理超时，请稍后重试。");
-            return;
+            routeResult = orchestratorCore.handleChatMessage(
+                    String.valueOf(userInfo.userId()), content);
         } catch (Exception e) {
-            log.error("[WS] orchestrator 执行异常: taskId={}", orchestratorTask.getTaskId(), e);
+            log.error("[WS] orchestrator error: {}", e.getMessage(), e);
             sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                    .put("agent", AgentIds.ORCHESTRATOR)
+                    .put("agent", "orchestrator")
                     .put("label", "处理异常")
                     .put("status", "failed")
                     .toString());
@@ -157,35 +142,13 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        // ── 处理失败（LLM 调用失败 / 无配置 / 超时）→ 返回错误信息 ──
-        if (!orchestratorResult.isSuccess()) {
-            String errMsg = orchestratorResult.getErrorMessage();
-            log.warn("[WS] orchestrator 执行失败: taskId={}, error={}", orchestratorTask.getTaskId(), errMsg);
+        String route = (String) routeResult.get("route");
+
+        // 直接响应（问候、帮助）
+        if ("direct".equals(route)) {
+            String response = (String) routeResult.get("response");
             sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                    .put("agent", AgentIds.ORCHESTRATOR)
-                    .put("label", "处理失败")
-                    .put("status", "failed")
-                    .put("detail", errMsg != null ? errMsg : "未知错误")
-                    .toString());
-            sendEvent(session, "error", errMsg != null ? errMsg : "执行失败");
-            persistAiMessage(userInfo.userId(), finalSessionId, "抱歉，处理失败: " + (errMsg != null ? errMsg : "未知错误"));
-            return;
-        }
-
-        // ── 从 data 中提取响应 ──
-        Map<String, Object> resultData = orchestratorResult.getData();
-        // data 为 @Builder.Default new HashMap<>()，当 LLM 配置但调用失败时可能是空
-        String route = resultData != null ? (String) resultData.get("route") : null;
-
-        // 非 QA → 直接返回结果文本
-        String response = resultData != null ? (String) resultData.get("response") : null;
-        if (response == null || response.isBlank()) {
-            response = "处理完成";
-        }
-
-        if (!"intelligent_qa".equals(route) && !"qa".equals(route)) {
-            sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                    .put("agent", AgentIds.ORCHESTRATOR)
+                    .put("agent", "orchestrator")
                     .put("label", "处理完成")
                     .put("status", "done")
                     .toString());
@@ -199,86 +162,116 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         }
 
         // QA → 流式答疑通道
+        if ("qa".equals(route)) {
+            sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                    .put("agent", "intelligent_qa")
+                    .put("label", "正在理解问题...")
+                    .put("status", "running")
+                    .toString());
+
+            StringBuilder fullResponse = new StringBuilder();
+            final Long currentUserId = userInfo.userId();
+            qaAgentService.handleMessage(currentUserId, finalSessionId, content, new AiServerWsProxy.StreamCallback() {
+                @Override
+                public void onChunk(String chunk) {
+                    fullResponse.append(chunk);
+                    sendEvent(session, "chunk", chunk);
+                }
+
+                @Override
+                public void onDone(String aiServerSessionId) {
+                    sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                            .put("agent", "intelligent_qa")
+                            .put("label", "回答完成")
+                            .put("status", "done")
+                            .toString());
+                    sendEvent(session, "done", objectMapper.createObjectNode()
+                            .put("session_id", finalSessionId)
+                            .toString());
+                    persistAiMessage(userInfo.userId(), finalSessionId, fullResponse.toString());
+                    triggerProfileExtractionAsync(currentUserId, finalSessionId, session);
+                }
+
+                @Override
+                public void onError(String error) {
+                    sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                            .put("agent", "intelligent_qa")
+                            .put("label", "处理失败")
+                            .put("status", "failed")
+                            .put("detail", error)
+                            .toString());
+                    sendEvent(session, "error", error);
+                }
+
+                @Override
+                public void onSources(List<Map<String, Object>> sources) {
+                    if (sources != null && !sources.isEmpty()) {
+                        try {
+                            var artifactNode = objectMapper.createObjectNode()
+                                    .put("type", "artifact")
+                                    .put("kind", "rag_sources");
+                            var sourcesArray = objectMapper.valueToTree(sources);
+                            artifactNode.set("payload", sourcesArray);
+                            synchronized (session) {
+                                session.sendMessage(new TextMessage(artifactNode.toString()));
+                            }
+                        } catch (IOException e) {
+                            log.warn("[WS] rag_sources push failed", e);
+                        }
+                    }
+                }
+            });
+            return;
+        }
+
+        // 其他路由（learning_path, resource）→ 直接调用服务
+        String agent = routeResult.containsKey("agent") ? (String) routeResult.get("agent") : "orchestrator";
+        
         sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                .put("agent", "intelligent_qa")
-                .put("label", "正在理解问题...")
+                .put("agent", agent)
+                .put("label", "正在处理...")
                 .put("status", "running")
                 .toString());
-
-                StringBuilder fullResponse = new StringBuilder();
-                final Long currentUserId = userInfo.userId();
-                qaAgentService.handleMessage(currentUserId, finalSessionId, content, new AiServerWsProxy.StreamCallback() {
-                    @Override
-                    public void onChunk(String chunk) {
-                        fullResponse.append(chunk);
-                        sendEvent(session, "chunk", chunk);
+        
+        String response;
+        try {
+            if ("learning_path".equals(route)) {
+                // 直接调用学习路径服务
+                var pathResult = learningPathService.generatePath(userInfo.userId(), content, null);
+                StringBuilder sb = new StringBuilder();
+                sb.append("好的，我为你生成了学习路径！\n\n");
+                sb.append("目标：").append(pathResult.getGoal()).append("\n");
+                sb.append("共 ").append(pathResult.getNodes().size()).append(" 个学习节点：\n\n");
+                for (int i = 0; i < pathResult.getNodes().size(); i++) {
+                    var pathNode = pathResult.getNodes().get(i);
+                    sb.append(i + 1).append(". ").append(pathNode.getTitle()).append("\n");
+                    if (pathNode.getDescription() != null && !pathNode.getDescription().isBlank()) {
+                        sb.append("   ").append(pathNode.getDescription()).append("\n");
                     }
-
-                    @Override
-                    public void onDone(String aiServerSessionId) {
-                        sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                                .put("agent", "intelligent_qa")
-                                .put("label", "回答完成")
-                                .put("status", "done")
-                                .toString());
-                        sendEvent(session, "done", objectMapper.createObjectNode()
-                                .put("session_id", finalSessionId)
-                                .toString());
-                        persistAiMessage(userInfo.userId(), finalSessionId, fullResponse.toString());
-                        triggerProfileExtractionAsync(currentUserId, finalSessionId, session);
-
-                        // P2-5: artifact multi_card — 检测响应含媒体时推送
-                        try {
-                            var artifactPayload = buildMultiCardIfMedia(fullResponse.toString());
-                            if (artifactPayload != null) {
-                                var artifactMsg = objectMapper.createObjectNode()
-                                        .put("type", "artifact")
-                                        .put("kind", "multi_card")
-                                        .put("session_id", finalSessionId)
-                                        .set("payload", artifactPayload);
-                                synchronized (session) {
-                                    session.sendMessage(new TextMessage(artifactMsg.toString()));
-                                }
-                            }
-                        } catch (Exception e) {
-                            log.warn("[WS] artifact push failed", e);
-                        }
-                    }
-
-                    @Override
-                    public void onError(String error) {
-                        sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                                .put("agent", "intelligent_qa")
-                                .put("label", "处理失败")
-                                .put("status", "failed")
-                                .put("detail", error)
-                                .toString());
-                        sendEvent(session, "error", error);
-                    }
-
-                    @Override
-                    public void onSources(List<Map<String, Object>> sources) {
-                        // 推送 RAG 引用来源给前端："本回答参考了以下资料"
-                        if (sources != null && !sources.isEmpty()) {
-                            try {
-                                var artifactNode = objectMapper.createObjectNode()
-                                        .put("type", "artifact")
-                                        .put("kind", "rag_sources");
-                                var sourcesArray = objectMapper.valueToTree(sources);
-                                artifactNode.set("payload", sourcesArray);
-                                String msgText = artifactNode.toString();
-                                log.info("[WS] sending rag_sources artifact: {} sources, payloadLen={}",
-                                        sources.size(), msgText.length());
-                                synchronized (session) {
-                                    session.sendMessage(new TextMessage(msgText));
-                                }
-                                log.info("[WS] rag_sources artifact sent successfully");
-                            } catch (IOException e) {
-                                log.warn("[WS] rag_sources push failed", e);
-                            }
-                        }
-                    }
-                });
+                }
+                sb.append("\n你可以在「学习路径」页面查看详细内容和进度。");
+                response = sb.toString();
+            } else if ("resource".equals(route)) {
+                response = "好的，我来帮你生成学习资源。请告诉我你想学习哪个知识点？";
+            } else {
+                response = "好的，我来帮你处理。";
+            }
+        } catch (Exception e) {
+            log.error("[WS] service call failed: {}", e.getMessage(), e);
+            response = "抱歉，处理时出现错误：" + e.getMessage();
+        }
+        
+        sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                .put("agent", agent)
+                .put("label", "处理完成")
+                .put("status", "done")
+                .toString());
+        sendEvent(session, "chunk", response);
+        sendEvent(session, "done", objectMapper.createObjectNode()
+                .put("session_id", finalSessionId)
+                .toString());
+        persistAiMessage(userInfo.userId(), finalSessionId, response);
+        triggerProfileExtractionAsync(userInfo.userId(), finalSessionId, session);
     }
 
     @Override
@@ -325,9 +318,6 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    /**
-     * 对话结束后异步增量抽取画像，并推送 agent_step + profile_patch（由 Service 触发）。
-     */
     private void triggerProfileExtractionAsync(Long userId, String chatSessionId, WebSocketSession ws) {
         CompletableFuture.runAsync(() -> {
             try {
@@ -368,39 +358,4 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         String cleaned = content.replaceAll("\\s+", " ").trim();
         return cleaned.length() > 30 ? cleaned.substring(0, 30) + "..." : cleaned;
     }
-
-    /**
-     * 检测 AI 响应是否含媒体内容，返回 multi_card payload 或 null。
-     * P2-5：简单检测 markdown 图片语法和 <img> 标签。
-     */
-    private com.fasterxml.jackson.databind.JsonNode buildMultiCardIfMedia(String response) {
-        if (response == null || response.isBlank()) return null;
-
-        java.util.regex.Matcher imgMatcher = java.util.regex.Pattern.compile(
-                "!\\[([^]]*)\\]\\(([^)]+)\\)"
-        ).matcher(response);
-
-        boolean hasImage = imgMatcher.find();
-        boolean hasHtmlImage = response.contains("<img") || response.contains("<video");
-
-        if (!hasImage && !hasHtmlImage) return null;
-
-        var cards = objectMapper.createArrayNode();
-        cards.add(objectMapper.createObjectNode()
-                .put("type", "text")
-                .put("content", response));
-
-        if (hasImage) {
-            imgMatcher.reset();
-            while (imgMatcher.find()) {
-                cards.add(objectMapper.createObjectNode()
-                        .put("type", "image")
-                        .put("alt", imgMatcher.group(1))
-                        .put("url", imgMatcher.group(2)));
-            }
-        }
-
-        return cards;
-    }
-
 }

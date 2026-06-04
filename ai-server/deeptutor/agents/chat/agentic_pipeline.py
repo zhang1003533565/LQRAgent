@@ -783,6 +783,18 @@ class AgenticChatPipeline:
                 ),
             )
 
+            # Save tool call and result to conversation history
+            context.conversation_history.append({
+                "role": "assistant",
+                "content": assistant_content or "",
+                "tool_calls": [{"id": tool_call_id, "function": {"name": tool_name, "arguments": str(display_args)}}]
+            })
+            context.conversation_history.append({
+                "role": "tool",
+                "content": result_text,
+                "tool_call_id": tool_call_id,
+            })
+
             tool_traces.append(
                 ToolTrace(
                     name=tool_name,
@@ -1007,8 +1019,16 @@ class AgenticChatPipeline:
         for item in context.conversation_history:
             role = item.get("role")
             content = item.get("content")
-            if role in {"user", "assistant"} and isinstance(content, (str, list)):
-                messages.append({"role": role, "content": content})
+            # Support all roles: user, assistant, tool
+            if role in {"user", "assistant", "tool"} and isinstance(content, (str, list)):
+                msg = {"role": role, "content": content}
+                # Preserve tool_call_id for tool messages
+                if role == "tool" and item.get("tool_call_id"):
+                    msg["tool_call_id"] = item["tool_call_id"]
+                # Preserve tool_calls for assistant messages
+                if role == "assistant" and item.get("tool_calls"):
+                    msg["tool_calls"] = item["tool_calls"]
+                messages.append(msg)
         messages.append({"role": "user", "content": user_content})
         return messages
 

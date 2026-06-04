@@ -1,12 +1,8 @@
 package com.lqragent.backend.admin.controller;
 
-import com.lqragent.backend.core.agent.AgentBus;
-import com.lqragent.backend.core.agent.AgentIds;
-import com.lqragent.backend.core.agent.AgentResult;
-import com.lqragent.backend.core.agent.AgentTask;
+import com.lqragent.backend.orchestrator.OrchestratorCore;
+import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.core.session.RequestContext;
-import com.lqragent.backend.core.session.SessionContext;
-import com.lqragent.backend.chat.entity.AgentRunLog;
 import com.lqragent.backend.agents.effectassessment.service.EffectAssessmentService;
 import com.lqragent.backend.agents.learningpath.service.LearningPathService;
 import com.lqragent.backend.agents.learningpath.dto.LearningPathDto;
@@ -16,7 +12,7 @@ import com.lqragent.backend.agents.resourcegeneration.service.ResourceGeneration
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -27,41 +23,29 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AgentTestController {
 
-    private final AgentBus agentBus;
+    private final OrchestratorCore orchestratorCore;
     private final LearningPathService learningPathService;
     private final ResourceGenerationService resourceGenerationService;
     private final EffectAssessmentService effectAssessmentService;
 
     // ===== 通用 Agent 测试 =====
 
-    /** 通用：指定 agentType + message，走完整 AgentEngine 推理循环 */
+    /** 通用：通过 OrchestratorCore 意图识别路由 */
     @PostMapping("/agent")
     public Map<String, Object> testAgent(@RequestBody Map<String, String> body) {
-        String agentType = body.getOrDefault("agentType", AgentIds.ORCHESTRATOR);
         String message = body.getOrDefault("message", "");
-        String sessionId = body.getOrDefault("sessionId", "test-" + System.nanoTime());
-
-        RequestContext.init(1L);
-
-        AgentTask task = AgentTask.builder()
-                .agentType(agentType)
-                .userId(1L)
-                .sessionId(sessionId)
-                .payload(Map.of("message", message))
-                .build();
 
         long start = System.currentTimeMillis();
-        AgentResult result = agentBus.dispatch(task).join();
+        Map<String, Object> result = orchestratorCore.handleChatMessage("1", message);
         long duration = System.currentTimeMillis() - start;
 
-        return Map.of(
-                "success", result.isSuccess(),
-                "agentType", agentType,
-                "data", result.getData() != null ? result.getData() : Map.of(),
-                "errorMessage", result.getErrorMessage() != null ? result.getErrorMessage() : "",
-                "durationMs", duration,
-                "taskId", task.getTaskId()
-        );
+        Map<String, Object> data = new HashMap<>();
+        data.put("success", true);
+        data.put("route", result.get("route"));
+        data.put("response", result.get("response"));
+        data.put("agent", result.get("agent"));
+        data.put("durationMs", duration);
+        return data;
     }
 
     // ===== 快捷测试端点 =====
@@ -146,38 +130,5 @@ public class AgentTestController {
         } catch (Exception e) {
             return Map.of("success", false, "error", e.getMessage());
         }
-    }
-
-    // ===== 管理端点 =====
-
-    /** 列出所有已注册 Agent */
-    @GetMapping("/agents")
-    public Map<String, Object> listAgents() {
-        return Map.of("agents", agentBus.listAgents(), "count", agentBus.agentCount());
-    }
-
-    /** 查看会话上下文 */
-    @GetMapping("/session/{id}")
-    public Map<String, Object> getSession(@PathVariable String id) {
-        List<Map<String, Object>> messages = SessionContext.getMessages(id);
-        return Map.of(
-                "sessionId", id,
-                "messageCount", messages.size(),
-                "messages", messages
-        );
-    }
-
-    /** 清空会话上下文 */
-    @PostMapping("/session/{id}/clear")
-    public Map<String, Object> clearSession(@PathVariable String id) {
-        SessionContext.reset(id);
-        return Map.of("sessionId", id, "cleared", true);
-    }
-
-    /** 查看执行日志（来自 AgentBus） */
-    @GetMapping("/runs")
-    public Map<String, Object> getRuns() {
-        List<AgentRunLog> logs = agentBus.getRunLogs();
-        return Map.of("runs", logs, "count", logs.size());
     }
 }
