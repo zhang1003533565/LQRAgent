@@ -240,13 +240,35 @@ public class OrchestratorCore {
                     "你好！我是 LQRAgent 智能学习助手，可以帮你解答问题、规划学习路径、生成学习资源。请问有什么可以帮助你的？");
             case "help":
                 return Map.of("route", "direct", "response",
-                    "我可以帮你做这些事情：\n1. 解答问题\n2. 规划学习路径\n3. 生成学习资源（讲义/题目/代码）\n4. 分析学习效果");
+                    "我可以帮你做这些事情：\n1. 解答问题\n2. 规划学习路径\n3. 生成学习资源（讲义/题目/代码）\n4. 分析学习效果\n5. 个性化推荐\n6. 生成图表\n7. 学习总结");
             case "learning_path":
                 return Map.of("route", "learning_path", "agent", AgentIds.LEARNING_PATH);
             case "resource":
                 return Map.of("route", "resource", "agent", AgentIds.RESOURCE);
             case "quiz":
                 return Map.of("route", "resource", "agent", AgentIds.RESOURCE);
+            case "recommendation":
+                return Map.of("route", "recommendation", "agent", "recommendation_agent");
+            case "diagram":
+                return Map.of("route", "diagram", "agent", "diagram_agent");
+            case "summary":
+                return Map.of("route", "summary", "agent", "summary_agent");
+            case "assessment":
+                return Map.of("route", "assessment", "agent", "assessment_agent");
+            case "knowledge_state":
+                return Map.of("route", "knowledge_state", "agent", "knowledge_state_agent");
+            case "spaced_repetition":
+                return Map.of("route", "spaced_repetition", "agent", "spaced_repetition_agent");
+            case "difficulty":
+                return Map.of("route", "difficulty", "agent", "difficulty_agent");
+            case "learning_style":
+                return Map.of("route", "learning_style", "agent", "learning_style_agent");
+            case "effect":
+                return Map.of("route", "effect", "agent", "effect_agent");
+            case "intervention":
+                return Map.of("route", "intervention", "agent", "intervention_agent");
+            case "motivation":
+                return Map.of("route", "motivation", "agent", "motivation_agent");
             case "qa":
             default:
                 return Map.of("route", "qa", "agent", AgentIds.QA, "message", message);
@@ -260,17 +282,27 @@ public class OrchestratorCore {
         try {
             String systemPrompt = "你是一个意图识别系统。根据用户消息，判断用户的主要意图。\n" +
                 "只返回以下意图之一（小写英文）：\n" +
-                "- greeting: 纯粹的打招呼、问候，没有其他请求（如：你好、hi、hello）\n" +
-                "- help: 询问系统功能、帮助（如：你能做什么、有什么功能）\n" +
-                "- learning_path: 明确要求生成/规划学习路径、学习计划（如：帮我制定学习计划、生成学习路径）\n" +
-                "- resource: 明确要求生成学习资源、讲义、笔记（如：帮我生成讲义、给我一些学习资料）\n" +
-                "- quiz: 明确要求做练习题、测试（如：给我出几道题、我想做练习）\n" +
-                "- qa: 提问、讨论问题、想了解某个知识点、说想学什么、其他所有情况\n" +
+                "- greeting: 纯粹的打招呼、问候（如：你好、hi、hello）\n" +
+                "- help: 询问系统功能、帮助（如：你能做什么）\n" +
+                "- learning_path: 要求生成/规划学习路径、学习计划（如：帮我制定学习计划、生成学习路径）\n" +
+                "- resource: 要求生成学习资源、讲义（如：帮我生成讲义、给我学习资料）\n" +
+                "- quiz: 要求做练习题、测试（如：给我出几道题）\n" +
+                "- recommendation: 要求推荐学习资源、推荐练习（如：推荐一些学习资源、推荐练习题）\n" +
+                "- diagram: 要求画图、生成图表、思维导图（如：画一个学习路线图、生成思维导图）\n" +
+                "- summary: 要求总结、归纳知识点（如：总结一下装饰器、归纳要点）\n" +
+                "- assessment: 要求评估、批改、打分（如：帮我批改、评估一下）\n" +
+                "- knowledge_state: 询问知识掌握情况、薄弱点（如：我哪些知识点薄弱、掌握情况）\n" +
+                "- spaced_repetition: 询问复习计划、什么时候复习（如：今天复习什么、复习计划）\n" +
+                "- difficulty: 询问难度、推荐难度（如：根据水平推荐、适合什么难度）\n" +
+                "- learning_style: 询问学习风格、学习方式（如：我是什么学习风格）\n" +
+                "- effect: 询问学习效果、学习评估（如：评估学习效果、学习怎么样）\n" +
+                "- intervention: 表达学习困难、遇到问题（如：学不下去了、遇到困难）\n" +
+                "- motivation: 需要鼓励、激励（如：没动力、坚持不下去）\n" +
+                "- qa: 提问、讨论问题、想了解某个知识点、其他所有情况\n" +
                 "重要规则：\n" +
-                "1. 如果消息同时包含问候和其他内容（如学习请求、问题），忽略问候，返回主要内容的意图\n" +
-                "2. 如果用户说想学什么，返回 qa（不是 learning_path）\n" +
-                "3. 只有纯粹的问候（没有任何其他请求）才返回 greeting\n" +
-                "只返回意图词，不要其他内容。";
+                "1. 如果消息同时包含问候和其他内容，忽略问候，返回主要内容的意图\n" +
+                "2. 仔细分析用户的真实需求，不要默认返回 qa\n" +
+                "3. 只返回意图词，不要其他内容。";
             
             String result = llmClient.chatSimple(systemPrompt, message);
             if (result != null) {
@@ -278,7 +310,7 @@ public class OrchestratorCore {
             }
             
             // 验证是否是有效意图
-            if (result != null && java.util.Set.of("greeting", "help", "learning_path", "resource", "quiz", "qa").contains(result)) {
+            if (result != null && java.util.Set.of("greeting", "help", "learning_path", "resource", "quiz", "recommendation", "diagram", "summary", "assessment", "knowledge_state", "spaced_repetition", "difficulty", "learning_style", "effect", "intervention", "motivation", "qa").contains(result)) {
                 log.info("[Orchestrator] intent recognized: {}", result);
                 return result;
             }
