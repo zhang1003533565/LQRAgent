@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { uploadFile, listUploadTasks } from '@/api/student/upload'
+import { uploadFile, listUploadTasks, deleteUploadTask } from '@/api/student/upload'
 import { listKnowledgePointsByIds } from '@/api/student/knowledge'
 import FileHistoryDrawer from '@/components/student/upload/FileHistoryDrawer'
 import type { UploadTask, KbScope, TaskStatus } from '@/api/student/upload'
@@ -145,6 +145,7 @@ export default function UploadPage() {
   const [knowledgePointTitles, setKnowledgePointTitles] = useState<Record<string, string>>({})
   const [animatedKnowledgeValues, setAnimatedKnowledgeValues] = useState<Record<string, number>>({})
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null)
+  const [deletingTaskIds, setDeletingTaskIds] = useState<number[]>([])
 
   const completedTasks = useMemo(
     () => tasks.filter((t) => t.status === 'COMPLETED'),
@@ -321,10 +322,23 @@ export default function UploadPage() {
     if (file) void doUpload(file)
   }
 
-  const handleRemoveTask = (id: number) => {
-    setTasks((prev) => prev.filter((t) => t.id !== id))
-    setSelectedTaskId((prev) => (prev === id ? null : prev))
-  }
+  const handleRemoveTask = useCallback(
+    async (id: number) => {
+      if (deletingTaskIds.includes(id)) return
+
+      setDeletingTaskIds((prev) => [...prev, id])
+      try {
+        await deleteUploadTask(id)
+        setTasks((prev) => prev.filter((t) => t.id !== id))
+        setSelectedTaskId((prev) => (prev === id ? null : prev))
+      } catch (e: any) {
+        setError(e?.message || '删除任务失败，请稍后重试')
+      } finally {
+        setDeletingTaskIds((prev) => prev.filter((taskId) => taskId !== id))
+      }
+    },
+    [deletingTaskIds],
+  )
 
   const selectedTaskKnowledgePoints = useMemo(() => {
     if (!selectedTaskAnalysis) return []
@@ -347,66 +361,7 @@ export default function UploadPage() {
           <h1 className={styles.title}>上传分析</h1>
           <p className={styles.subtitle}>上传学习资料后，系统会自动完成摘要生成与知识点映射。</p>
         </div>
-        <div className={styles.topMeta}>M7 · 上传分析</div>
-        <div className={styles.topActions}>
-          <button type="button" className={styles.secondaryBtn} onClick={refreshTasks}>
-            <span className={styles.btnIcon}>↻</span>
-            刷新任务
-          </button>
-          <button
-            type="button"
-            className={styles.primaryBtn}
-            onClick={handleChooseFile}
-            disabled={uploading}
-          >
-            <span className={styles.btnIcon}>{uploading ? '●' : '☁'}</span>
-            {uploading ? '上传中...' : '继续上传'}
-          </button>
-        </div>
       </header>
-
-      <section className={styles.infoPanel}>
-        <div className={styles.infoGrid}>
-          <div className={styles.infoBlock}>
-            <div className={styles.infoIcon}>■</div>
-            <div>
-              <span className={styles.infoLabel}>知识库范围：</span>
-              <div className={styles.scopeToggle}>
-                <button
-                  type="button"
-                  className={scope === 'PERSONAL' ? `${styles.scopeBtn} ${styles.scopeActive}` : styles.scopeBtn}
-                  onClick={() => setScope('PERSONAL')}
-                >
-                  个人知识库
-                </button>
-                <button
-                  type="button"
-                  className={scope === 'PUBLIC' ? `${styles.scopeBtn} ${styles.scopeActive}` : styles.scopeBtn}
-                  onClick={() => setScope('PUBLIC')}
-                >
-                  公共知识库
-                </button>
-              </div>
-            </div>
-          </div>
-          <div className={styles.infoDivider} />
-          <div className={styles.infoBlock}>
-            <div className={styles.infoIcon}>●</div>
-            <div>
-              <span className={styles.infoLabel}>分析目标：</span>
-              <strong>从上传结果中提炼摘要并回传真实知识点映射</strong>
-            </div>
-          </div>
-          <div className={styles.infoDivider} />
-          <div className={styles.infoBlock}>
-            <div className={styles.infoIcon}>→</div>
-            <div>
-              <span className={styles.infoLabel}>后续联动：</span>
-              <strong>可跳转到学习路径继续围绕映射知识点学习</strong>
-            </div>
-          </div>
-        </div>
-      </section>
 
       <div className={styles.layout}>
         <div className={styles.leftColumn}>
@@ -496,9 +451,10 @@ export default function UploadPage() {
                       <button
                         type="button"
                         className={styles.fileDelete}
+                        disabled={deletingTaskIds.includes(task.id)}
                         onClick={(e) => {
                           e.stopPropagation()
-                          handleRemoveTask(task.id)
+                          void handleRemoveTask(task.id)
                         }}
                         title="移除记录"
                       >
@@ -532,17 +488,6 @@ export default function UploadPage() {
                   <div>
                     <h3>内容摘要</h3>
                     <p>{combinedSummary || '分析结果将在任务处理完成后展示。'}</p>
-                  </div>
-                </div>
-                <div className={styles.summaryItem}>
-                  <span className={`${styles.summaryIcon} ${styles.summaryIconWarn}`}>●</span>
-                  <div>
-                    <h3>知识点映射结果</h3>
-                    <p>
-                      {mappedKnowledgePoints.length > 0
-                        ? `本次共映射到 ${mappedKnowledgePoints.length} 个知识点，可直接用于后续路径与资源联动。`
-                        : '本次分析暂未返回知识点映射。'}
-                    </p>
                   </div>
                 </div>
               </div>

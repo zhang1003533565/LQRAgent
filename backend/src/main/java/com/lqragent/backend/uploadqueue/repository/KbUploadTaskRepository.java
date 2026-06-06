@@ -12,6 +12,8 @@ public interface KbUploadTaskRepository extends JpaRepository<KbUploadTask, Long
 
     List<KbUploadTask> findByUserIdOrderByCreatedAtDesc(Long userId);
 
+    Optional<KbUploadTask> findByIdAndUserId(Long id, Long userId);
+
     List<KbUploadTask> findAllByOrderByCreatedAtDesc(Pageable pageable);
 
     long countByStatus(TaskStatus status);

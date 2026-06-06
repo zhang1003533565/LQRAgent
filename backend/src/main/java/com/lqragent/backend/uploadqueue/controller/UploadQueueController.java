@@ -62,6 +62,16 @@ public class UploadQueueController {
         return ApiResponse.ok(uploadQueueService.listByUser(userId));
     }
 
+    @Operation(summary = "删除我的上传任务", description = "删除当前用户的一条上传任务记录")
+    @DeleteMapping("/tasks/{id}")
+    public ApiResponse<Map<String, Object>> deleteTask(
+            @PathVariable Long id,
+            @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
+        Long userId = currentUserService.requireUserId(userDetails);
+        uploadQueueService.deleteTaskForUser(id, userId);
+        return ApiResponse.ok(Map.of("message", "删除成功", "taskId", id));
+    }
+
     @Operation(summary = "获取文件下载链接", description = "返回七牛云预签名临时下载 URL（有效期 1 小时）")
     @GetMapping("/file/{id}")
     public ApiResponse<Map<String, String>> getFileUrl(@PathVariable Long id) {

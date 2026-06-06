@@ -64,9 +64,16 @@ public class UploadQueueService {
                 .orElseThrow(() -> new IllegalArgumentException("上传任务不存在: " + id));
     }
 
+    public KbUploadTask getTaskByIdForUser(Long id, Long userId) {
+        return taskRepository.findByIdAndUserId(id, userId)
+                .orElseThrow(() -> new IllegalArgumentException("Upload task not found or access denied: " + id));
+    }
+
     @Transactional
     public void deleteTask(Long id) {
         KbUploadTask task = taskRepository.findById(id).orElse(null);
+        uploadAnalysisHistoryRepository.deleteByUploadTaskId(id);
+        log.info("[UploadQueue] Deleted analysis history for task: {}", id);
         if (task != null && task.getFilePath() != null) {
             try {
                 qiniuStorageService.delete(task.getFilePath());
@@ -77,6 +84,12 @@ public class UploadQueueService {
         }
         taskRepository.deleteById(id);
         log.info("[UploadQueue] Deleted task: {}", id);
+    }
+
+    @Transactional
+    public void deleteTaskForUser(Long id, Long userId) {
+        KbUploadTask task = getTaskByIdForUser(id, userId);
+        deleteTask(task.getId());
     }
 
     public long totalCount() {
