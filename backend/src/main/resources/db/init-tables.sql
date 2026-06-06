@@ -147,7 +147,31 @@ CREATE TABLE IF NOT EXISTS `quiz_record` (
     CONSTRAINT `fk_quiz_user` FOREIGN KEY (`user_id`) REFERENCES `sys_user` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='答题记录表';
 
--- 7. 学习行为日志
+-- 7. 题库
+CREATE TABLE IF NOT EXISTS `question_bank` (
+    `id`              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '题目ID',
+    `title`           TEXT         NOT NULL COMMENT '题目内容（题干）',
+    `code_content`    TEXT         DEFAULT NULL COMMENT 'Python代码片段',
+    `question_type`   VARCHAR(30)  NOT NULL COMMENT '题型（single单选、judge判断、fill填空、code_reading代码阅读）',
+    `option_a`        VARCHAR(500) DEFAULT NULL COMMENT '选项A',
+    `option_b`        VARCHAR(500) DEFAULT NULL COMMENT '选项B',
+    `option_c`        VARCHAR(500) DEFAULT NULL COMMENT '选项C',
+    `option_d`        VARCHAR(500) DEFAULT NULL COMMENT '选项D',
+    `correct_answer`  TEXT         NOT NULL COMMENT '正确答案',
+    `analysis`        TEXT         DEFAULT NULL COMMENT '题目解析',
+    `difficulty`      TINYINT      NOT NULL DEFAULT 1 COMMENT '难度（1简单、2中等、3困难）',
+    `knowledge_point` VARCHAR(100) DEFAULT NULL COMMENT '所属知识点',
+    `status`          TINYINT      NOT NULL DEFAULT 1 COMMENT '状态（1启用，0禁用）',
+    `create_time`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time`     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_question_type` (`question_type`),
+    KEY `idx_difficulty` (`difficulty`),
+    KEY `idx_knowledge_point` (`knowledge_point`),
+    KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='题库表';
+
+-- 8. 学习行为日志
 CREATE TABLE IF NOT EXISTS `study_behavior` (
     `id`           BIGINT      NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     `user_id`      BIGINT      NOT NULL COMMENT '学生用户ID',
@@ -161,7 +185,7 @@ CREATE TABLE IF NOT EXISTS `study_behavior` (
     CONSTRAINT `fk_behavior_user` FOREIGN KEY (`user_id`) REFERENCES `sys_user` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='学习行为日志表';
 
--- 8. 路径调整日志
+-- 9. 路径调整日志
 CREATE TABLE IF NOT EXISTS `path_adjustment_log` (
     `id`             BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     `user_id`        BIGINT       NOT NULL COMMENT '学生用户ID',
@@ -174,7 +198,7 @@ CREATE TABLE IF NOT EXISTS `path_adjustment_log` (
     KEY `idx_user_path` (`user_id`, `path_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='路径动态调整日志表';
 
--- 9. 上传任务队列
+-- 10. 上传任务队列
 CREATE TABLE IF NOT EXISTS `kb_upload_task` (
     `id`            BIGINT        NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     `user_id`       BIGINT        NOT NULL COMMENT '上传用户ID',
@@ -194,7 +218,7 @@ CREATE TABLE IF NOT EXISTS `kb_upload_task` (
     KEY `idx_status_priority` (`status`, `priority`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='知识库上传任务队列表';
 
--- 10. 智能体对话历史
+-- 11. 智能体对话历史
 CREATE TABLE IF NOT EXISTS `chat_message` (
     `id`           BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     `user_id`      BIGINT       NOT NULL COMMENT '学生用户ID',
@@ -207,7 +231,7 @@ CREATE TABLE IF NOT EXISTS `chat_message` (
     KEY `idx_user_session` (`user_id`, `session_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='智能体交互对话历史表';
 
--- 11. 聊天会话
+-- 12. 聊天会话
 CREATE TABLE IF NOT EXISTS `chat_session` (
     `id`                   VARCHAR(64)  NOT NULL COMMENT '会话ID（UUID）',
     `user_id`              BIGINT       NOT NULL COMMENT '学生用户ID',
