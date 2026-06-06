@@ -9,17 +9,17 @@ import lombok.Data;
 @Data
 public class QuizSubmitRequest {
 
-    @Schema(description = "知识点ID")
-    @NotBlank
+    @Schema(description = "题目ID")
+    @NotNull
+    private Long questionId;
+
+    @Schema(description = "知识点ID，为空时默认取题目所属知识点")
     private String kpId;
 
-    @Schema(description = "关联资源ID（题目ID）")
+    @Schema(description = "关联资源ID")
     private Long resourceId;
 
     @Schema(description = "学生答案")
-    @NotNull
+    @NotBlank
     private String answer;
-
-    @Schema(description = "参考正确答案（选择题用精确匹配，简答题用关键词匹配）")
-    private String expectedAnswer;
 }

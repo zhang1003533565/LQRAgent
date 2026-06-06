@@ -16,6 +16,9 @@ public class QuizResultDto {
     @Schema(description = "答题记录ID")
     private Long id;
 
+    @Schema(description = "题目ID")
+    private Long questionId;
+
     @Schema(description = "是否正确")
     private Boolean correct;
 
@@ -27,6 +30,12 @@ public class QuizResultDto {
 
     @Schema(description = "学生答案")
     private String answer;
+
+    @Schema(description = "正确答案")
+    private String correctAnswer;
+
+    @Schema(description = "题目解析")
+    private String analysis;
 
     @Schema(description = "低分时的薄弱点分析报告")
     private String weaknessReport;

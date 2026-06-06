@@ -473,10 +473,46 @@
   padding: 2px 0;
 }
 
+.tableBodyWrap {
+  position: relative;
+}
+
 .tableRow {
   min-height: 52px;
   padding: 0 22px;
   border-top: 1px solid rgba(230, 238, 249, 0.95);
+}
+
+.emptyRowSpacer {
+  grid-column: 1 / -1;
+  min-height: 52px;
+}
+
+.tableLoadingOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.76);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.tableLoadingCard {
+  min-width: 160px;
+  min-height: 44px;
+  border-radius: 999px;
+  padding: 0 22px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(205, 220, 246, 0.96);
+  box-shadow: 0 10px 24px rgba(112, 148, 208, 0.12);
+  color: #4f82eb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .chapterCell {
@@ -505,12 +541,21 @@
   font-size: 15px;
   font-weight: 900;
   color: #223f73;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .summaryCell,
 .countCell {
   font-size: 14px;
   color: #7084a6;
+}
+
+.summaryCell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .countCell {
@@ -1145,4 +1190,69 @@
   .sidebarCard {
     padding: 16px 14px;
   }
+}
+
+.paginationBar {
+  min-height: 76px;
+  border-top: 1px solid rgba(230, 238, 249, 0.95);
+  background: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 12px 20px;
+}
+
+.paginationNumbers {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.paginationCircle,
+.paginationArrow {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 2px solid rgba(198, 214, 244, 0.9);
+  background: rgba(255, 255, 255, 0.96);
+  color: #6b84b4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.paginationCircle:hover:not(:disabled),
+.paginationArrow:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(88, 140, 255, 0.5);
+  color: #2f76ff;
+  box-shadow: 0 10px 20px rgba(94, 143, 243, 0.16);
+}
+
+.paginationCircleActive {
+  border-color: transparent;
+  background: linear-gradient(180deg, #5ea2ff 0%, #2b72ff 100%);
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(62, 127, 255, 0.28);
+}
+
+.paginationCircle:disabled,
+.paginationArrow:disabled {
+  opacity: 0.45;
+  cursor: default;
+  box-shadow: none;
+}
+
+.paginationHint {
+  padding: 0 20px 16px;
+  text-align: center;
+  color: #7b8eae;
+  font-size: 13px;
+  font-weight: 700;
 }

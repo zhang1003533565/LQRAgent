@@ -1,4 +1,6 @@
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { listQuizQuestions, type QuizQuestionListItem } from '@/api/student/quiz'
 import styles from './QuizEmptyPage.module.css'
 
 type QuickPractice = {
@@ -9,10 +11,12 @@ type QuickPractice = {
 }
 
 type ChapterRow = {
+  id: number
   index: number
   title: string
   summary: string
   count: string
+  empty?: boolean
 }
 
 type PracticeCard = {
@@ -54,38 +58,44 @@ const quickPractices: QuickPractice[] = [
   },
 ]
 
-const chapterRows: ChapterRow[] = [
+const fallbackChapterRows: ChapterRow[] = [
   {
+    id: 1,
     index: 1,
-    title: 'Python开发环境与第一个程序',
+    title: 'Python 开发环境与第一个程序',
     summary: '安装与配置、运行第一个程序、注释与输出',
     count: '12题',
   },
   {
+    id: 2,
     index: 2,
     title: '变量与数据类型',
     summary: '变量、整数与浮点数、字符串、布尔值、类型转换',
     count: '18题',
   },
   {
+    id: 3,
     index: 3,
     title: '条件判断与循环',
-    summary: 'if 条件判断、for 循环、while 循环、break 与 continue',
+    summary: 'if 判断、for 循环、while 循环、break 与 continue',
     count: '20题',
   },
   {
+    id: 4,
     index: 4,
     title: '函数与模块',
     summary: '定义函数、参数与返回值、模块导入与使用',
     count: '16题',
   },
   {
+    id: 5,
     index: 5,
-    title: '列表/元组/字典',
+    title: '列表 / 元组 / 字典',
     summary: '列表操作、元组、字典、常用方法与遍历',
     count: '22题',
   },
   {
+    id: 6,
     index: 6,
     title: '文件读写基础',
     summary: '文件打开与关闭、读写文本文件、with 语句',
@@ -139,25 +149,36 @@ const weeklyTrend = [
   { label: '周日', value: 10 },
 ]
 
+function toChapterRow(item: QuizQuestionListItem, index: number): ChapterRow {
+  return {
+    id: item.id,
+    index: index + 1,
+    title: item.title,
+    summary: [formatQuestionType(item.questionType), item.knowledgePoint].filter(Boolean).join(' · '),
+    count: `难度 ${formatDifficulty(item.difficulty)}`,
+  }
+}
+
+function formatQuestionType(type: string) {
+  if (type === 'single') return '单选题'
+  if (type === 'judge') return '判断题'
+  if (type === 'fill') return '填空题'
+  if (type === 'code_reading') return '代码阅读'
+  return type
+}
+
+function formatDifficulty(difficulty: number) {
+  if (difficulty === 1) return '简单'
+  if (difficulty === 2) return '中等'
+  if (difficulty === 3) return '困难'
+  return '未知'
+}
+
 function SearchIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className={styles.headerIcon}>
       <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" strokeWidth="2" />
       <path d="M16.2 16.2L21 21" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function BellIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className={styles.bellIcon}>
-      <path
-        d="M12 4.5a4 4 0 0 1 4 4v2.2c0 1 .28 1.97.81 2.82l1.01 1.63A1.2 1.2 0 0 1 16.8 17H7.2a1.2 1.2 0 0 1-1.02-1.85l1.01-1.63A5.4 5.4 0 0 0 8 10.7V8.5a4 4 0 0 1 4-4Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
-      <path d="M10 19a2 2 0 0 0 4 0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   )
 }
@@ -219,6 +240,62 @@ function PracticeIcon({ icon, tone }: { icon: PracticeCard['icon']; tone: Practi
 
 export default function QuizEmptyPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const [questionItems, setQuestionItems] = useState<QuizQuestionListItem[]>([])
+  const [questionLoading, setQuestionLoading] = useState(false)
+  const [questionLoadFailed, setQuestionLoadFailed] = useState(false)
+  const [questionPage, setQuestionPage] = useState(1)
+  const [questionTotalPages, setQuestionTotalPages] = useState(1)
+
+  const pageSize = 6
+
+  useEffect(() => {
+    let active = true
+    setQuestionLoading(true)
+    setQuestionLoadFailed(false)
+
+    listQuizQuestions({ page: questionPage, size: pageSize })
+      .then((res) => {
+        if (!active) return
+        setQuestionItems(res.items || [])
+        setQuestionTotalPages(Math.max(1, res.totalPages || 1))
+      })
+      .catch(() => {
+        if (!active) return
+        setQuestionLoadFailed(true)
+        setQuestionTotalPages(1)
+      })
+      .finally(() => {
+        if (active) setQuestionLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [questionPage])
+
+  const chapterRows = useMemo(() => {
+    if (questionItems.length > 0) {
+      return questionItems.map(toChapterRow)
+    }
+    return fallbackChapterRows
+  }, [questionItems])
+
+  const totalPages = Math.max(1, questionTotalPages)
+  const visibleCount = Math.min(Math.max(3, totalPages), totalPages)
+  const startPage = Math.max(1, Math.min(questionPage - 1, totalPages - visibleCount + 1))
+  const paginationNumbers = Array.from({ length: visibleCount }, (_, index) => startPage + index)
+  const paddedChapterRows = [
+    ...chapterRows,
+    ...Array.from({ length: Math.max(0, pageSize - chapterRows.length) }, (_, index) => ({
+      id: -(index + 1),
+      index: 0,
+      title: '',
+      summary: '',
+      count: '',
+      empty: true,
+    })),
+  ]
 
   return (
     <section className={styles.page}>
@@ -228,8 +305,8 @@ export default function QuizEmptyPage() {
         <div>
           <h1 className={styles.title}>答题练习</h1>
           <p className={styles.courseText}>
-            当前课程：
-            <span>Python基础</span>
+            当前课程:
+            <span>Python 基础</span>
           </p>
         </div>
 
@@ -301,25 +378,89 @@ export default function QuizEmptyPage() {
                 <span>操作</span>
               </div>
 
-              <div className={styles.tableBody}>
-                {chapterRows.map((row) => (
-                  <article key={row.index} className={styles.tableRow}>
-                    <div className={styles.chapterCell}>
-                      <span className={styles.chapterIndex}>{row.index}</span>
-                      <span className={styles.chapterTitle}>{row.title}</span>
-                    </div>
-                    <div className={styles.summaryCell}>{row.summary}</div>
-                    <div className={styles.countCell}>{row.count}</div>
-                    <div className={styles.actionCell}>
-                      <button type="button" className={styles.rowButton}>开始练习</button>
-                    </div>
-                  </article>
-                ))}
+              <div className={styles.tableBodyWrap}>
+                <div className={styles.tableBody}>
+                  {paddedChapterRows.map((row) => (
+                    <article key={row.id} className={styles.tableRow}>
+                      {row.empty ? (
+                        <div className={styles.emptyRowSpacer} />
+                      ) : (
+                        <>
+                          <div className={styles.chapterCell}>
+                            <span className={styles.chapterIndex}>{row.index}</span>
+                            <span className={styles.chapterTitle}>{row.title}</span>
+                          </div>
+                          <div className={styles.summaryCell}>{row.summary}</div>
+                          <div className={styles.countCell}>{row.count}</div>
+                          <div className={styles.actionCell}>
+                            <button
+                              type="button"
+                              className={styles.rowButton}
+                              onClick={() =>
+                                navigate(`/workspace/quiz/practice/${row.id}`, {
+                                  state: { backgroundLocation: location },
+                                })
+                              }
+                            >
+                              开始练习
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </article>
+                  ))}
+                </div>
+
+                {questionLoading ? (
+                  <div className={styles.tableLoadingOverlay}>
+                    <div className={styles.tableLoadingCard}>题库加载中...</div>
+                  </div>
+                ) : null}
               </div>
 
-              <button type="button" className={styles.moreChapters}>
-                查看全部章节（共12章）
-              </button>
+              <div className={styles.paginationBar}>
+                <button
+                  type="button"
+                  className={styles.paginationArrow}
+                  onClick={() => setQuestionPage((page) => Math.max(1, page - 1))}
+                  disabled={questionPage === 1 || questionLoading}
+                  aria-label="上一页"
+                >
+                  ‹
+                </button>
+
+                <div className={styles.paginationNumbers}>
+                  {paginationNumbers.map((pageNumber) => (
+                    <button
+                      key={pageNumber}
+                      type="button"
+                      className={
+                        pageNumber === questionPage
+                          ? `${styles.paginationCircle} ${styles.paginationCircleActive}`
+                          : styles.paginationCircle
+                      }
+                      onClick={() => setQuestionPage(pageNumber)}
+                      disabled={questionLoading}
+                    >
+                      {pageNumber}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  className={styles.paginationArrow}
+                  onClick={() => setQuestionPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={questionPage === totalPages || questionLoading}
+                  aria-label="下一页"
+                >
+                  ›
+                </button>
+              </div>
+
+              <div className={styles.paginationHint}>
+                {questionLoadFailed ? '题库加载失败，当前展示默认内容。' : ' '}
+              </div>
             </section>
           </section>
 
@@ -433,12 +574,12 @@ export default function QuizEmptyPage() {
               <article className={styles.statCard}>
                 <span className={styles.statLabel}>今日练习</span>
                 <strong className={styles.statValue}>18<span>题</span></strong>
-                <span className={styles.statCompare}>较昨日 ↑ 8</span>
+                <span className={styles.statCompare}>较昨日 +8</span>
               </article>
               <article className={styles.statCard}>
                 <span className={styles.statLabel}>正确率</span>
                 <strong className={styles.statValue}>82<span>%</span></strong>
-                <span className={styles.statCompare}>较昨日 ↑ 12%</span>
+                <span className={styles.statCompare}>较昨日 +12%</span>
               </article>
               <article className={styles.statCard}>
                 <span className={styles.statLabel}>连续学习</span>

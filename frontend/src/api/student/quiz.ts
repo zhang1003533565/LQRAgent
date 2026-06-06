@@ -1,27 +1,82 @@
 import http from '@/api/http'
 import type { LearningResource } from '@/utils/types/media-resource'
 
-/** 答题提交请求 */
-export interface QuizSubmitRequest {
-  kpId: string
-  resourceId?: number
-  answer: string
-  expectedAnswer?: string
+export interface QuizQuestionListItem {
+  id: number
+  title: string
+  questionType: string
+  difficulty: number
+  knowledgePoint?: string | null
+  status: number
 }
 
-/** 答题结果 */
+export interface QuizQuestionPage {
+  items: QuizQuestionListItem[]
+  page: number
+  size: number
+  total: number
+  totalPages: number
+}
+
+export interface QuizQuestionDetail {
+  id: number
+  title: string
+  codeContent?: string | null
+  questionType: string
+  optionA?: string | null
+  optionB?: string | null
+  optionC?: string | null
+  optionD?: string | null
+  difficulty: number
+  knowledgePoint?: string | null
+  status: number
+  analysis?: string | null
+}
+
+export interface QuizSubmitRequest {
+  questionId: number
+  kpId?: string
+  resourceId?: number
+  answer: string
+}
+
 export interface QuizResult {
   id: number
+  questionId: number
   correct: boolean
   score: number
   kpId: string
   answer: string
+  correctAnswer?: string | null
+  analysis?: string | null
+  weaknessReport?: string | null
 }
 
-/**
- * 获取某知识点的 QUIZ 类题目资源。
- * 先查已有资源，若无则生成一份。
- */
+export interface NextQuizQuestion {
+  hasNext: boolean
+  nextQuestionId?: number | null
+}
+
+export async function listQuizQuestions(params?: {
+  page?: number
+  size?: number
+  questionType?: string
+  knowledgePoint?: string
+}): Promise<QuizQuestionPage> {
+  const res = await http.get<{ data: QuizQuestionPage }>('/quiz/questions', { params })
+  return res.data.data
+}
+
+export async function getQuizQuestionDetail(id: number): Promise<QuizQuestionDetail> {
+  const res = await http.get<{ data: QuizQuestionDetail }>(`/quiz/questions/${id}`)
+  return res.data.data
+}
+
+export async function getNextQuizQuestion(id: number): Promise<NextQuizQuestion> {
+  const res = await http.get<{ data: NextQuizQuestion }>(`/quiz/questions/${id}/next`)
+  return res.data.data
+}
+
 export async function getQuizQuestions(kpId: string): Promise<LearningResource[]> {
   try {
     const res = await http.get<{ data: LearningResource[] }>(`/resources/${kpId}`)
@@ -29,10 +84,9 @@ export async function getQuizQuestions(kpId: string): Promise<LearningResource[]
     const quizzes = all.filter((r) => r.resourceType === 'QUIZ')
     if (quizzes.length > 0) return quizzes
   } catch {
-    // 不存在则生成
+    // fall through to generation
   }
 
-  // 没有现有题目 → 生成一份
   try {
     const res = await http.post<{ data: LearningResource }>('/resources/generate', {
       kpId,
@@ -44,10 +98,6 @@ export async function getQuizQuestions(kpId: string): Promise<LearningResource[]
   }
 }
 
-/**
- * 提交答案。
- * POST /api/quiz/submit → 判分 + 落记录 + 触发画像更新
- */
 export async function submitQuiz(req: QuizSubmitRequest): Promise<QuizResult> {
   const res = await http.post<{ data: QuizResult }>('/quiz/submit', req)
   return res.data.data

@@ -136,6 +136,7 @@ CREATE TABLE IF NOT EXISTS `resource_item` (
 CREATE TABLE IF NOT EXISTS `quiz_record` (
     `id`          BIGINT      NOT NULL AUTO_INCREMENT COMMENT '主键ID',
     `user_id`     BIGINT      NOT NULL COMMENT '学生用户ID',
+    `question_id` BIGINT      DEFAULT NULL COMMENT '题目ID',
     `kp_id`       VARCHAR(64) NOT NULL COMMENT '知识点ID',
     `resource_id` BIGINT      COMMENT '关联资源ID',
     `score`       TINYINT     COMMENT '得分：0-100',
@@ -460,3 +461,21 @@ SET @sql_add_resource_prompt := IF(
 PREPARE stmt_add_resource_prompt FROM @sql_add_resource_prompt;
 EXECUTE stmt_add_resource_prompt;
 DEALLOCATE PREPARE stmt_add_resource_prompt;
+
+SET @add_quiz_record_question_id := (
+    SELECT COUNT(*) = 1 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'quiz_record'
+) AND (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'quiz_record'
+      AND column_name = 'question_id'
+);
+SET @sql_add_quiz_record_question_id := IF(
+    @add_quiz_record_question_id,
+    'ALTER TABLE `quiz_record` ADD COLUMN `question_id` BIGINT NULL COMMENT ''题目ID'' AFTER `user_id`',
+    'SELECT ''skip: quiz_record.question_id exists or table missing'''
+);
+PREPARE stmt_add_quiz_record_question_id FROM @sql_add_quiz_record_question_id;
+EXECUTE stmt_add_quiz_record_question_id;
+DEALLOCATE PREPARE stmt_add_quiz_record_question_id;
