@@ -1,6 +1,6 @@
 package com.lqragent.backend.orchestrator.agents;
 
-import com.lqragent.backend.agents.learningpath.service.LearningPathService;
+import com.lqragent.backend.agents.learn.path.service.LearningPathService;
 import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;

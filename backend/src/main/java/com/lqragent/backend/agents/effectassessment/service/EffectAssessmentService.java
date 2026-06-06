@@ -1,9 +1,9 @@
-package com.lqragent.backend.agents.effectassessment.service;
+package com.lqragent.backend.agents.learn.stateassessment.service;
 
-import com.lqragent.backend.agents.learningpath.entity.LearningPath;
-import com.lqragent.backend.agents.learningpath.entity.LearningPathStep;
-import com.lqragent.backend.agents.learningpath.repository.LearningPathRepository;
-import com.lqragent.backend.agents.learningpath.repository.LearningPathStepRepository;
+import com.lqragent.backend.agents.learn.path.entity.LearningPath;
+import com.lqragent.backend.agents.learn.path.entity.LearningPathStep;
+import com.lqragent.backend.agents.learn.path.repository.LearningPathRepository;
+import com.lqragent.backend.agents.learn.path.repository.LearningPathStepRepository;
 import com.lqragent.backend.quiz.entity.StudyBehavior;
 import com.lqragent.backend.quiz.repository.StudyBehaviorRepository;
 import com.lqragent.backend.chat.proxy.AiServerWsProxy;

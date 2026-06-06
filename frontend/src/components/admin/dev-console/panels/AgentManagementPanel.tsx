@@ -16,6 +16,7 @@ interface AgentDef {
   id: string
   name: string
   logName: string
+  category: string
   description: string
   aiSource: string
   features: AgentFeature[]
@@ -23,135 +24,187 @@ interface AgentDef {
 }
 
 const AGENTS: AgentDef[] = [
+  // 调度模块
   {
-    id: 'orchestrator', name: '协调智能体', logName: 'orchestrator',
-    description: '意图识别 → 路由 → 聚合 → 质检 → 重试',
+    id: 'orchestrator', name: '协调智能体', logName: 'orchestrator', category: '调度',
+    description: '意图识别 → 路由 → 聚合',
     aiSource: 'LLM API — 意图分类',
     features: [
       { label: 'LLM 意图分类', status: 'done', note: '优先 LLM，降级关键词' },
-      { label: '结果聚合', status: 'todo', note: '等全部 Agent 返回再合并' },
-      { label: 'RequestContext', status: 'done', note: 'ThreadLocal userId + requestId' },
+      { label: '任务分发', status: 'done', note: 'Redis Streams 消息队列' },
     ],
     testFields: [{ key: 'message', label: '用户意图', placeholder: '如：我想学 Python 装饰器' }],
   },
+  
+  // 用户模块
   {
-    id: 'qa', name: '答疑智能体', logName: 'intelligent_qa',
-    description: '流式 RAG 问答 + Mermaid 流程图',
-    aiSource: 'ai-server WS（DeepTutor RAG）',
+    id: 'profile', name: '画像智能体', logName: 'profile_agent', category: '用户',
+    description: '分析用户学习画像',
+    aiSource: 'LLM API — 画像分析',
     features: [
-      { label: '文本流式问答', status: 'done', note: 'WS → ai-server' },
-      { label: 'Mermaid 流程图', status: 'done', note: 'CDN mermaid 11 + 渲染' },
-      { label: '质量校验前置', status: 'todo', note: '答案经质检再返回' },
+      { label: '学习画像分析', status: 'done', note: 'LLM 分析用户知识水平' },
     ],
-    testFields: [{ key: 'message', label: '问题内容', placeholder: '如：Python 中 *args 和 **kwargs 区别？' }],
+    testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
+  },
+  
+  // 学习模块
+  {
+    id: 'learningpath', name: '路径规划', logName: 'learning_path_agent', category: '学习',
+    description: '知识图谱拓扑排序 + 动态生成',
+    aiSource: 'LLM API — 路径规划',
+    features: [
+      { label: '知识图谱匹配', status: 'done', note: '31 知识点' },
+      { label: '动态路径生成', status: 'done', note: '无匹配时 LLM 生成' },
+    ],
+    testFields: [{ key: 'goal', label: '学习目标', placeholder: '如：掌握 Python 装饰器' }],
   },
   {
-    id: 'learningpath', name: '路径规划', logName: 'learningpath',
-    description: 'BFS 图谱遍历 + LLM 个性化排序',
-    aiSource: 'LLM API — 个性化排序',
+    id: 'knowledgestate', name: '知识状态', logName: 'knowledge_state_agent', category: '学习',
+    description: '追踪知识点掌握度',
+    aiSource: '答题记录分析',
     features: [
-      { label: 'BFS 路径骨架', status: 'done', note: '31 知识点拓扑排序' },
-      { label: 'LLM 个性化排序', status: 'done', note: 'sortNodesWithLlm()' },
-      { label: '资源类型关联', status: 'todo', note: '每步骤指定类型' },
+      { label: '掌握度计算', status: 'done', note: '基于答题正确率' },
+      { label: '薄弱点识别', status: 'done', note: '正确率<60%为薄弱' },
     ],
-    testFields: [
-      { key: 'goal', label: '学习目标', placeholder: '如：掌握 Python 装饰器' },
-      { key: 'currentKpId', label: '当前知识点（可选）', placeholder: '如：python_decorator' },
-    ],
+    testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
   },
   {
-    id: 'resourcefacade', name: '资源生成', logName: 'resourcefacade',
-    description: 'LLM 生成 5 种教学资源，失败模板兜底',
+    id: 'spacedrepetition', name: '间隔复习', logName: 'spaced_repetition_agent', category: '学习',
+    description: '基于遗忘曲线安排复习',
+    aiSource: 'SM-2 算法',
+    features: [
+      { label: '复习调度', status: 'done', note: '间隔重复算法' },
+    ],
+    testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
+  },
+  {
+    id: 'difficulty', name: '自适应难度', logName: 'difficulty_agent', category: '学习',
+    description: '根据表现调整难度',
+    aiSource: 'LLM API — 难度分析',
+    features: [
+      { label: '难度评估', status: 'done', note: '基于答题表现' },
+    ],
+    testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
+  },
+  {
+    id: 'learningstyle', name: '学习风格', logName: 'learning_style_agent', category: '学习',
+    description: '识别视觉/听觉/动手型',
+    aiSource: '行为分析',
+    features: [
+      { label: '风格识别', status: 'done', note: '基于学习行为' },
+    ],
+    testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
+  },
+  {
+    id: 'effect', name: '效果评估', logName: 'effect_agent', category: '学习',
+    description: '薄弱点分析 → 路径调整',
+    aiSource: 'LLM API（薄弱点分析）',
+    features: [
+      { label: '低分→插复习节点', status: 'done', note: '简单规则' },
+      { label: 'LLM 薄弱点分析', status: 'done', note: 'analyzeWeakness()' },
+    ],
+    testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
+  },
+  
+  // 内容模块
+  {
+    id: 'resource', name: '资源生成', logName: 'resource_agent', category: '内容',
+    description: 'LLM 生成教学资源',
     aiSource: 'LLM API — 资源生成',
     features: [
       { label: '讲义文档', status: 'done', note: 'Markdown + 代码块' },
       { label: '练习题目', status: 'done', note: '选择+填空+编程' },
-      { label: '代码案例', status: 'done', note: '完整可运行代码' },
-      { label: '思维导图', status: 'wip', note: '待 Mermaid 语法输出' },
-      { label: '拓展阅读', status: 'done', note: 'LLM 生成 + 模板兜底' },
     ],
-    testFields: [
-      { key: 'kpId', label: '知识点 ID', placeholder: '如：python_decorator' },
-      { key: 'resourceType', label: '资源类型', type: 'select', defaultValue: 'LESSON',
-        options: [
-          { label: 'LESSON — 讲义', value: 'LESSON' },
-          { label: 'QUIZ — 题目', value: 'QUIZ' },
-          { label: 'CODE_CASE — 代码', value: 'CODE_CASE' },
-          { label: 'ILLUSTRATION — 思维导图', value: 'ILLUSTRATION' },
-          { label: 'EXTENSION_READING — 拓展', value: 'EXTENSION_READING' },
-        ] },
-    ],
+    testFields: [{ key: 'pathId', label: '路径ID', placeholder: '如：258' }],
   },
   {
-    id: 'learnerprofile', name: '学生画像', logName: 'learnerprofile',
-    description: 'LLM 从对话抽取 6 维度 + ai-server Memory',
-    aiSource: 'LLM API（抽取）+ ai-server Memory',
+    id: 'diagram', name: '图表生成', logName: 'diagram_agent', category: '内容',
+    description: '生成 Mermaid 图表',
+    aiSource: 'LLM API — 图表代码',
     features: [
-      { label: '答题记录画像', status: 'done', note: '6 维度粗算' },
-      { label: 'LLM 对话抽取', status: 'done', note: '规则+ProfileExtractor 双通道' },
-      { label: 'ai-server Memory', status: 'wip', note: '对话摘要存储' },
+      { label: '流程图', status: 'done', note: 'Mermaid 语法' },
+      { label: '思维导图', status: 'done', note: '知识结构可视化' },
     ],
-    testFields: [{ key: 'message', label: '对话内容', placeholder: '如：我觉得函数式编程太难了' }],
+    testFields: [{ key: 'topic', label: '主题', placeholder: '如：Python 装饰器' }],
   },
   {
-    id: 'qualityassessment', name: '质量评估', logName: 'qualityassessment',
-    description: 'LLM 自检 + 敏感词 + 学术规范 + 重试',
-    aiSource: 'LLM API（事实校验）+ 本地（敏感词+学术检查）',
+    id: 'summary', name: '总结生成', logName: 'summary_agent', category: '内容',
+    description: '生成学习总结和复习材料',
+    aiSource: 'LLM API — 总结生成',
     features: [
-      { label: '非空/格式检查', status: 'done', note: '基础校验' },
-      { label: 'LLM 事实性校验', status: 'wip', note: 'assessFull() 依赖开关' },
-      { label: '敏感内容过滤', status: 'done', note: 'SensitiveFilter 词库匹配' },
-      { label: '学术规范性检查', status: 'done', note: 'AcademicChecker 正则检测' },
+      { label: '知识点总结', status: 'done', note: '提炼核心要点' },
     ],
-    testFields: [{ key: 'content', label: '待校验内容', type: 'textarea', placeholder: '粘贴需要质检的文本' }],
+    testFields: [{ key: 'topic', label: '主题', placeholder: '如：Python 装饰器' }],
   },
   {
-    id: 'contentanalyzer', name: '内容分析', logName: 'contentanalyzer',
-    description: '上传文档 → 提取知识点 → 关联图谱',
-    aiSource: 'ai-server Knowledge Base',
+    id: 'content', name: '内容分析', logName: 'content_analysis_agent', category: '内容',
+    description: '上传文档 → 提取知识点',
+    aiSource: 'LLM API + ai-server Knowledge Base',
     features: [
       { label: '关键词匹配知识点', status: 'done', note: '结构化课程够用' },
-      { label: '上传入知识库', status: 'done', note: 'ai-server RAG' },
-      { label: 'LLM 提取（可选）', status: 'done', note: 'analyzeWithLlm() 优先LLM' },
+      { label: 'LLM 提取', status: 'done', note: 'analyzeWithLlm()' },
     ],
-    testFields: [{ key: 'message', label: '文档内容', type: 'textarea', placeholder: '粘贴文档内容或关键词' }],
+    testFields: [{ key: 'message', label: '文档内容', type: 'textarea', placeholder: '粘贴文档内容' }],
+  },
+  
+  // 质检模块
+  {
+    id: 'quality', name: '质量评估', logName: 'quality_agent', category: '质检',
+    description: 'LLM 自检 + 敏感词',
+    aiSource: 'LLM API（事实校验）+ 本地（敏感词检查）',
+    features: [
+      { label: '非空/格式检查', status: 'done', note: '基础校验' },
+      { label: '敏感内容过滤', status: 'done', note: 'SensitiveFilter' },
+    ],
+    testFields: [{ key: 'content', label: '资源内容', type: 'textarea', placeholder: '粘贴需要质检的文本' }],
+  },
+  
+  // 服务模块
+  {
+    id: 'qa', name: '答疑智能体', logName: 'intelligent_qa', category: '服务',
+    description: '流式 RAG 问答',
+    aiSource: 'ai-server WS（DeepTutor RAG）',
+    features: [
+      { label: '文本流式问答', status: 'done', note: 'WS → ai-server' },
+      { label: '知识库检索', status: 'done', note: 'RAG 向量检索' },
+    ],
+    testFields: [{ key: 'message', label: '问题内容', placeholder: '如：Python 中 *args 和 **kwargs 区别？' }],
   },
   {
-    id: 'effectassessment', name: '效果评估', logName: 'effectassessment',
-    description: '行为追踪 + LLM 薄弱点分析 → 路径调整',
-    aiSource: 'LLM API（薄弱点分析）',
+    id: 'recommendation', name: '个性化推荐', logName: 'recommendation_agent', category: '服务',
+    description: '基于画像推荐资源',
+    aiSource: 'LLM API — 推荐算法',
     features: [
-      { label: '低分→插复习节点', status: 'done', note: '简单规则' },
-      { label: 'LLM 薄弱点分析', status: 'done', note: 'analyzeWeakness() 行为+LLM' },
-      { label: '行为追踪', status: 'todo', note: '前端埋点待做' },
+      { label: '资源推荐', status: 'done', note: '基于学习画像' },
     ],
-    testFields: [
-      { key: 'kpId', label: '知识点 ID', placeholder: '如：python_decorator' },
-      { key: 'score', label: '答题分数', type: 'select', defaultValue: '40',
-        options: [
-          { label: '40 分（不及格）', value: '40' },
-          { label: '60 分（及格）', value: '60' },
-          { label: '80 分（良好）', value: '80' },
-        ] },
-    ],
+    testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
   },
   {
-    id: 'mediagen', name: '媒体生成', logName: 'mediagen',
-    description: '示意图 + 思维导图导出（视频选做）',
-    aiSource: '第三方 API（生图）+ LLM API（思维导图）',
+    id: 'assessment', name: '评估批改', logName: 'assessment_agent', category: '服务',
+    description: '评估答案质量',
+    aiSource: 'LLM API — 评估',
     features: [
-      { label: '示意图（mock）', status: 'done', note: 'SVG 占位图' },
-      { label: '示意图（真 API）', status: 'wip', note: '需配置 API Key' },
-      { label: '思维导图导出', status: 'wip', note: 'Markdown → 可视化' },
+      { label: '答案评分', status: 'done', note: '多维度评估' },
     ],
-    testFields: [
-      { key: 'kpId', label: '知识点 ID', placeholder: '如：python_decorator' },
-      { key: 'mediaType', label: '媒体类型', type: 'select', defaultValue: 'illustration',
-        options: [
-          { label: 'illustration — 示意图', value: 'illustration' },
-          { label: 'mindmap — 思维导图', value: 'mindmap' },
-        ] },
+    testFields: [{ key: 'answer', label: '答案', type: 'textarea', placeholder: '粘贴待评估的答案' }],
+  },
+  {
+    id: 'intervention', name: '学习干预', logName: 'intervention_agent', category: '服务',
+    description: '发现问题主动干预',
+    aiSource: 'LLM API — 干预策略',
+    features: [
+      { label: '问题检测', status: 'done', note: '识别学习困难' },
     ],
+    testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
+  },
+  {
+    id: 'motivation', name: '激励系统', logName: 'motivation_agent', category: '服务',
+    description: '游戏化激励',
+    aiSource: 'LLM API — 激励',
+    features: [
+      { label: '成就系统', status: 'done', note: '学习徽章' },
+    ],
+    testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
   },
 ]
 
@@ -317,6 +370,15 @@ function AgentDetail({ agent, stats, configMap, onSave, saving }: {
 
 export default function AgentManagementPanel() {
   const [selectedId, setSelectedId] = useState(AGENTS[0].id)
+  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set(['调度', '用户', '学习', '内容', '质检', '服务']))
+  const toggleCat = (cat: string) => {
+    setExpandedCats(prev => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next
+    })
+  }
   const { data: stats } = useQuery({ queryKey: ['admin', 'agent-stats'], queryFn: getAgentStats, refetchInterval: 15_000 })
   const { data: configs = [] } = useQuery({ queryKey: ['admin', 'sys-config'], queryFn: listSysConfig, refetchInterval: 30_000 })
   const qc = useQueryClient()
@@ -337,27 +399,57 @@ export default function AgentManagementPanel() {
         <CardHeader className="pb-2">
           <CardTitle className="text-xs">Agent 列表</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1 p-2">
-          {AGENTS.map(a => {
-            const s = stats?.stats?.find(x => x.agent === a.logName)
-            const total = s?.total ?? 0
-            return (
-              <button
-                key={a.id}
-                onClick={() => setSelectedId(a.id)}
-                className={`w-full text-left rounded-md px-3 py-2 text-sm transition-colors ${
-                  selectedId === a.id
-                    ? 'bg-console-blue/10 text-console-blue'
-                    : 'text-console-text hover:bg-console-border/30'
-                }`}
-              >
-                <div className="font-medium">{a.name}</div>
-                <div className="text-[11px] text-console-muted">
-                  {total > 0 ? `${total} 次调用` : '未调用'}
+        <CardContent className="space-y-0 p-2">
+          {(() => {
+            const categories = ['调度', '用户', '学习', '内容', '质检', '服务']
+            return categories.map(cat => {
+              const agentsInCat = AGENTS.filter(a => a.category === cat)
+              if (agentsInCat.length === 0) return null
+              const isExpanded = expandedCats.has(cat)
+              return (
+                <div key={cat} className="mb-1">
+                  <button
+                    onClick={() => toggleCat(cat)}
+                    className="w-full flex items-center justify-between px-2 py-1.5 text-[11px] font-bold text-console-muted hover:text-console-text hover:bg-console-border/20 rounded-md transition-colors"
+                  >
+                    <span className="uppercase tracking-wider">{cat}模块</span>
+                    <svg
+                      className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                  {isExpanded && (
+                    <div className="ml-1 space-y-0.5">
+                      {agentsInCat.map(a => {
+                        const s = stats?.stats?.find(x => x.agent === a.logName)
+                        const total = s?.total ?? 0
+                        return (
+                          <button
+                            key={a.id}
+                            onClick={() => setSelectedId(a.id)}
+                            className={`w-full text-left rounded-md px-3 py-1.5 text-sm transition-colors ${
+                              selectedId === a.id
+                                ? 'bg-console-blue/10 text-console-blue'
+                                : 'text-console-text hover:bg-console-border/30'
+                            }`}
+                          >
+                            <div className="font-medium text-[13px]">{a.name}</div>
+                            <div className="text-[10px] text-console-muted">
+                              {total > 0 ? `${total} 次调用` : '未调用'}
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
-              </button>
-            )
-          })}
+              )
+            })
+          })()}
         </CardContent>
       </Card>
 

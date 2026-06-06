@@ -1,4 +1,4 @@
-package com.lqragent.backend.agents.resourcegeneration.dto;
+package com.lqragent.backend.agents.content.summary.lessongeneration.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;

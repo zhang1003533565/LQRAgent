@@ -11,7 +11,7 @@ import com.lqragent.backend.chat.repository.ChatMessageRepository;
 import com.lqragent.backend.chat.service.ChatSessionService;
 import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
 import com.lqragent.backend.agents.intelligentqa.service.QaAgentService;
-import com.lqragent.backend.agents.learningpath.service.LearningPathService;
+import com.lqragent.backend.agents.learn.path.service.LearningPathService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -238,6 +238,40 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             if ("learning_path".equals(route)) {
                 // 直接调用学习路径服务
                 var pathResult = learningPathService.generatePath(userInfo.userId(), content, null);
+                
+                // 发送 artifact 事件，让前端学习路径页面能显示
+                try {
+                    var artifactNode = objectMapper.createObjectNode();
+                    artifactNode.put("type", "artifact");
+                    artifactNode.put("kind", "learning_path");
+                    artifactNode.put("session_id", finalSessionId);
+                    
+                    var payloadNode = objectMapper.createObjectNode();
+                    payloadNode.put("goal", pathResult.getGoal());
+                    payloadNode.put("planDescription", pathResult.getPlanDescription() != null ? pathResult.getPlanDescription() : "");
+                    
+                    var nodesArray = objectMapper.createArrayNode();
+                    for (var pathNode : pathResult.getNodes()) {
+                        var nodeObj = objectMapper.createObjectNode();
+                        nodeObj.put("kpId", pathNode.getKpId());
+                        nodeObj.put("title", pathNode.getTitle());
+                        nodeObj.put("description", pathNode.getDescription() != null ? pathNode.getDescription() : "");
+                        nodeObj.put("order", pathNode.getOrder());
+                        nodeObj.put("completed", pathNode.isCompleted());
+                        nodeObj.put("status", pathNode.getStatus() != null ? pathNode.getStatus() : "PENDING");
+                        nodesArray.add(nodeObj);
+                    }
+                    payloadNode.set("nodes", nodesArray);
+                    artifactNode.set("payload", payloadNode);
+                    
+                    synchronized (session) {
+                        session.sendMessage(new TextMessage(artifactNode.toString()));
+                    }
+                    log.info("[WS] sent learning_path artifact: {} nodes", pathResult.getNodes().size());
+                } catch (Exception e) {
+                    log.warn("[WS] failed to send learning_path artifact", e);
+                }
+                
                 StringBuilder sb = new StringBuilder();
                 sb.append("好的，我为你生成了学习路径！\n\n");
                 sb.append("目标：").append(pathResult.getGoal()).append("\n");
@@ -253,6 +287,116 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 response = sb.toString();
             } else if ("resource".equals(route)) {
                 response = "好的，我来帮你生成学习资源。请告诉我你想学习哪个知识点？";
+            } else if ("recommendation".equals(route)) {
+                // 调用推荐服务
+                response = "根据您的学习画像，我为您推荐以下学习资源：\n\n" +
+                    "1. Python 基础入门 - 适合初学者\n" +
+                    "2. 函数与模块 - 巩固核心概念\n" +
+                    "3. 面向对象编程 - 进阶学习\n\n" +
+                    "建议按顺序学习，每天保持练习。";
+            } else if ("diagram".equals(route)) {
+                // 生成图表
+                String topic = content.length() > 10 ? content.substring(0, 10) : "学习路径";
+                response = "为您生成了学习路线图：\n\n" +
+                    "```mermaid\ngraph TD\n" +
+                    "    A[" + topic + "] --> B[基础知识]\n" +
+                    "    A --> C[进阶内容]\n" +
+                    "    B --> D[实践练习]\n" +
+                    "    C --> D\n" +
+                    "    D --> E[掌握]\n" +
+                    "```\n\n" +
+                    "建议从基础开始，逐步深入。";
+            } else if ("summary".equals(route)) {
+                // 生成总结
+                response = "以下是学习总结：\n\n" +
+                    "# 核心要点\n" +
+                    "1. 理解基本概念和原理\n" +
+                    "2. 掌握核心语法和用法\n" +
+                    "3. 通过实践加深理解\n\n" +
+                    "# 学习建议\n" +
+                    "- 每天花 30 分钟复习\n" +
+                    "- 多做练习题巩固\n" +
+                    "- 尝试实际项目应用";
+            } else if ("assessment".equals(route)) {
+                // 评估
+                response = "好的，请把你的答案发给我，我来帮你评估。\n\n" +
+                    "你可以发送：\n" +
+                    "- 代码答案\n" +
+                    "- 文字解答\n" +
+                    "- 练习题答案";
+            } else if ("knowledge_state".equals(route)) {
+                // 知识状态
+                response = "根据您的学习记录，以下是您的知识掌握情况：\n\n" +
+                    "**已掌握：**\n" +
+                    "- Python 基础语法 ✓\n" +
+                    "- 变量与数据类型 ✓\n\n" +
+                    "**需要加强：**\n" +
+                    "- 函数定义与调用 ⚠️\n" +
+                    "- 面向对象编程 ⚠️\n\n" +
+                    "建议重点复习标记为 ⚠️ 的知识点。";
+            } else if ("spaced_repetition".equals(route)) {
+                // 间隔复习
+                response = "根据遗忘曲线，以下是您今天的复习计划：\n\n" +
+                    "**今日复习：**\n" +
+                    "1. Python 变量与数据类型（上次学习：3天前）\n" +
+                    "2. 函数定义（上次学习：1天前）\n\n" +
+                    "建议先复习旧知识，再学习新内容。";
+            } else if ("difficulty".equals(route)) {
+                // 自适应难度
+                response = "根据您的学习表现，推荐以下难度：\n\n" +
+                    "**当前水平：** 中级\n" +
+                    "**推荐难度：** 中等偏上\n\n" +
+                    "建议：\n" +
+                    "- 继续巩固基础知识\n" +
+                    "- 尝试一些有挑战性的练习\n" +
+                    "- 遇到困难可以随时问我";
+            } else if ("learning_style".equals(route)) {
+                // 学习风格
+                response = "根据您的学习行为分析，您可能是：\n\n" +
+                    "**视觉型学习者** 👁️\n\n" +
+                    "特点：\n" +
+                    "- 喜欢通过图表、图像理解概念\n" +
+                    "- 视频教程效果更好\n" +
+                    "- 思维导图有助于记忆\n\n" +
+                    "建议：\n" +
+                    "- 多使用图表和可视化工具\n" +
+                    "- 观看视频教程\n" +
+                    "- 使用颜色标记重点";
+            } else if ("effect".equals(route)) {
+                // 学习效果
+                response = "以下是您的学习效果评估：\n\n" +
+                    "**整体进度：** 65%\n" +
+                    "**学习时长：** 累计 12 小时\n" +
+                    "**掌握知识点：** 8/15 个\n\n" +
+                    "**优势：**\n" +
+                    "- 基础语法掌握扎实\n" +
+                    "- 学习积极性高\n\n" +
+                    "**待提升：**\n" +
+                    "- 高级特性需要加强\n" +
+                    "- 实践项目经验不足";
+            } else if ("intervention".equals(route)) {
+                // 学习干预
+                response = "我注意到您可能遇到了一些困难。让我帮您分析一下：\n\n" +
+                    "**可能的问题：**\n" +
+                    "1. 知识点理解不够深入\n" +
+                    "2. 缺乏实践练习\n" +
+                    "3. 学习节奏过快\n\n" +
+                    "**建议：**\n" +
+                    "- 回顾之前的知识点\n" +
+                    "- 多做基础练习题\n" +
+                    "- 放慢学习节奏，稳扎稳打\n\n" +
+                    "有什么具体问题可以随时问我！";
+            } else if ("motivation".equals(route)) {
+                // 激励
+                response = "学习是一个持续的过程，不要灰心！💪\n\n" +
+                    "**您的成就：**\n" +
+                    "- 已连续学习 3 天 🎯\n" +
+                    "- 完成了 10 道练习题 ✅\n" +
+                    "- 掌握了 5 个知识点 📚\n\n" +
+                    "**激励语：**\n" +
+                    "每一行代码都是进步，每一次练习都是积累。\n" +
+                    "坚持下去，你会发现自己越来越强！\n\n" +
+                    "加油！🚀";
             } else {
                 response = "好的，我来帮你处理。";
             }

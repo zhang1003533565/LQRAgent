@@ -1,13 +1,17 @@
+import { useState, useEffect } from 'react'
+import { getProfileSummary, getProfileDetail } from '@/api/student/profile'
 import styles from './ProfilePage.module.css'
 
-const scoreCards = [
-  { title: '知识掌握', value: 82, status: '上升', icon: '🎓', tone: 'blue' },
-  { title: '应用能力', value: 80, status: '上升', icon: '◔', tone: 'violet' },
-  { title: '学习效率', value: 75, status: '稳定', icon: '◷', tone: 'teal' },
-  { title: '思维能力', value: 76, status: '上升', icon: '⌘', tone: 'green' },
-  { title: '学习习惯', value: 70, status: '待提升', icon: '🗓', tone: 'orange' },
-  { title: '学习态度', value: 85, status: '上升', icon: '☆', tone: 'amber' },
-] as const
+interface ProfileData {
+  knowledgeLevel: string
+  learningGoal: string
+  cognitiveStyle: string
+  learningPace: string
+  weakTopics: string[]
+  knowledgeMap: { kpId: string; title: string; mastery: number; status: string }[]
+}
+
+// 从 API 获取真实数据
 
 const radarPoints = [
   { label: '知识掌握', x: 180, y: 58 },
@@ -78,6 +82,64 @@ function toneClass(tone: string) {
 }
 
 export default function ProfilePage() {
+  const [profile, setProfile] = useState<ProfileData | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchProfile() {
+      try {
+        const detail = await getProfileDetail()
+        setProfile({
+          knowledgeLevel: detail.summary?.knowledgeLevel || 'BEGINNER',
+          learningGoal: detail.summary?.learningGoal || '',
+          cognitiveStyle: detail.summary?.cognitiveStyle || '',
+          learningPace: detail.summary?.learningPace || '',
+          weakTopics: detail.weakTopics || [],
+          knowledgeMap: detail.knowledgeMap || [],
+        })
+      } catch (e) {
+        console.error('Failed to fetch profile', e)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchProfile()
+  }, [])
+
+  if (loading) return <div className={styles.page}><p>加载中...</p></div>
+  if (!profile) return <div className={styles.page}><p>暂无数据</p></div>
+
+  // 计算统计数据
+  const masteredCount = profile.knowledgeMap.filter(k => k.status === 'MASTERED').length
+  const totalCount = profile.knowledgeMap.length
+  const masteryPercent = totalCount > 0 ? Math.round(masteredCount / totalCount * 100) : 0
+
+  const knowledgeScore = masteryPercent
+  const applicationScore = Math.min(100, masteryPercent + 10)
+  const efficiencyScore = profile.learningPace === 'FAST' ? 85 : profile.learningPace === 'SLOW' ? 60 : 75
+  const thinkingScore = Math.min(100, masteryPercent + 5)
+  const habitScore = profile.cognitiveStyle ? 70 : 50
+  const attitudeScore = 80
+
+  const dimensions = [
+    { label: '知识掌握', value: knowledgeScore, tone: 'blue', icon: '🎓' },
+    { label: '应用能力', value: applicationScore, tone: 'violet', icon: '◔' },
+    { label: '学习效率', value: efficiencyScore, tone: 'teal', icon: '◷' },
+    { label: '思维能力', value: thinkingScore, tone: 'green', icon: '⌘' },
+    { label: '学习习惯', value: habitScore, tone: 'orange', icon: '🗓' },
+    { label: '学习态度', value: attitudeScore, tone: 'amber', icon: '☆' },
+  ]
+  const dimensionColumns = [dimensions.slice(0, 3), dimensions.slice(3, 6)]
+
+  const scoreCards = [
+    { title: '知识掌握', value: knowledgeScore, status: knowledgeScore > 60 ? '上升' : '待提升', icon: '🎓', tone: 'blue' },
+    { title: '应用能力', value: applicationScore, status: applicationScore > 60 ? '上升' : '待提升', icon: '◔', tone: 'violet' },
+    { title: '学习效率', value: efficiencyScore, status: efficiencyScore > 70 ? '稳定' : '待提升', icon: '◷', tone: 'teal' },
+    { title: '思维能力', value: thinkingScore, status: thinkingScore > 60 ? '上升' : '待提升', icon: '⌘', tone: 'green' },
+    { title: '学习习惯', value: habitScore, status: habitScore > 60 ? '稳定' : '待提升', icon: '🗓', tone: 'orange' },
+    { title: '学习态度', value: attitudeScore, status: '上升', icon: '☆', tone: 'amber' },
+  ]
+
   return (
     <section className={styles.page}>
       <div className={styles.glow} />
