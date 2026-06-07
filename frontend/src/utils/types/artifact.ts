@@ -9,6 +9,7 @@ export type ArtifactKind =
   | 'media_video'
   | 'multi_card'
   | 'rag_sources'
+  | 'diagram'
 
 export interface ArtifactEvent {
   type: 'artifact'

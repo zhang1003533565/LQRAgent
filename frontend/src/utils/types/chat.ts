@@ -3,7 +3,7 @@ import type { RagSource } from './artifact'
 
 export type ChatRole = 'user' | 'assistant'
 
-export type MessageContentType = 'text' | 'multi_card'
+export type MessageContentType = 'text' | 'multi_card' | 'diagram'
 
 export interface ChatMessage {
   id: string
@@ -12,6 +12,8 @@ export interface ChatMessage {
   contentType?: MessageContentType
   cards?: MultiCardBlock[]
   ragSources?: RagSource[]
+  diagramCode?: string
+  diagramFormat?: string
   streaming?: boolean
   createdAt: Date
 }

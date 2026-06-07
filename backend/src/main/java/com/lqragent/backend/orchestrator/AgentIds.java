@@ -26,5 +26,4 @@ public final class AgentIds {
     public static final String RECOMMENDATION = "recommendation_agent";
     public static final String ASSESSMENT = "assessment_agent";
     public static final String INTERVENTION = "intervention_agent";
-    public static final String MOTIVATION = "motivation_agent";
 }

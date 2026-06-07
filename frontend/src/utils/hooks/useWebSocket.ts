@@ -31,6 +31,25 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
     return
   }
 
+  if (kind === 'diagram' && payload) {
+    // 处理图表数据
+    const p = payload as { topic?: string; diagram?: string; format?: string }
+    if (p.diagram) {
+      // 将图表添加到聊天消息中
+      const msgs = useChatStore.getState().messages
+      const last = [...msgs].reverse().find((m) => m.role === 'assistant')
+      if (last) {
+        useChatStore.getState().updateMessage(last.id, {
+          contentType: 'diagram',
+          diagramCode: p.diagram,
+          diagramFormat: p.format || 'mermaid',
+          streaming: false,
+        })
+      }
+    }
+    return
+  }
+
   if (kind === 'multi_card' && Array.isArray(payload)) {
     artifact.setMultiCardBlocks(payload as MultiCardBlock[])
     const msgs = useChatStore.getState().messages

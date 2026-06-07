@@ -50,6 +50,10 @@ public class MediaGenerationService {
         String mime;
 
         switch (provider) {
+            case "siliconflow" -> {
+                imageUrl = callSiliconFlowKolors(finalPrompt);
+                mime = "image/png";
+            }
             case "dalle3" -> {
                 imageUrl = callDalle3(finalPrompt);
                 mime = "image/png";
@@ -82,6 +86,56 @@ public class MediaGenerationService {
     }
 
     /** 调 OpenAI DALL·E 3 */
+    /**
+     * 调用 SiliconFlow 可图 API 生成图片
+     */
+    private String callSiliconFlowKolors(String prompt) {
+        String apiKey = runtimeConfig.get("agent.mediagen.api_key", "");
+        String host = runtimeConfig.get("agent.mediagen.host", "https://api.siliconflow.cn/v1");
+        String model = runtimeConfig.get("agent.mediagen.model", "Kwai-Kolors/Kolors");
+        
+        if (apiKey.isBlank()) {
+            log.warn("[MediaGeneration] SiliconFlow API key not configured, using mock");
+            return buildPlaceholderSvg(prompt);
+        }
+        
+        try {
+            Map<String, Object> requestBody = Map.of(
+                    "model", model,
+                    "prompt", prompt,
+                    "image_size", "1024x1024",
+                    "num_inference_steps", 20
+            );
+            
+            String response = RestClient.builder().build()
+                    .post()
+                    .uri(host + "/images/generations")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Content-Type", "application/json")
+                    .body(requestBody)
+                    .retrieve()
+                    .body(String.class);
+            
+            // 解析响应，获取图片 URL
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            var root = mapper.readTree(response);
+            var images = root.path("images");
+            if (images.isArray() && images.size() > 0) {
+                String imageUrl = images.get(0).path("url").asText("");
+                if (!imageUrl.isBlank()) {
+                    log.info("[MediaGeneration] SiliconFlow Kolors 生成成功: {}", imageUrl);
+                    return imageUrl;
+                }
+            }
+            
+            log.warn("[MediaGeneration] SiliconFlow response parsing failed, using mock");
+            return buildPlaceholderSvg(prompt);
+        } catch (Exception e) {
+            log.error("[MediaGeneration] SiliconFlow call failed: {}", e.getMessage());
+            return buildPlaceholderSvg(prompt);
+        }
+    }
+    
     private String callDalle3(String prompt) {
         String apiKey = runtimeConfig.get("llm.api-key", "");
         if (apiKey.isBlank()) {

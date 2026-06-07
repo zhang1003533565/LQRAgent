@@ -12,6 +12,16 @@ import com.lqragent.backend.chat.service.ChatSessionService;
 import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
 import com.lqragent.backend.agents.intelligentqa.service.QaAgentService;
 import com.lqragent.backend.agents.learn.path.service.LearningPathService;
+import com.lqragent.backend.agents.base.AgentMemory;
+import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.serve.recommendation.tools.GetRecommendationTool;
+import com.lqragent.backend.agents.learn.state.tools.AnalyzeWeaknessTool;
+import com.lqragent.backend.agents.learn.spacedrepetition.tools.GetReviewScheduleTool;
+import com.lqragent.backend.agents.learn.difficulty.tools.AdjustDifficultyTool;
+import com.lqragent.backend.agents.learn.learningstyle.tools.DetectLearningStyleTool;
+import com.lqragent.backend.agents.content.summarygen.tools.GenerateSummaryTool;
+import com.lqragent.backend.agents.serve.intervention.tools.GetInterventionTool;
+import com.lqragent.backend.agents.serve.assessment.tools.GradeAnswerTool;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -48,6 +58,16 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final WebSocketSessionManager sessionManager;
     private final LearnerProfileService learnerProfileService;
     private final LearningPathService learningPathService;
+    private final AgentMemory agentMemory;
+    private final LlmClient llmClient;
+    private final GetRecommendationTool getRecommendationTool;
+    private final AnalyzeWeaknessTool analyzeWeaknessTool;
+    private final GetReviewScheduleTool getReviewScheduleTool;
+    private final AdjustDifficultyTool adjustDifficultyTool;
+    private final DetectLearningStyleTool detectLearningStyleTool;
+    private final GenerateSummaryTool generateSummaryTool;
+    private final GetInterventionTool getInterventionTool;
+    private final GradeAnswerTool gradeAnswerTool;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -107,6 +127,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     .orElseGet(() -> chatSessionService.createSession(userInfo.userId(), generateTitle(content)));
         }
 
+        // 记录用户消息到 Agent 记忆
+        agentMemory.addUserMessage(userInfo.userId(), content);
+        
         // Persist user message
         ChatMessage userMsg = ChatMessage.builder()
                 .userId(userInfo.userId())
@@ -189,18 +212,23 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                             .put("session_id", finalSessionId)
                             .toString());
                     persistAiMessage(userInfo.userId(), finalSessionId, fullResponse.toString());
+                    agentMemory.addAgentResponse(userInfo.userId(), fullResponse.toString(), "qa_agent");
                     triggerProfileExtractionAsync(currentUserId, finalSessionId, session);
                 }
 
                 @Override
                 public void onError(String error) {
-                    sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                            .put("agent", "intelligent_qa")
-                            .put("label", "处理失败")
-                            .put("status", "failed")
-                            .put("detail", error)
+                    log.warn("[WS] QA error: {}", error);
+                    // 降级到简单回复
+                    String fallbackResponse = "抱歉，AI 服务暂时不可用。请稍后再试，或者你可以尝试：\n" +
+                        "1. 换一种方式提问\n" +
+                        "2. 检查网络连接\n" +
+                        "3. 稍后再试";
+                    sendEvent(session, "chunk", fallbackResponse);
+                    sendEvent(session, "done", objectMapper.createObjectNode()
+                            .put("session_id", finalSessionId)
                             .toString());
-                    sendEvent(session, "error", error);
+                    persistAiMessage(userInfo.userId(), finalSessionId, fallbackResponse);
                 }
 
                 @Override
@@ -284,84 +312,155 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     }
                 }
                 sb.append("\n你可以在「学习路径」页面查看详细内容和进度。");
+                
+                // 自动触发资源推荐
+                try {
+                    var recResult = getRecommendationTool.execute(Map.of("userId", userInfo.userId()));
+                    if (recResult.success()) {
+                        sb.append("\n\n---\n\n");
+                        sb.append(formatToolResponse("recommendation", recResult.content()));
+                    }
+                } catch (Exception ignored) {}
+                
                 response = sb.toString();
             } else if ("resource".equals(route)) {
                 response = "好的，我来帮你生成学习资源。请告诉我你想学习哪个知识点？";
             } else if ("recommendation".equals(route)) {
-                // 调用推荐服务
-                response = "根据您的学习画像，我为您推荐以下学习资源：\n\n" +
-                    "1. Python 基础入门 - 适合初学者\n" +
-                    "2. 函数与模块 - 巩固核心概念\n" +
-                    "3. 面向对象编程 - 进阶学习\n\n" +
-                    "建议按顺序学习，每天保持练习。";
+                // 调用推荐工具
+                try {
+                    var result = getRecommendationTool.execute(Map.of("userId", userInfo.userId()));
+                    response = result.success() ? formatToolResponse("recommendation", result.content()) : "推荐失败，请稍后再试";
+                } catch (Exception e) {
+                    response = "推荐服务暂时不可用：" + e.getMessage();
+                }
             } else if ("diagram".equals(route)) {
-                // 生成图表
-                String topic = content.length() > 10 ? content.substring(0, 10) : "学习路径";
-                response = "为您生成了学习路线图：\n\n" +
-                    "```mermaid\ngraph TD\n" +
-                    "    A[" + topic + "] --> B[基础知识]\n" +
-                    "    A --> C[进阶内容]\n" +
-                    "    B --> D[实践练习]\n" +
-                    "    C --> D\n" +
-                    "    D --> E[掌握]\n" +
-                    "```\n\n" +
+                // 生成图表 - 提取主题
+                String topic = content;
+                // 移除常见的动词前缀
+                topic = topic.replaceAll("^(画|生成|创建|制作|给我|帮我)\s*", "");
+                topic = topic.replaceAll("^(一个|一张|一个)\s*", "");
+                topic = topic.replaceAll("(图|图表|路线图|思维导图|流程图)$", "");
+                topic = topic.trim();
+                if (topic.isBlank()) topic = "学习路径";
+                
+                // 使用 LLM 生成更有意义的 Mermaid 图表
+                String mermaidCode = null;
+                try {
+                    String prompt = "请为「" + topic + "」生成一个 Mermaid 流程图代码。\n" +
+                        "要求：\n" +
+                        "1. 使用 graph TD 格式\n" +
+                        "2. 包含 4-6 个具体的学习节点\n" +
+                        "3. 节点内容要具体，如「变量与数据类型」「函数定义」，不要用「基础知识」「核心概念」\n" +
+                        "4. 只输出 Mermaid 代码，不要其他内容";
+                    
+                    mermaidCode = llmClient.chatSimple(
+                        "你是 Mermaid 图表生成专家。只输出 Mermaid 代码，不要其他内容。",
+                        prompt
+                    );
+                    
+                    // 验证 Mermaid 代码格式
+                    if (mermaidCode != null && mermaidCode.contains("```mermaid")) {
+                        mermaidCode = mermaidCode.replaceAll("```mermaid", "").replaceAll("```", "").trim();
+                    }
+                    if (mermaidCode == null || !mermaidCode.contains("graph")) {
+                        mermaidCode = null; // LLM 生成失败，使用默认模板
+                    }
+                } catch (Exception e) {
+                    log.warn("[WS] LLM diagram generation failed", e);
+                }
+                
+                // 如果 LLM 失败，使用更好的默认模板
+                if (mermaidCode == null || mermaidCode.isBlank()) {
+                    if (topic.contains("Python") || topic.contains("python")) {
+                        mermaidCode = "graph TD\n" +
+                            "    A[Python入门] --> B[变量与数据类型]\n" +
+                            "    A --> C[控制流语句]\n" +
+                            "    B --> D[函数与模块]\n" +
+                            "    C --> D\n" +
+                            "    D --> E[面向对象编程]\n" +
+                            "    E --> F[文件操作与异常]\n" +
+                            "    F --> G[项目实战]";
+                    } else {
+                        mermaidCode = "graph TD\n" +
+                            "    A[" + topic + "入门] --> B[基础概念]\n" +
+                            "    A --> C[核心技能]\n" +
+                            "    B --> D[实践练习]\n" +
+                            "    C --> D\n" +
+                            "    D --> E[进阶学习]\n" +
+                            "    E --> F[综合应用]";
+                    }
+                }
+                
+                // 发送 artifact 事件，让前端渲染图表
+                try {
+                    var artifactNode = objectMapper.createObjectNode();
+                    artifactNode.put("type", "artifact");
+                    artifactNode.put("kind", "diagram");
+                    artifactNode.put("session_id", finalSessionId);
+                    
+                    var payloadNode = objectMapper.createObjectNode();
+                    payloadNode.put("topic", topic);
+                    payloadNode.put("diagram", mermaidCode);
+                    payloadNode.put("format", "mermaid");
+                    artifactNode.set("payload", payloadNode);
+                    
+                    synchronized (session) {
+                        session.sendMessage(new TextMessage(artifactNode.toString()));
+                    }
+                } catch (Exception e) {
+                    log.warn("[WS] failed to send diagram artifact", e);
+                }
+                
+                response = "为您生成了「" + topic + "」的学习路线图：\n\n" +
+                    "```mermaid\n" + mermaidCode + "\n```\n\n" +
                     "建议从基础开始，逐步深入。";
             } else if ("summary".equals(route)) {
-                // 生成总结
-                response = "以下是学习总结：\n\n" +
-                    "# 核心要点\n" +
-                    "1. 理解基本概念和原理\n" +
-                    "2. 掌握核心语法和用法\n" +
-                    "3. 通过实践加深理解\n\n" +
-                    "# 学习建议\n" +
-                    "- 每天花 30 分钟复习\n" +
-                    "- 多做练习题巩固\n" +
-                    "- 尝试实际项目应用";
+                // 调用总结生成工具
+                try {
+                    var result = generateSummaryTool.execute(Map.of("topic", content));
+                    response = result.success() ? formatToolResponse("summary", result.content()) : "生成总结失败，请稍后再试";
+                } catch (Exception e) {
+                    response = "总结生成服务暂时不可用：" + e.getMessage();
+                }
             } else if ("assessment".equals(route)) {
-                // 评估
+                // 评估 - 提示用户发送答案
                 response = "好的，请把你的答案发给我，我来帮你评估。\n\n" +
                     "你可以发送：\n" +
                     "- 代码答案\n" +
                     "- 文字解答\n" +
                     "- 练习题答案";
             } else if ("knowledge_state".equals(route)) {
-                // 知识状态
-                response = "根据您的学习记录，以下是您的知识掌握情况：\n\n" +
-                    "**已掌握：**\n" +
-                    "- Python 基础语法 ✓\n" +
-                    "- 变量与数据类型 ✓\n\n" +
-                    "**需要加强：**\n" +
-                    "- 函数定义与调用 ⚠️\n" +
-                    "- 面向对象编程 ⚠️\n\n" +
-                    "建议重点复习标记为 ⚠️ 的知识点。";
+                // 调用知识状态工具
+                try {
+                    var result = analyzeWeaknessTool.execute(Map.of("userId", userInfo.userId()));
+                    response = result.success() ? formatToolResponse("knowledge_state", result.content()) : "分析失败，请稍后再试";
+                } catch (Exception e) {
+                    response = "知识状态服务暂时不可用：" + e.getMessage();
+                }
             } else if ("spaced_repetition".equals(route)) {
-                // 间隔复习
-                response = "根据遗忘曲线，以下是您今天的复习计划：\n\n" +
-                    "**今日复习：**\n" +
-                    "1. Python 变量与数据类型（上次学习：3天前）\n" +
-                    "2. 函数定义（上次学习：1天前）\n\n" +
-                    "建议先复习旧知识，再学习新内容。";
+                // 调用间隔复习工具
+                try {
+                    var result = getReviewScheduleTool.execute(Map.of("userId", userInfo.userId()));
+                    response = result.success() ? formatToolResponse("spaced_repetition", result.content()) : "计算复习计划失败，请稍后再试";
+                } catch (Exception e) {
+                    response = "复习计划服务暂时不可用：" + e.getMessage();
+                }
             } else if ("difficulty".equals(route)) {
-                // 自适应难度
-                response = "根据您的学习表现，推荐以下难度：\n\n" +
-                    "**当前水平：** 中级\n" +
-                    "**推荐难度：** 中等偏上\n\n" +
-                    "建议：\n" +
-                    "- 继续巩固基础知识\n" +
-                    "- 尝试一些有挑战性的练习\n" +
-                    "- 遇到困难可以随时问我";
+                // 调用自适应难度工具
+                try {
+                    var result = adjustDifficultyTool.execute(Map.of("userId", userInfo.userId()));
+                    response = result.success() ? formatToolResponse("difficulty", result.content()) : "分析失败，请稍后再试";
+                } catch (Exception e) {
+                    response = "难度分析服务暂时不可用：" + e.getMessage();
+                }
             } else if ("learning_style".equals(route)) {
-                // 学习风格
-                response = "根据您的学习行为分析，您可能是：\n\n" +
-                    "**视觉型学习者** 👁️\n\n" +
-                    "特点：\n" +
-                    "- 喜欢通过图表、图像理解概念\n" +
-                    "- 视频教程效果更好\n" +
-                    "- 思维导图有助于记忆\n\n" +
-                    "建议：\n" +
-                    "- 多使用图表和可视化工具\n" +
-                    "- 观看视频教程\n" +
-                    "- 使用颜色标记重点";
+                // 调用学习风格工具
+                try {
+                    var result = detectLearningStyleTool.execute(Map.of("userId", userInfo.userId()));
+                    response = result.success() ? formatToolResponse("learning_style", result.content()) : "分析失败，请稍后再试";
+                } catch (Exception e) {
+                    response = "学习风格分析服务暂时不可用：" + e.getMessage();
+                }
             } else if ("effect".equals(route)) {
                 // 学习效果
                 response = "以下是您的学习效果评估：\n\n" +
@@ -375,30 +474,21 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     "- 高级特性需要加强\n" +
                     "- 实践项目经验不足";
             } else if ("intervention".equals(route)) {
-                // 学习干预
-                response = "我注意到您可能遇到了一些困难。让我帮您分析一下：\n\n" +
-                    "**可能的问题：**\n" +
-                    "1. 知识点理解不够深入\n" +
-                    "2. 缺乏实践练习\n" +
-                    "3. 学习节奏过快\n\n" +
-                    "**建议：**\n" +
-                    "- 回顾之前的知识点\n" +
-                    "- 多做基础练习题\n" +
-                    "- 放慢学习节奏，稳扎稳打\n\n" +
-                    "有什么具体问题可以随时问我！";
-            } else if ("motivation".equals(route)) {
-                // 激励
-                response = "学习是一个持续的过程，不要灰心！💪\n\n" +
-                    "**您的成就：**\n" +
-                    "- 已连续学习 3 天 🎯\n" +
-                    "- 完成了 10 道练习题 ✅\n" +
-                    "- 掌握了 5 个知识点 📚\n\n" +
-                    "**激励语：**\n" +
-                    "每一行代码都是进步，每一次练习都是积累。\n" +
-                    "坚持下去，你会发现自己越来越强！\n\n" +
-                    "加油！🚀";
+                // 调用学习干预工具
+                try {
+                    var result = getInterventionTool.execute(Map.of("userId", userInfo.userId()));
+                    response = result.success() ? formatToolResponse("intervention", result.content()) : "分析失败，请稍后再试";
+                } catch (Exception e) {
+                    response = "干预服务暂时不可用：" + e.getMessage();
+                }
+
             } else {
-                response = "好的，我来帮你处理。";
+                response = "我可以帮你：\n" +
+                    "1. 解答问题 - 直接提问即可\n" +
+                    "2. 规划学习路径 - 说「帮我制定学习计划」\n" +
+                    "3. 生成学习资源 - 说「帮我生成讲义/练习题」\n" +
+                    "4. 分析学习状态 - 说「我哪些知识点薄弱」\n\n" +
+                    "请问有什么可以帮助你的？";
             }
         } catch (Exception e) {
             log.error("[WS] service call failed: {}", e.getMessage(), e);
@@ -496,6 +586,133 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 .body(body)
                 .build();
         chatMessageRepository.save(aiMsg);
+    }
+
+    /**
+     * 格式化工具返回的 JSON 为可读文本
+     * 支持统一的 AgentResponse 格式
+     */
+    private String formatToolResponse(String type, String jsonContent) {
+        try {
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            var node = mapper.readTree(jsonContent);
+            
+            // 优先使用 AgentResponse 格式的 content 字段
+            if (node.has("content") && node.has("type")) {
+                return node.path("content").asText(jsonContent);
+            }
+            
+            StringBuilder sb = new StringBuilder();
+            
+            switch (type) {
+                case "recommendation" -> {
+                    sb.append("📊 **个性化推荐**\n\n");
+                    sb.append("根据您的学习情况（").append(node.path("knowledgeLevel").asText("初级"));
+                    sb.append("，正确率 ").append(node.path("recentAccuracy").asInt(0)).append("%）：\n\n");
+                    String recs = node.path("recommendations").asText("[]");
+                    // 尝试解析推荐列表
+                    try {
+                        var recArray = mapper.readTree(recs);
+                        for (int i = 0; i < recArray.size(); i++) {
+                            var rec = recArray.get(i);
+                            sb.append(i + 1).append(". **").append(rec.path("title").asText("")).append("**\n");
+                            sb.append("   ").append(rec.path("reason").asText("")).append("\n\n");
+                        }
+                    } catch (Exception e) {
+                        sb.append(recs).append("\n");
+                    }
+                }
+                case "knowledge_state" -> {
+                    sb.append("📈 **知识掌握情况**\n\n");
+                    sb.append("共 ").append(node.path("totalKnowledgePoints").asInt(0)).append(" 个知识点\n\n");
+                    
+                    var weakPoints = node.path("weakPoints");
+                    if (weakPoints.isArray() && weakPoints.size() > 0) {
+                        sb.append("**需要加强：**\n");
+                        for (var wp : weakPoints) {
+                            sb.append("- ").append(wp.path("kpId").asText(""));
+                            sb.append("（正确率 ").append(wp.path("correctRate").asInt(0)).append("%）\n");
+                        }
+                        sb.append("\n");
+                    }
+                    
+                    String advice = node.path("advice").asText("");
+                    if (!advice.isBlank()) {
+                        sb.append("**建议：** ").append(advice).append("\n");
+                    }
+                }
+                case "spaced_repetition" -> {
+                    sb.append("📅 **复习计划**\n\n");
+                    var schedule = node.path("schedule");
+                    if (schedule.isArray() && schedule.size() > 0) {
+                        for (int i = 0; i < schedule.size(); i++) {
+                            var item = schedule.get(i);
+                            sb.append(i + 1).append(". ").append(item.path("kpId").asText(""));
+                            sb.append("（").append(item.path("daysSinceLastReview").asInt(0)).append(" 天前复习）\n");
+                        }
+                    } else {
+                        sb.append("太棒了！不需要复习，所有知识点都掌握得很好！\n");
+                    }
+                }
+                case "difficulty" -> {
+                    sb.append("🎯 **难度推荐**\n\n");
+                    sb.append("当前正确率：").append(node.path("recentAccuracy").asInt(0)).append("%\n");
+                    sb.append("推荐难度：**").append(node.path("recommendedLevel").asText("medium")).append("**\n\n");
+                    sb.append(node.path("reason").asText("")).append("\n");
+                }
+                case "learning_style" -> {
+                    sb.append("🎨 **学习风格分析**\n\n");
+                    sb.append("您的学习风格：**").append(node.path("style").asText("visual")).append("**\n\n");
+                    sb.append(node.path("description").asText("")).append("\n\n");
+                    var recs = node.path("recommendations");
+                    if (recs.isArray()) {
+                        sb.append("**建议：**\n");
+                        for (var rec : recs) {
+                            sb.append("- ").append(rec.asText()).append("\n");
+                        }
+                    }
+                }
+                case "summary" -> {
+                    // 直接返回 LLM 生成的总结
+                    return node.path("summary").asText(jsonContent);
+                }
+                case "intervention" -> {
+                    sb.append("🔍 **学习状态分析**\n\n");
+                    sb.append("答题次数：").append(node.path("totalAttempts").asInt(0)).append("\n");
+                    sb.append("正确率：").append(node.path("accuracy").asInt(0)).append("%\n\n");
+                    
+                    var issues = node.path("issues");
+                    if (issues.isArray() && issues.size() > 0) {
+                        sb.append("**发现：**\n");
+                        for (var issue : issues) {
+                            sb.append("- ").append(issue.asText()).append("\n");
+                        }
+                        sb.append("\n");
+                    }
+                    
+                    var suggestions = node.path("suggestions");
+                    if (suggestions.isArray() && suggestions.size() > 0) {
+                        sb.append("**建议：**\n");
+                        for (var sug : suggestions) {
+                            sb.append("- ").append(sug.asText()).append("\n");
+                        }
+                    }
+                }
+                default -> {
+                    // 默认返回 summary 字段
+                    String summary = node.path("summary").asText("");
+                    if (!summary.isBlank()) {
+                        return summary;
+                    }
+                    return jsonContent;
+                }
+            }
+            
+            return sb.toString();
+        } catch (Exception e) {
+            // 解析失败则返回原始内容
+            return jsonContent;
+        }
     }
 
     private String generateTitle(String content) {

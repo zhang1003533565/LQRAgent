@@ -2,6 +2,7 @@ package com.lqragent.backend.agents.check.content.tools;
 
 import com.lqragent.backend.agents.base.AgentTool;
 import com.lqragent.backend.agents.base.AgentTool.ToolResult;
+import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -12,21 +13,22 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class CheckQualityTool implements AgentTool {
     
+    private final AiServerWsProxy aiServerWsProxy;
     private final ObjectMapper mapper = new ObjectMapper();
     
     @Override
     public String name() { return "check_quality"; }
     
     @Override
-    public String description() { return "检查资源质量，包括非空检查、长度检查、格式检查"; }
+    public String description() { return "调用 ai-server 检查资源质量"; }
     
     @Override
     public Map<String, Object> parameterSchema() {
         return Map.of(
                 "type", "object",
                 "properties", Map.of(
-                        "content", Map.of("type", "string", "description", "待检查的内容"),
-                        "title", Map.of("type", "string", "description", "资源标题")
+                        "title", Map.of("type", "string", "description", "资源标题"),
+                        "content", Map.of("type", "string", "description", "待检查的内容")
                 ),
                 "required", new String[]{"content"}
         );
@@ -35,43 +37,35 @@ public class CheckQualityTool implements AgentTool {
     @Override
     public ToolResult execute(Map<String, Object> args) {
         try {
-            String content = args.get("content") != null ? args.get("content").toString() : "";
             String title = args.get("title") != null ? args.get("title").toString() : "";
+            String content = args.get("content").toString();
             
+            // 调用 ai-server 质量检查
+            String result = aiServerWsProxy.qualityCheck(title, content);
+            
+            if (result != null && !result.isBlank()) {
+                Map<String, Object> data = Map.of(
+                        "passed", true,
+                        "checkResult", result,
+                        "source", "ai-server",
+                        "summary", "质量检查完成"
+                );
+                return ToolResult.success(mapper.writeValueAsString(data));
+            }
+            
+            // 降级：基础检查
             StringBuilder failures = new StringBuilder();
-            
-            // 1. 非空检查
-            if (content.isBlank()) {
-                failures.append("- 内容为空\n");
-            }
-            if (title.isBlank()) {
-                failures.append("- 标题为空\n");
-            }
-            
-            // 2. 长度检查
-            if (content.length() < 10) {
-                failures.append("- 内容过短(至少10字符)\n");
-            }
-            if (content.length() > 10000) {
-                failures.append("- 内容过长(最多10000字符)\n");
-            }
-            
-            // 3. 格式检查
-            if (content.contains("<script>")) {
-                failures.append("- 包含不安全脚本标签\n");
-            }
+            if (content.isBlank()) failures.append("- 内容为空\n");
+            if (content.length() < 10) failures.append("- 内容过短\n");
             
             boolean passed = failures.length() == 0;
-            String summary = passed ? "所有检查通过" : "未通过:\n" + failures;
-            
-            Map<String, Object> result = Map.of(
+            Map<String, Object> data = Map.of(
                     "passed", passed,
                     "failures", failures.toString(),
-                    "summary", summary,
-                    "contentLength", content.length()
+                    "source", "fallback",
+                    "summary", passed ? "基础检查通过" : "检查未通过: " + failures
             );
-            
-            return ToolResult.success(mapper.writeValueAsString(result));
+            return ToolResult.success(mapper.writeValueAsString(data));
         } catch (Exception e) {
             return ToolResult.failure("质量检查失败: " + e.getMessage());
         }

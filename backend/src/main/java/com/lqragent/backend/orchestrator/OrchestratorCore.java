@@ -4,6 +4,7 @@ import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.orchestrator.message.Performative;
 import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.base.AgentMemory;
 import lombok.extern.slf4j.Slf4j;
 import com.lqragent.backend.chat.service.AgentRunLogService;
 import org.springframework.stereotype.Service;
@@ -23,14 +24,17 @@ public class OrchestratorCore {
     private final RedisStreamsService streams;
     private final AgentRunLogService runLogService;
     private final LlmClient llmClient;
+    private final AgentMemory agentMemory;
 
     // 任务状态跟踪
     private final Map<String, TaskState> tasks = new ConcurrentHashMap<>();
 
-    public OrchestratorCore(RedisStreamsService streams, AgentRunLogService runLogService, LlmClient llmClient) {
+    public OrchestratorCore(RedisStreamsService streams, AgentRunLogService runLogService, 
+                           LlmClient llmClient, AgentMemory agentMemory) {
         this.streams = streams;
         this.runLogService = runLogService;
         this.llmClient = llmClient;
+        this.agentMemory = agentMemory;
     }
 
     /**
@@ -232,7 +236,7 @@ public class OrchestratorCore {
         log.info("[Orchestrator] chat message: userId={}, msg={}", userId, message);
         
         // 用 LLM 做意图识别
-        String intent = recognizeIntent(message);
+        String intent = recognizeIntent(message, userId);
         
         switch (intent) {
             case "greeting":
@@ -267,8 +271,7 @@ public class OrchestratorCore {
                 return Map.of("route", "effect", "agent", "effect_agent");
             case "intervention":
                 return Map.of("route", "intervention", "agent", "intervention_agent");
-            case "motivation":
-                return Map.of("route", "motivation", "agent", "motivation_agent");
+
             case "qa":
             default:
                 return Map.of("route", "qa", "agent", AgentIds.QA, "message", message);
@@ -278,7 +281,7 @@ public class OrchestratorCore {
     /**
      * 用 LLM 识别用户意图
      */
-    private String recognizeIntent(String message) {
+    private String recognizeIntent(String message, String userId) {
         try {
             String systemPrompt = "你是一个意图识别系统。根据用户消息，判断用户的主要意图。\n" +
                 "只返回以下意图之一（小写英文）：\n" +
@@ -304,13 +307,21 @@ public class OrchestratorCore {
                 "2. 仔细分析用户的真实需求，不要默认返回 qa\n" +
                 "3. 只返回意图词，不要其他内容。";
             
-            String result = llmClient.chatSimple(systemPrompt, message);
+            // 获取对话历史
+            String history = "";
+            try {
+                Long userIdLong = Long.parseLong(userId);
+                history = agentMemory.getFormattedHistory(userIdLong, 5);
+            } catch (Exception ignored) {}
+            
+            String fullMessage = history.isEmpty() ? message : history + "\n当前用户消息: " + message;
+            String result = llmClient.chatSimple(systemPrompt, fullMessage);
             if (result != null) {
                 result = result.trim().toLowerCase().replaceAll("[^a-z_]", "");
             }
             
             // 验证是否是有效意图
-            if (result != null && java.util.Set.of("greeting", "help", "learning_path", "resource", "quiz", "recommendation", "diagram", "summary", "assessment", "knowledge_state", "spaced_repetition", "difficulty", "learning_style", "effect", "intervention", "motivation", "qa").contains(result)) {
+            if (result != null && java.util.Set.of("greeting", "help", "learning_path", "resource", "quiz", "recommendation", "diagram", "summary", "assessment", "knowledge_state", "spaced_repetition", "difficulty", "learning_style", "effect", "intervention", "qa").contains(result)) {
                 log.info("[Orchestrator] intent recognized: {}", result);
                 return result;
             }

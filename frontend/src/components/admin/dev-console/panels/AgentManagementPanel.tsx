@@ -197,15 +197,7 @@ const AGENTS: AgentDef[] = [
     ],
     testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
   },
-  {
-    id: 'motivation', name: '激励系统', logName: 'motivation_agent', category: '服务',
-    description: '游戏化激励',
-    aiSource: 'LLM API — 激励',
-    features: [
-      { label: '成就系统', status: 'done', note: '学习徽章' },
-    ],
-    testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
-  },
+
 ]
 
 const LLM_MODELS = [

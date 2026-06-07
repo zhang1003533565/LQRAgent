@@ -82,6 +82,10 @@ export default function ModelConfigPanel() {
     embeddingModel: 'text-embedding-3-large',
     embeddingApiKey: '',
     embeddingHost: 'https://api.openai.com/v1/embeddings',
+    imageProvider: 'siliconflow',
+    imageModel: 'Kwai-Kolors/Kolors',
+    imageApiKey: '',
+    imageHost: 'https://api.siliconflow.cn/v1',
     syncToAiServer: true,
   })
 
@@ -164,8 +168,8 @@ export default function ModelConfigPanel() {
   return (
     <div className="space-y-4">
       {/* 状态概览 */}
-      <div className="grid grid-cols-2 gap-3">
-        <Card className={`bordertransition-colors ${llmConfigured ? 'border-green-500/30 bg-green-500/5' : ''}`}>
+      <div className="grid grid-cols-3 gap-3">
+        <Card className={`border transition-colors ${llmConfigured ? 'border-green-500/30 bg-green-500/5' : ''}`}>
           <CardContent className="flex items-center gap-3 py-3">
             <span className={`h-3 w-3 rounded-full ${llmConfigured ? 'bg-green-500' : 'bg-gray-400'}`} />
             <div>
@@ -187,6 +191,18 @@ export default function ModelConfigPanel() {
               </p>
             </div>
             <ConfiguredBadge configured={embeddingConfigured} />
+          </CardContent>
+        </Card>
+        <Card className={`border transition-colors ${form.imageProvider !== 'mock' ? 'border-purple-500/30 bg-purple-500/5' : ''}`}>
+          <CardContent className="flex items-center gap-3 py-3">
+            <span className={`h-3 w-3 rounded-full ${form.imageProvider !== 'mock' ? 'bg-purple-500' : 'bg-gray-400'}`} />
+            <div>
+              <p className="text-sm font-medium text-console-text">图片生成</p>
+              <p className="text-xs text-console-muted">
+                {form.imageProvider !== 'mock' ? `${form.imageProvider} · ${form.imageModel}` : '未配置'}
+              </p>
+            </div>
+            <ConfiguredBadge configured={form.imageProvider !== 'mock'} />
           </CardContent>
         </Card>
       </div>
@@ -286,11 +302,48 @@ export default function ModelConfigPanel() {
               </div>
             </fieldset>
 
-            {/* ===== 图片生成（禁用占位） ===== */}
-            <div className="rounded-lg border border-dashed border-console-border/50 bg-console-bg/30 p-4 opacity-50">
-              <div className="text-xs font-medium text-console-muted">🎨 图片生成 · 规划中</div>
-              <p className="text-xs text-console-muted/60">支持 DALL·E / Stable Diffusion 等，后续开放。</p>
-            </div>
+            {/* ===== 图片生成 ===== */}
+            <fieldset className="rounded-lg border border-console-border p-4">
+              <legend className="flex items-center gap-2 px-2 text-sm font-medium text-console-text">
+                <span className="h-2.5 w-2.5 rounded-full bg-purple-500" />
+                图片生成（AI 生图）
+              </legend>
+              <p className="mb-3 text-xs text-console-muted">
+                用于生成知识点示意图。推荐使用 SiliconFlow 可图（免费）。
+              </p>
+              <div className={`${panel.grid} mt-3`}>
+                <label className={panel.label}>
+                  生图提供商
+                  <select className={panel.select} value={form.imageProvider}
+                    onChange={(e) => setForm({ ...form, imageProvider: e.target.value })}>
+                    <option value="mock">Mock（占位符）</option>
+                    <option value="siliconflow">SiliconFlow 可图（免费）</option>
+                    <option value="dalle3">DALL·E 3</option>
+                    <option value="sd3">Stable Diffusion 3</option>
+                  </select>
+                </label>
+                <label className={panel.label}>
+                  生图模型
+                  <select className={panel.select} value={form.imageModel}
+                    onChange={(e) => setForm({ ...form, imageModel: e.target.value })}>
+                    <option value="Kwai-Kolors/Kolors">Kolors（可图）</option>
+                    <option value="stabilityai/stable-diffusion-xl-base-1.0">Stable Diffusion XL</option>
+                  </select>
+                </label>
+                <label className={panel.label}>
+                  API Key
+                  <input type="password" className={panel.input} value={form.imageApiKey}
+                    onChange={(e) => setForm({ ...form, imageApiKey: e.target.value })}
+                    autoComplete="off"
+                    placeholder="sk-..." />
+                </label>
+                <label className={panel.label}>
+                  API 地址
+                  <input className={panel.input} value={form.imageHost}
+                    onChange={(e) => setForm({ ...form, imageHost: e.target.value })} />
+                </label>
+              </div>
+            </fieldset>
 
             {/* ===== 操作栏 ===== */}
             <div className="flex flex-wrap items-center justify-between gap-4 border-t border-console-border pt-4">

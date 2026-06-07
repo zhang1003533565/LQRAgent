@@ -13,12 +13,12 @@ import { getAgentStats, listSysConfig, saveSysConfig, testAgent, type AgentStats
 // ==================== 可选的模型列表 ====================
 
 const LLM_MODELS = [
-  { label: 'gpt-4o-mini（默认）', value: 'gpt-4o-mini' },
-  { label: 'gpt-4o', value: 'gpt-4o' },
-  { label: 'DeepSeek Chat', value: 'deepseek-chat' },
+  { label: 'DeepSeek Chat（默认）', value: 'deepseek-chat' },
+  { label: 'DeepSeek V3', value: 'deepseek-v3' },
+  { label: 'GPT-4o', value: 'gpt-4o' },
+  { label: 'GPT-4o-mini', value: 'gpt-4o-mini' },
   { label: 'Qwen Plus', value: 'qwen-plus' },
   { label: 'GLM-4', value: 'glm-4' },
-  { label: 'Spark 4.0', value: 'spark-4.0' },
 ]
 
 // ==================== 静态 Agent 定义 ====================
@@ -49,16 +49,16 @@ const COMMON_MODELS: { label: string; value: string }[] = LLM_MODELS
 const AGENT_DEFS: Record<string, AgentDef> = {
   orchestrator: {
     id: 'orchestrator', name: '协调智能体 Orchestrator', agentLogName: 'orchestrator',
-    description: '意图识别 → 路由 → 聚合 → 质检 → 重试',
-    aiSource: '🔗 LLM API — 意图分类',
+    description: '意图识别 → 路由 → Agent 调度',
+    aiSource: '🔗 LLM API — 意图分类（91% 准确率）',
     features: [
-      { label: 'LLM 意图分类', status: 'done', note: '优先 LLM，降级关键词' },
-      { label: '结果聚合', status: 'todo', note: '等全部 Agent 返回再合并' },
-      { label: 'RequestContext', status: 'done', note: 'ThreadLocal userId + requestId 全链路' },
+      { label: 'LLM 意图分类', status: 'done', note: '支持 14 种意图' },
+      { label: '上下文记忆', status: 'done', note: '多轮对话理解' },
+      { label: 'Agent 调用链', status: 'done', note: '路径→推荐自动触发' },
     ],
     configItems: [
       { configKey: 'agent.orchestrator.llm_intent_enabled', label: '启用 LLM 意图分类', type: 'toggle', defaultValue: 'true' },
-      { configKey: 'agent.orchestrator.model', label: '模型', type: 'model', options: COMMON_MODELS, defaultValue: 'gpt-4o-mini' },
+      { configKey: 'agent.orchestrator.model', label: '模型', type: 'model', options: COMMON_MODELS, defaultValue: 'deepseek-chat' },
     ],
   },
   qa: {
@@ -172,22 +172,32 @@ const AGENT_DEFS: Record<string, AgentDef> = {
   },
   mediagen: {
     id: 'mediagen', name: '媒体生成 MediaGeneration', agentLogName: 'media_generation',
-    description: '示意图 + 思维导图导出（视频选做）',
-    aiSource: '🔗 第三方 API（生图）+ 🔗 LLM API（思维导图）',
+    description: 'AI 图片生成 + Mermaid 图表',
+    aiSource: '🔗 SiliconFlow 可图（免费）+ 🔗 LLM API（Mermaid）',
     features: [
-      { label: '示意图（mock）', status: 'done', note: '当前占位符' },
-      { label: '示意图（真 API）', status: 'wip', note: '调第三方生图 API' },
-      { label: '思维导图导出', status: 'wip', note: 'Markdown → 可视化' },
+      { label: 'AI 图片生成', status: 'done', note: 'SiliconFlow 可图 Kolors' },
+      { label: 'Mermaid 图表', status: 'done', note: 'LLM 生成 + 前端渲染' },
+      { label: '图片质量检查', status: 'wip', note: '待接入' },
     ],
     configItems: [
-      { configKey: 'agent.mediagen.model', label: '文本模型', type: 'model', options: COMMON_MODELS, defaultValue: 'gpt-4o-mini' },
-      { configKey: 'agent.mediagen.image_provider', label: '生图提供商', type: 'select', defaultValue: 'mock',
+      { configKey: 'agent.mediagen.image_provider', label: '生图提供商', type: 'select', defaultValue: 'siliconflow',
         options: [
           { label: 'Mock（占位符）', value: 'mock' },
+          { label: 'SiliconFlow 可图（免费）', value: 'siliconflow' },
           { label: 'DALL·E 3', value: 'dalle3' },
           { label: 'Stable Diffusion 3', value: 'sd3' },
         ] },
-      { configKey: 'agent.mediagen.api_key_set', label: 'API Key 已配置', type: 'toggle', defaultValue: 'false' },
+      { configKey: 'agent.mediagen.model', label: '生图模型', type: 'select', defaultValue: 'Kwai-Kolors/Kolors',
+        options: [
+          { label: 'Kolors（可图）', value: 'Kwai-Kolors/Kolors' },
+          { label: 'Stable Diffusion XL', value: 'stabilityai/stable-diffusion-xl-base-1.0' },
+        ] },
+      { configKey: 'agent.mediagen.host', label: 'API 地址', type: 'select', defaultValue: 'https://api.siliconflow.cn/v1',
+        options: [
+          { label: 'SiliconFlow', value: 'https://api.siliconflow.cn/v1' },
+          { label: 'OpenAI', value: 'https://api.openai.com/v1' },
+        ] },
+      { configKey: 'agent.mediagen.api_key', label: 'API Key', type: 'toggle', defaultValue: 'true' },
     ],
   },
 }
