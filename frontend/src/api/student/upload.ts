@@ -38,3 +38,7 @@ export async function listUploadTasks(): Promise<UploadTask[]> {
   const res = await http.get<{ data: UploadTask[] }>('/upload/tasks')
   return res.data.data
 }
+
+export async function deleteUploadTask(taskId: number): Promise<void> {
+  await http.delete(`/upload/tasks/${taskId}`)
+}

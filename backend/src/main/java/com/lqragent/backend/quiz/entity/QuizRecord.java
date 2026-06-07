@@ -25,6 +25,10 @@ public class QuizRecord {
     @Comment("学生ID")
     private Long userId;
 
+    @Column(name = "question_id")
+    @Comment("题目ID")
+    private Long questionId;
+
     @Column(name = "kp_id", length = 64, nullable = false)
     @Comment("知识点ID")
     private String kpId;

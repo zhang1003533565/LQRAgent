@@ -359,6 +359,20 @@
   align-items: center;
 }
 
+.fileRowClickable {
+  cursor: pointer;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.fileRowClickable:hover {
+  background: rgba(241, 247, 255, 0.88);
+}
+
+.fileRowClickable:focus-visible {
+  outline: 2px solid rgba(47, 120, 255, 0.45);
+  outline-offset: -2px;
+}
+
 .fileRow + .fileRow {
   border-top: 1px solid rgba(225, 233, 246, 0.96);
 }

@@ -11,5 +11,7 @@ public interface QuizRecordRepository extends JpaRepository<QuizRecord, Long> {
 
     List<QuizRecord> findByUserIdAndKpId(Long userId, String kpId);
 
+    List<QuizRecord> findByUserIdAndQuestionIdOrderByCreatedAtDesc(Long userId, Long questionId);
+
     long countByUserIdAndIsCorrect(Long userId, Boolean isCorrect);
 }
