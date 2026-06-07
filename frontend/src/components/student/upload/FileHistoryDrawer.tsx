@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
+import ReactECharts from 'echarts-for-react'
 import type { UploadTask } from '@/api/student/upload'
+import { listKnowledgePointsByIds } from '@/api/student/knowledge'
 import summaryBg from '@/assets/student/img.png'
 import knowledgeBg from '@/assets/student/knowledge.png'
+import { createDonutChartOption } from '@/utils/echarts'
 import styles from './FileHistoryDrawer.module.css'
 
 export type DrawerKnowledgePoint = {
@@ -68,13 +71,16 @@ function getMatchStats(knowledgePoints: DrawerKnowledgePoint[]) {
   let high = 0
   let medium = 0
   let low = 0
+
   knowledgePoints.forEach((point) => {
     const value = point.value ?? 0
     if (value >= 70) high += 1
     else if (value >= 40) medium += 1
     else low += 1
   })
+
   const total = knowledgePoints.length || 1
+
   return {
     total: knowledgePoints.length,
     high,
@@ -88,6 +94,23 @@ function getMatchStats(knowledgePoints: DrawerKnowledgePoint[]) {
 
 function getPointProgressValue(value: number | null) {
   return Math.max(0, Math.min(100, Math.round(value ?? 0)))
+}
+
+function getKnowledgePointDistribution(knowledgePoints: DrawerKnowledgePoint[]) {
+  const normalized = knowledgePoints.map((point) => ({
+    name: point.name,
+    value: getPointProgressValue(point.value),
+  }))
+  const totalValue = normalized.reduce((sum, point) => sum + point.value, 0)
+
+  if (totalValue > 0) {
+    return normalized.filter((point) => point.value > 0)
+  }
+
+  return normalized.map((point) => ({
+    ...point,
+    value: 1,
+  }))
 }
 
 function getKnowledgePointLabel(name: string) {
@@ -120,8 +143,85 @@ export default function FileHistoryDrawer({
 }: FileHistoryDrawerProps) {
   const [activeTab, setActiveTab] = useState<DrawerTab>('summary')
   const [animatedProgress, setAnimatedProgress] = useState<Record<string, number>>({})
+  const [knowledgePointTitles, setKnowledgePointTitles] = useState<Record<string, string>>({})
 
   const stats = useMemo(() => getMatchStats(knowledgePoints), [knowledgePoints])
+  const pointIdsKey = useMemo(
+    () => knowledgePoints.map((point) => point.id).join('|'),
+    [knowledgePoints],
+  )
+  const displayKnowledgePoints = useMemo(
+    () =>
+      knowledgePoints.map((point) => ({
+        ...point,
+        name: knowledgePointTitles[point.id] || getKnowledgePointLabel(point.name),
+      })),
+    [knowledgePointTitles, knowledgePoints],
+  )
+  const distribution = useMemo(
+    () => getKnowledgePointDistribution(displayKnowledgePoints),
+    [displayKnowledgePoints],
+  )
+  const distributionTotal = useMemo(
+    () => distribution.reduce((sum, point) => sum + point.value, 0),
+    [distribution],
+  )
+
+  const donutOption = useMemo(
+    () =>
+      createDonutChartOption({
+        color: [
+          '#3f7cff',
+          '#ff8a3d',
+          '#ffd25f',
+          '#5fcf8b',
+          '#8b5cf6',
+          '#06b6d4',
+          '#f97316',
+          '#ef4444',
+        ],
+        tooltip: {
+          trigger: 'item',
+          formatter: '{b}: {c} ({d}%)',
+        },
+        legend: {
+          top: 'middle',
+          left: '58%',
+          right: 'auto',
+          orient: 'vertical',
+          itemGap: 14,
+          formatter: (name) => {
+            const item = distribution.find((entry) => entry.name === name)
+            const value = item?.value ?? 0
+            const percent = distributionTotal > 0 ? Math.round((value / distributionTotal) * 100) : 0
+            return `${name}  ${percent}%`
+          },
+          textStyle: {
+            color: '#355281',
+            fontSize: 14,
+            fontWeight: 700,
+          },
+        },
+        series: [
+          {
+            name: '知识点映射',
+            radius: ['60%', '88%'],
+            center: ['34%', '56%'],
+            emphasis: {
+              label: {
+                show: true,
+                formatter: '{b}\n{c}',
+                fontSize: 20,
+                fontWeight: 'bold',
+                lineHeight: 26,
+              },
+            },
+            data: distribution,
+          },
+        ],
+      }),
+    [distribution, distributionTotal],
+  )
 
   useEffect(() => {
     if (open) {
@@ -130,24 +230,61 @@ export default function FileHistoryDrawer({
   }, [open, task?.id])
 
   useEffect(() => {
+    if (!open) return
+
+    const ids = knowledgePoints.map((point) => point.id).filter(Boolean)
+    if (ids.length === 0) {
+      setKnowledgePointTitles({})
+      return
+    }
+
+    let cancelled = false
+
+    void listKnowledgePointsByIds(ids)
+      .then((items) => {
+        if (cancelled) return
+
+        setKnowledgePointTitles(
+          items.reduce<Record<string, string>>((acc, item) => {
+            acc[item.kpId] = item.title
+            return acc
+          }, {}),
+        )
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setKnowledgePointTitles({})
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [knowledgePoints, open, pointIdsKey])
+
+  useEffect(() => {
     if (!open || !task || activeTab !== 'mapping') return
 
     const targets = Object.fromEntries(
-      knowledgePoints.map((point) => [point.id, getPointProgressValue(point.value)]),
+      displayKnowledgePoints.map((point) => [point.id, getPointProgressValue(point.value)]),
     )
     const duration = 900
     const start = performance.now()
 
-    setAnimatedProgress(Object.fromEntries(knowledgePoints.map((point) => [point.id, 0])))
+    setAnimatedProgress(Object.fromEntries(displayKnowledgePoints.map((point) => [point.id, 0])))
 
     let frameId = 0
+
     const tick = (now: number) => {
       const progress = Math.min((now - start) / duration, 1)
       const eased = 1 - (1 - progress) * (1 - progress)
 
       setAnimatedProgress(
         Object.fromEntries(
-          knowledgePoints.map((point) => [point.id, Math.round((targets[point.id] ?? 0) * eased)]),
+          displayKnowledgePoints.map((point) => [
+            point.id,
+            Math.round((targets[point.id] ?? 0) * eased),
+          ]),
         ),
       )
 
@@ -159,7 +296,7 @@ export default function FileHistoryDrawer({
     frameId = requestAnimationFrame(tick)
 
     return () => cancelAnimationFrame(frameId)
-  }, [activeTab, knowledgePoints, open, task])
+  }, [activeTab, displayKnowledgePoints, open, task])
 
   if (!open || !task) return null
 
@@ -193,7 +330,9 @@ export default function FileHistoryDrawer({
               <span>格式：{getFileFormat(task.fileName)}</span>
             </div>
           </div>
-          <span className={styles.doneTag}>{task.status === 'COMPLETED' ? '已完成' : '处理中'}</span>
+          <span className={styles.doneTag}>
+            {task.status === 'COMPLETED' ? '已完成' : '处理中'}
+          </span>
         </section>
 
         <div className={styles.tabs}>
@@ -225,7 +364,8 @@ export default function FileHistoryDrawer({
 
             <div className={styles.summaryGrid}>
               <p className={styles.summaryText}>
-                {summary || '本文档系统介绍了上传资料中的核心知识与实践技巧，覆盖关键概念、应用方式与典型案例，便于后续学习路径与资源联动。'}
+                {summary ||
+                  '本文档系统介绍了上传资料中的核心知识与实践技巧，覆盖关键概念、应用方式与典型案例，便于后续学习路径与资源联动。'}
               </p>
               <div className={styles.summaryVisualPlaceholder} aria-hidden="true" />
             </div>
@@ -249,7 +389,9 @@ export default function FileHistoryDrawer({
               </div>
             </div>
 
-            <button type="button" className={styles.expandBtn}>展开全部摘要</button>
+            <button type="button" className={styles.expandBtn}>
+              展开全部摘要
+            </button>
           </section>
         ) : (
           <section
@@ -262,42 +404,20 @@ export default function FileHistoryDrawer({
             </div>
 
             <div className={styles.mappingBody}>
-              <div className={styles.ringWrap}>
-                <div className={styles.ringInner}>
-                  <span className={styles.ringCount}>{stats.total}</span>
-                  <span className={styles.ringLabel}>总数</span>
-                </div>
-              </div>
-
-              <div className={styles.legend}>
-                <div className={styles.legendItem}>
-                  <span className={styles.legendDotGreen} />
-                  <span>高匹配</span>
-                  <strong>{stats.high}（{stats.highPct}%）</strong>
-                </div>
-                <div className={styles.legendItem}>
-                  <span className={styles.legendDotOrange} />
-                  <span>中匹配</span>
-                  <strong>{stats.medium}（{stats.mediumPct}%）</strong>
-                </div>
-                <div className={styles.legendItem}>
-                  <span className={styles.legendDotYellow} />
-                  <span>低匹配</span>
-                  <strong>{stats.low}（{stats.lowPct}%）</strong>
-                </div>
-              </div>
-
-              <div className={styles.network} aria-hidden="true">
-                <span className={styles.nodeBlue}>○</span>
-                <span className={styles.nodeOrange}>◍</span>
-                <span className={styles.nodeGreen}>◔</span>
-                <span className={`${styles.nodeSoft} ${styles.nodeSoftA}`}>•</span>
-                <span className={`${styles.nodeSoft} ${styles.nodeSoftB}`}>•</span>
-                <span className={`${styles.nodeSoft} ${styles.nodeSoftC}`}>•</span>
+              <div className={styles.chartWrap}>
+                <ReactECharts
+                  option={donutOption}
+                  notMerge
+                  lazyUpdate
+                  className={styles.chart}
+                />
               </div>
             </div>
 
-            <button type="button" className={styles.mappingBtn}>查看完整映射详情</button>
+            <button type="button" className={styles.mappingBtn}>
+              查看完整映射详情
+            </button>
+
             <div className={styles.mappingProgress}>
               <div className={styles.mappingProgressHead}>
                 <h4 className={styles.mappingProgressTitle}>知识点匹配进度</h4>
@@ -305,14 +425,14 @@ export default function FileHistoryDrawer({
               </div>
 
               <div className={styles.mappingProgressList}>
-                {knowledgePoints.map((point) => {
+                {displayKnowledgePoints.map((point) => {
                   const progress = animatedProgress[point.id] ?? 0
                   const targetProgress = getPointProgressValue(point.value)
 
                   return (
                     <div key={point.id} className={styles.mappingProgressItem}>
                       <div className={styles.mappingProgressMeta}>
-                        <span className={styles.mappingProgressName}>{getKnowledgePointLabel(point.name)}</span>
+                        <span className={styles.mappingProgressName}>{point.name}</span>
                         <strong className={styles.mappingProgressValue}>{targetProgress}%</strong>
                       </div>
                       <div className={styles.mappingProgressTrack} aria-hidden="true">
