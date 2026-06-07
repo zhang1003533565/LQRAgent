@@ -40,6 +40,16 @@ export interface ModelConfig {
   embeddingApiKeyMasked: string
   embeddingApiKeySet: boolean
   embeddingHost: string
+  videoBinding: string
+  videoModel: string
+  videoApiKeyMasked: string
+  videoApiKeySet: boolean
+  videoHost: string
+  imageBinding: string
+  imageModel: string
+  imageApiKeyMasked: string
+  imageApiKeySet: boolean
+  imageHost: string
 }
 
 export interface ModelConfigSaveRequest {
@@ -52,6 +62,14 @@ export interface ModelConfigSaveRequest {
   embeddingModel: string
   embeddingApiKey?: string
   embeddingHost: string
+  videoBinding: string
+  videoModel: string
+  videoApiKey?: string
+  videoHost: string
+  imageBinding: string
+  imageModel: string
+  imageApiKey?: string
+  imageHost: string
   syncToAiServer?: boolean
 }
 

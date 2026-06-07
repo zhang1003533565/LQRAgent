@@ -30,6 +30,6 @@ public class QaAgent extends BaseAgent {
     
     @Override
     protected String buildUserMessage(AgentRequest request) {
-        return String.format("学生提问：%s\n\n请搜索知识库并给出详细的回答。", request.goal());
+        return String.format("学生提问：%s\n\n请用中文回答。如果知识库有相关内容就使用，否则基于通用知识回答。", request.goal());
     }
 }

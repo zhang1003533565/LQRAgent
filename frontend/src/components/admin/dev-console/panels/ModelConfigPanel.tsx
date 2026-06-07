@@ -8,50 +8,102 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/admin/dev-console/ui'
 import { panel } from './panelStyles'
 
-/** 提供商预设 → 自动填充地址和推荐模型 */
-const PROVIDER_PRESETS: Record<string, {
-  llmHost: string; llmModel: string;
+// ============ 供应商 → 模型/地址 预设配置 ============
+
+/** LLM 供应商预设 */
+const LLM_PROVIDERS: Record<string, {
+  label: string; host: string; model: string;
   embeddingHost: string; embeddingModel: string;
 }> = {
   openai: {
-    llmHost: 'https://api.openai.com/v1', llmModel: 'gpt-4o-mini',
+    label: 'OpenAI 兼容',
+    host: 'https://api.openai.com/v1', model: 'gpt-4o-mini',
     embeddingHost: 'https://api.openai.com/v1/embeddings', embeddingModel: 'text-embedding-3-large',
   },
   deepseek: {
-    llmHost: 'https://api.deepseek.com', llmModel: 'deepseek-chat',
+    label: 'DeepSeek',
+    host: 'https://api.deepseek.com', model: 'deepseek-chat',
     embeddingHost: 'https://api.deepseek.com', embeddingModel: 'deepseek-embedding',
   },
   dashscope: {
-    llmHost: 'https://dashscope.aliyuncs.com/compatible-mode/v1', llmModel: 'qwen-plus',
+    label: '通义千问 (DashScope)',
+    host: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus',
     embeddingHost: 'https://dashscope.aliyuncs.com/compatible-mode/v1', embeddingModel: 'text-embedding-v3',
   },
   siliconflow: {
-    llmHost: 'https://api.siliconflow.cn/v1', llmModel: 'deepseek-ai/DeepSeek-V2.5',
+    label: 'SiliconFlow',
+    host: 'https://api.siliconflow.cn/v1', model: 'deepseek-ai/DeepSeek-V2.5',
     embeddingHost: 'https://api.siliconflow.cn/v1/embeddings', embeddingModel: 'BAAI/bge-large-zh-v1.5',
   },
   openrouter: {
-    llmHost: 'https://openrouter.ai/api/v1', llmModel: 'openai/gpt-4o-mini',
+    label: 'OpenRouter',
+    host: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4o-mini',
     embeddingHost: 'https://openrouter.ai/api/v1', embeddingModel: 'openai/text-embedding-3-large',
   },
   ollama: {
-    llmHost: 'http://localhost:11434/v1', llmModel: 'llama3.1',
+    label: 'Ollama 本地',
+    host: 'http://localhost:11434/v1', model: 'llama3.1',
     embeddingHost: 'http://localhost:11434/v1', embeddingModel: 'nomic-embed-text',
   },
   azure_openai: {
-    llmHost: 'https://<your-resource>.openai.azure.com', llmModel: 'gpt-4o-mini',
+    label: 'Azure OpenAI',
+    host: 'https://<your-resource>.openai.azure.com', model: 'gpt-4o-mini',
     embeddingHost: 'https://<your-resource>.openai.azure.com', embeddingModel: 'text-embedding-3-large',
+  },
+  agnes: {
+    label: 'Agnes AI',
+    host: 'https://apihub.agnes-ai.com/v1', model: 'agnes-2.0-flash',
+    embeddingHost: 'https://apihub.agnes-ai.com/v1', embeddingModel: 'text-embedding-3-large',
   },
 }
 
-const BINDING_OPTIONS = [
-  { value: 'openai', label: 'OpenAI 兼容' },
-  { value: 'deepseek', label: 'DeepSeek' },
-  { value: 'dashscope', label: '通义千问 (DashScope)' },
-  { value: 'siliconflow', label: 'SiliconFlow' },
-  { value: 'openrouter', label: 'OpenRouter' },
-  { value: 'ollama', label: 'Ollama 本地' },
-  { value: 'azure_openai', label: 'Azure OpenAI' },
-]
+/** 图片生成供应商 → 模型列表 */
+const IMAGE_PROVIDERS: Record<string, {
+  label: string; host: string; models: { value: string; label: string }[];
+}> = {
+  mock: {
+    label: 'Mock（占位符）', host: '',
+    models: [{ value: 'mock', label: '占位符' }],
+  },
+  agnes: {
+    label: 'Agnes AI（免费）', host: 'https://apihub.agnes-ai.com/v1',
+    models: [
+      { value: 'agnes-image-2.0-flash', label: 'Agnes Image 2.0 Flash' },
+      { value: 'agnes-image-2.1-flash', label: 'Agnes Image 2.1 Flash' },
+    ],
+  },
+  siliconflow: {
+    label: 'SiliconFlow 可图（免费）', host: 'https://api.siliconflow.cn/v1',
+    models: [
+      { value: 'Kwai-Kolors/Kolors', label: 'Kolors（可图）' },
+      { value: 'stabilityai/stable-diffusion-xl-base-1.0', label: 'Stable Diffusion XL' },
+    ],
+  },
+  dalle3: {
+    label: 'DALL·E 3', host: 'https://api.openai.com/v1',
+    models: [{ value: 'dall-e-3', label: 'DALL·E 3' }],
+  },
+  sd3: {
+    label: 'Stable Diffusion 3', host: 'https://api.stability.ai',
+    models: [{ value: 'stabilityai/stable-diffusion-3', label: 'Stable Diffusion 3' }],
+  },
+}
+
+/** 视频生成供应商 → 模型列表 */
+const VIDEO_PROVIDERS: Record<string, {
+  label: string; host: string; models: { value: string; label: string }[];
+}> = {
+  mock: {
+    label: 'Mock（占位符）', host: '',
+    models: [{ value: 'mock', label: '占位符' }],
+  },
+  agnes: {
+    label: 'Agnes AI', host: 'https://apihub.agnes-ai.com/v1',
+    models: [
+      { value: 'agnes-video-v2.0', label: 'Agnes Video V2.0' },
+    ],
+  },
+}
 
 function ConfiguredBadge({ configured }: { configured: boolean }) {
   if (!configured) return null
@@ -71,6 +123,7 @@ export default function ModelConfigPanel() {
   const [msgOk, setMsgOk] = useState(true)
   const [llmConfigured, setLlmConfigured] = useState(false)
   const [embeddingConfigured, setEmbeddingConfigured] = useState(false)
+  const [videoConfigured, setVideoConfigured] = useState(false)
 
   const [form, setForm] = useState({
     llmBinding: 'openai',
@@ -82,10 +135,14 @@ export default function ModelConfigPanel() {
     embeddingModel: 'text-embedding-3-large',
     embeddingApiKey: '',
     embeddingHost: 'https://api.openai.com/v1/embeddings',
-    imageProvider: 'siliconflow',
-    imageModel: 'Kwai-Kolors/Kolors',
+    imageProvider: 'agnes',
+    imageModel: 'agnes-image-2.1-flash',
     imageApiKey: '',
-    imageHost: 'https://api.siliconflow.cn/v1',
+    imageHost: 'https://apihub.agnes-ai.com/v1',
+    videoProvider: 'agnes',
+    videoModel: 'agnes-video-v2.0',
+    videoApiKey: '',
+    videoHost: 'https://apihub.agnes-ai.com/v1',
     syncToAiServer: true,
   })
 
@@ -95,6 +152,7 @@ export default function ModelConfigPanel() {
       const data: ModelConfig = await getModelConfig()
       setLlmConfigured(data.llmApiKeySet)
       setEmbeddingConfigured(data.embeddingApiKeySet)
+      setVideoConfigured(data.videoApiKeySet)
       setForm((f) => ({
         ...f,
         llmBinding: data.llmBinding,
@@ -106,6 +164,14 @@ export default function ModelConfigPanel() {
         embeddingModel: data.embeddingModel,
         embeddingApiKey: data.embeddingApiKeySet ? '********' : '',
         embeddingHost: data.embeddingHost,
+        videoProvider: data.videoBinding,
+        videoModel: data.videoModel,
+        videoApiKey: data.videoApiKeySet ? '********' : '',
+        videoHost: data.videoHost,
+        imageProvider: data.imageBinding,
+        imageModel: data.imageModel,
+        imageApiKey: data.imageApiKeySet ? '********' : '',
+        imageHost: data.imageHost,
       }))
     } finally {
       setLoading(false)
@@ -124,9 +190,24 @@ export default function ModelConfigPanel() {
     setSaving(true)
     try {
       const payload = {
-        ...form,
+        llmBinding: form.llmBinding,
+        llmModel: form.llmModel,
         llmApiKey: form.llmApiKey === '********' ? undefined : form.llmApiKey,
+        llmHost: form.llmHost,
+        llmApiVersion: form.llmApiVersion,
+        embeddingBinding: form.embeddingBinding,
+        embeddingModel: form.embeddingModel,
         embeddingApiKey: form.embeddingApiKey === '********' ? undefined : form.embeddingApiKey,
+        embeddingHost: form.embeddingHost,
+        videoBinding: form.videoProvider,
+        videoModel: form.videoModel,
+        videoApiKey: form.videoApiKey === '********' ? undefined : form.videoApiKey,
+        videoHost: form.videoHost,
+        imageBinding: form.imageProvider,
+        imageModel: form.imageModel,
+        imageApiKey: form.imageApiKey === '********' ? undefined : form.imageApiKey,
+        imageHost: form.imageHost,
+        syncToAiServer: form.syncToAiServer,
       }
       await saveModelConfig(payload)
       showMessage('配置已保存并同步到 ai-server', true)
@@ -152,15 +233,37 @@ export default function ModelConfigPanel() {
   }
 
   function handleLlmBindingChange(binding: string) {
-    const preset = PROVIDER_PRESETS[binding]
+    const preset = LLM_PROVIDERS[binding]
     if (!preset) return
-    setForm(f => ({ ...f, llmBinding: binding, llmHost: preset.llmHost, llmModel: preset.llmModel }))
+    setForm(f => ({ ...f, llmBinding: binding, llmHost: preset.host, llmModel: preset.model }))
   }
 
   function handleEmbeddingBindingChange(binding: string) {
-    const preset = PROVIDER_PRESETS[binding]
+    const preset = LLM_PROVIDERS[binding]
     if (!preset) return
     setForm(f => ({ ...f, embeddingBinding: binding, embeddingHost: preset.embeddingHost, embeddingModel: preset.embeddingModel }))
+  }
+
+  function handleImageProviderChange(provider: string) {
+    const spec = IMAGE_PROVIDERS[provider]
+    if (!spec) return
+    setForm(f => ({
+      ...f,
+      imageProvider: provider,
+      imageModel: spec.models[0]?.value || '',
+      imageHost: spec.host,
+    }))
+  }
+
+  function handleVideoProviderChange(provider: string) {
+    const spec = VIDEO_PROVIDERS[provider]
+    if (!spec) return
+    setForm(f => ({
+      ...f,
+      videoProvider: provider,
+      videoModel: spec.models[0]?.value || '',
+      videoHost: spec.host,
+    }))
   }
 
   if (loading) return <p className={panel.hint}>加载模型配置...</p>
@@ -168,7 +271,7 @@ export default function ModelConfigPanel() {
   return (
     <div className="space-y-4">
       {/* 状态概览 */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-4 gap-3">
         <Card className={`border transition-colors ${llmConfigured ? 'border-green-500/30 bg-green-500/5' : ''}`}>
           <CardContent className="flex items-center gap-3 py-3">
             <span className={`h-3 w-3 rounded-full ${llmConfigured ? 'bg-green-500' : 'bg-gray-400'}`} />
@@ -205,6 +308,18 @@ export default function ModelConfigPanel() {
             <ConfiguredBadge configured={form.imageProvider !== 'mock'} />
           </CardContent>
         </Card>
+        <Card className={`border transition-colors ${videoConfigured ? 'border-orange-500/30 bg-orange-500/5' : ''}`}>
+          <CardContent className="flex items-center gap-3 py-3">
+            <span className={`h-3 w-3 rounded-full ${videoConfigured ? 'bg-orange-500' : 'bg-gray-400'}`} />
+            <div>
+              <p className="text-sm font-medium text-console-text">视频生成</p>
+              <p className="text-xs text-console-muted">
+                {videoConfigured ? `${form.videoProvider} · ${form.videoModel}` : '未配置'}
+              </p>
+            </div>
+            <ConfiguredBadge configured={videoConfigured} />
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -233,7 +348,7 @@ export default function ModelConfigPanel() {
                   提供商
                   <select className={panel.select} value={form.llmBinding}
                     onChange={(e) => handleLlmBindingChange(e.target.value)}>
-                    {BINDING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    {Object.entries(LLM_PROVIDERS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                   </select>
                 </label>
                 <label className={panel.label}>
@@ -279,7 +394,7 @@ export default function ModelConfigPanel() {
                   提供商
                   <select className={panel.select} value={form.embeddingBinding}
                     onChange={(e) => handleEmbeddingBindingChange(e.target.value)}>
-                    {BINDING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    {Object.entries(LLM_PROVIDERS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                   </select>
                 </label>
                 <label className={panel.label}>
@@ -315,19 +430,15 @@ export default function ModelConfigPanel() {
                 <label className={panel.label}>
                   生图提供商
                   <select className={panel.select} value={form.imageProvider}
-                    onChange={(e) => setForm({ ...form, imageProvider: e.target.value })}>
-                    <option value="mock">Mock（占位符）</option>
-                    <option value="siliconflow">SiliconFlow 可图（免费）</option>
-                    <option value="dalle3">DALL·E 3</option>
-                    <option value="sd3">Stable Diffusion 3</option>
+                    onChange={(e) => handleImageProviderChange(e.target.value)}>
+                    {Object.entries(IMAGE_PROVIDERS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                   </select>
                 </label>
                 <label className={panel.label}>
                   生图模型
                   <select className={panel.select} value={form.imageModel}
                     onChange={(e) => setForm({ ...form, imageModel: e.target.value })}>
-                    <option value="Kwai-Kolors/Kolors">Kolors（可图）</option>
-                    <option value="stabilityai/stable-diffusion-xl-base-1.0">Stable Diffusion XL</option>
+                    {(IMAGE_PROVIDERS[form.imageProvider]?.models || []).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                   </select>
                 </label>
                 <label className={panel.label}>
@@ -335,12 +446,51 @@ export default function ModelConfigPanel() {
                   <input type="password" className={panel.input} value={form.imageApiKey}
                     onChange={(e) => setForm({ ...form, imageApiKey: e.target.value })}
                     autoComplete="off"
-                    placeholder="sk-..." />
+                    placeholder={form.imageApiKey === '********' ? '已配置，留空不修改' : 'sk-...'} />
                 </label>
                 <label className={panel.label}>
                   API 地址
                   <input className={panel.input} value={form.imageHost}
                     onChange={(e) => setForm({ ...form, imageHost: e.target.value })} />
+                </label>
+              </div>
+            </fieldset>
+
+            {/* ===== 视频生成 ===== */}
+            <fieldset className="rounded-lg border border-console-border p-4">
+              <legend className="flex items-center gap-2 px-2 text-sm font-medium text-console-text">
+                <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
+                视频生成（AI 视频）
+              </legend>
+              <p className="mb-3 text-xs text-console-muted">
+                用于生成教学视频和动画演示。
+              </p>
+              <div className={`${panel.grid} mt-3`}>
+                <label className={panel.label}>
+                  视频提供商
+                  <select className={panel.select} value={form.videoProvider}
+                    onChange={(e) => handleVideoProviderChange(e.target.value)}>
+                    {Object.entries(VIDEO_PROVIDERS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                </label>
+                <label className={panel.label}>
+                  视频模型
+                  <select className={panel.select} value={form.videoModel}
+                    onChange={(e) => setForm({ ...form, videoModel: e.target.value })}>
+                    {(VIDEO_PROVIDERS[form.videoProvider]?.models || []).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  </select>
+                </label>
+                <label className={panel.label}>
+                  API Key
+                  <input type="password" className={panel.input} value={form.videoApiKey}
+                    onChange={(e) => setForm({ ...form, videoApiKey: e.target.value })}
+                    autoComplete="off"
+                    placeholder={form.videoApiKey === '********' ? '已配置，留空不修改' : 'sk-...'} />
+                </label>
+                <label className={panel.label}>
+                  API 地址
+                  <input className={panel.input} value={form.videoHost}
+                    onChange={(e) => setForm({ ...form, videoHost: e.target.value })} />
                 </label>
               </div>
             </fieldset>

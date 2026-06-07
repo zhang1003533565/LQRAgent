@@ -32,7 +32,8 @@ public class GetRecommendationTool implements AgentTool {
         return Map.of(
                 "type", "object",
                 "properties", Map.of(
-                        "userId", Map.of("type", "integer", "description", "用户ID")
+                        "userId", Map.of("type", "integer", "description", "用户ID"),
+                        "context", Map.of("type", "string", "description", "上下文信息（可选）")
                 ),
                 "required", new String[]{"userId"}
         );
@@ -42,6 +43,7 @@ public class GetRecommendationTool implements AgentTool {
     public ToolResult execute(Map<String, Object> args) {
         try {
             Long userId = Long.parseLong(args.get("userId").toString());
+            String context = args.containsKey("context") ? args.get("context").toString() : "";
             
             // 获取用户画像
             var profile = profileService.getSummary(userId);
@@ -56,13 +58,16 @@ public class GetRecommendationTool implements AgentTool {
                 if (recentQuiz.get(i).getIsCorrect()) recentCorrect++;
             }
             
-            // 调用 LLM 生成个性化推荐
+            // 调用 LLM 生成个性化推荐（包含上下文）
+            String contextInfo = context.isEmpty() ? "" : "\n当前学习上下文: " + context;
             String prompt = String.format(
-                "用户信息：\n- 知识水平: %s\n- 学习目标: %s\n- 最近%d题正确率: %d%%\n\n" +
+                "用户信息：\n- 知识水平: %s\n- 学习目标: %s\n- 最近%d题正确率: %d%%%s\n\n" +
                 "请为该用户推荐3个学习资源，返回JSON格式：\n" +
-                "[{\"type\": \"lesson/quiz/code\", \"title\": \"标题\", \"reason\": \"推荐理由\"}]",
+                "[{\"type\": \"lesson/quiz/code\", \"title\": \"标题\", \"reason\": \"推荐理由\"}]\n" +
+                "注意：如果用户有明确的学习方向（如C语言、Java等），请推荐该方向的资源，而不是默认推荐Python。",
                 level, goal != null ? goal : "未设置", recentTotal, 
-                recentTotal > 0 ? recentCorrect * 100 / recentTotal : 0
+                recentTotal > 0 ? recentCorrect * 100 / recentTotal : 0,
+                contextInfo
             );
             
             String llmResult = llmClient.chatSimple(

@@ -34,6 +34,30 @@ public class ModelConfigSaveRequest {
     @Schema(description = "嵌入 API 地址")
     private String embeddingHost;
 
+    @Schema(description = "视频生成提供商")
+    private String videoBinding;
+
+    @Schema(description = "视频生成模型")
+    private String videoModel;
+
+    @Schema(description = "视频生成 API Key（留空表示不修改）")
+    private String videoApiKey;
+
+    @Schema(description = "视频生成 API 地址")
+    private String videoHost;
+
+    @Schema(description = "图片生成提供商")
+    private String imageBinding;
+
+    @Schema(description = "图片生成模型")
+    private String imageModel;
+
+    @Schema(description = "图片生成 API Key（留空表示不修改）")
+    private String imageApiKey;
+
+    @Schema(description = "图片生成 API 地址")
+    private String imageHost;
+
     @Schema(description = "是否同步写入 ai-server/.env 文件")
     private boolean syncToAiServer = true;
 }

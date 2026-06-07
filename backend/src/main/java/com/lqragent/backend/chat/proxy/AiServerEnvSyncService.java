@@ -1,10 +1,5 @@
 package com.lqragent.backend.chat.proxy;
 
-import com.lqragent.backend.systemconfig.AppRuntimeConfig;
-import com.lqragent.backend.systemconfig.ConfigKeys;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -20,6 +15,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import org.springframework.stereotype.Service;
+
+import com.lqragent.backend.systemconfig.AppRuntimeConfig;
+import com.lqragent.backend.systemconfig.ConfigKeys;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 将 sys_config 中的模型 API 配置同步到 ai-server 目录下的 .env 文件。
@@ -82,6 +84,14 @@ public class AiServerEnvSyncService {
         putIfPresent(updates, "EMBEDDING_MODEL", runtimeConfig.get(ConfigKeys.EMBEDDING_MODEL));
         putIfPresent(updates, "EMBEDDING_API_KEY", runtimeConfig.get(ConfigKeys.EMBEDDING_API_KEY));
         putIfPresent(updates, "EMBEDDING_HOST", runtimeConfig.get(ConfigKeys.EMBEDDING_HOST));
+        putIfPresent(updates, "VIDEO_BINDING", runtimeConfig.get(ConfigKeys.VIDEO_BINDING));
+        putIfPresent(updates, "VIDEO_MODEL", runtimeConfig.get(ConfigKeys.VIDEO_MODEL));
+        putIfPresent(updates, "VIDEO_API_KEY", runtimeConfig.get(ConfigKeys.VIDEO_API_KEY));
+        putIfPresent(updates, "VIDEO_HOST", runtimeConfig.get(ConfigKeys.VIDEO_HOST));
+        putIfPresent(updates, "IMAGE_BINDING", runtimeConfig.get(ConfigKeys.IMAGE_BINDING));
+        putIfPresent(updates, "IMAGE_MODEL", runtimeConfig.get(ConfigKeys.IMAGE_MODEL));
+        putIfPresent(updates, "IMAGE_API_KEY", runtimeConfig.get(ConfigKeys.IMAGE_API_KEY));
+        putIfPresent(updates, "IMAGE_HOST", runtimeConfig.get(ConfigKeys.IMAGE_HOST));
         return updates;
     }
 

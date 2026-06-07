@@ -5,6 +5,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getAgentStats, listSysConfig, saveSysConfig, testAgent, type AgentStatsResponse } from '@/api/admin/admin'
+import http from '@/api/http'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/admin/dev-console/ui'
 import { panel } from './panelStyles'
 
@@ -146,6 +147,43 @@ const AGENTS: AgentDef[] = [
     ],
     testFields: [{ key: 'message', label: '文档内容', type: 'textarea', placeholder: '粘贴文档内容' }],
   },
+  {
+    id: 'promptgen', name: '提示词生成', logName: 'prompt_generation', category: '内容',
+    description: '根据用户意图，LLM 生成适合 AI 图片/视频的英文提示词，并判断媒体类型',
+    aiSource: 'LLM API — 提示词优化',
+    features: [
+      { label: '意图→英文提示词', status: 'done', note: 'LLM 理解意图后生成详细 prompt' },
+      { label: '自动判断媒体类型', status: 'done', note: '静态场景→图片，动态过程→视频' },
+    ],
+    testFields: [
+      { key: 'intent', label: '用户意图', placeholder: '如：我想看 Python 装饰器的工作原理动画' },
+      { key: 'mediaType', label: '媒体类型', placeholder: '选择媒体类型', type: 'select', defaultValue: 'auto',
+        options: [
+          { label: 'auto — 自动判断', value: 'auto' },
+          { label: 'image — 图片', value: 'image' },
+          { label: 'video — 视频', value: 'video' },
+        ] },
+    ],
+  },
+  {
+    id: 'mediagen', name: '媒体生成', logName: 'media_generation', category: '内容',
+    description: 'AI 图片生成 + Mermaid 图表 + AI 视频生成',
+    aiSource: 'Agnes AI（免费）+ LLM API（Mermaid）',
+    features: [
+      { label: 'AI 图片生成', status: 'done', note: 'Agnes AI Image / SiliconFlow 可图' },
+      { label: 'AI 视频生成', status: 'done', note: 'Agnes Video V2.0' },
+      { label: 'Mermaid 图表', status: 'done', note: 'LLM 生成 + 前端渲染' },
+      { label: '图片质量检查', status: 'wip', note: '待接入' },
+    ],
+    testFields: [
+      { key: 'prompt', label: '提示词', placeholder: '直接输入英文提示词，如：A cute cat sitting on a desk' },
+      { key: 'mediaType', label: '媒体类型', placeholder: '选择媒体类型', type: 'select', defaultValue: 'illustration',
+        options: [
+          { label: 'illustration — 图片', value: 'illustration' },
+          { label: 'video — AI 视频', value: 'video' },
+        ] },
+    ],
+  },
   
   // 质检模块
   {
@@ -205,7 +243,8 @@ const LLM_MODELS = [
   { label: 'gpt-4o', value: 'gpt-4o' },
   { label: 'DeepSeek Chat', value: 'deepseek-chat' },
   { label: 'Qwen Plus', value: 'qwen-plus' },
-  { label: 'GLM-4', value: 'glm-4' },
+  { label: 'Agnes 2.0 Flash', value: 'agnes-2.0-flash' },
+  { label: 'Agnes 1.5 Flash', value: 'agnes-1.5-flash' },
 ]
 
 // ==================== 组件 ====================
@@ -240,7 +279,41 @@ function AgentDetail({ agent, stats, configMap, onSave, saving }: {
     setTestLoading(true)
     setTestResult(null)
     try {
-      const res = await testAgent(agent.logName, payload)
+      let res: unknown
+      if (agent.id === 'promptgen') {
+        // 提示词生成智能体：调用 LLM 生成 prompt + 判断媒体类型
+        const intent = (payload.intent as string) || ''
+        const mediaType = (payload.mediaType as string) || 'auto'
+        const r = await http.post<{ data: { prompt: string; mediaType: string; reason: string; success: boolean } }>(
+          '/media/generate-prompt',
+          { intent, mediaType },
+        )
+        res = r.data.data
+      } else if (agent.id === 'mediagen') {
+        // 媒体生成智能体直接调用 /api/media/test-* 接口
+        const mediaType = (payload.mediaType as string) || 'illustration'
+        const prompt = (payload.prompt as string) || ''
+        if (!prompt) {
+          setTestResult('请输入提示词')
+          setTestLoading(false)
+          return
+        }
+        if (mediaType === 'video') {
+          const r = await http.post<{ data: { success: boolean; videoUrl: string; prompt: string } }>(
+            '/media/test-video',
+            { prompt },
+          )
+          res = r.data.data
+        } else {
+          const r = await http.post<{ data: { success: boolean; imageUrl: string; prompt: string } }>(
+            '/media/test-image',
+            { prompt },
+          )
+          res = r.data.data
+        }
+      } else {
+        res = await testAgent(agent.logName, payload)
+      }
       setTestResult(JSON.stringify(res, null, 2))
     } catch (e: unknown) {
       setTestResult(`请求失败: ${e instanceof Error ? e.message : String(e)}`)
@@ -351,9 +424,59 @@ function AgentDetail({ agent, stats, configMap, onSave, saving }: {
           {testLoading ? '执行中...' : '发送测试'}
         </button>
         {testResult && (
-          <pre className="mt-3 max-h-48 overflow-auto rounded border border-console-border bg-console-card p-3 text-xs text-console-text whitespace-pre-wrap">
-            {testResult}
-          </pre>
+          <>
+            {/* 图片预览 */}
+            {(agent.id === 'mediagen' || agent.id === 'promptgen') && (() => {
+              try {
+                const parsed = JSON.parse(testResult)
+                // promptgen 结果展示
+                if (agent.id === 'promptgen' && parsed?.prompt) {
+                  return (
+                    <div className="mt-3 space-y-2">
+                      <div className="rounded border border-console-border bg-console-card p-3">
+                        <div className="mb-1 text-[11px] text-console-muted">生成的提示词</div>
+                        <div className="text-sm text-console-text font-mono">{parsed.prompt}</div>
+                      </div>
+                      <div className="flex gap-2 text-xs">
+                        <span className="rounded bg-blue-600/20 px-2 py-0.5 text-blue-400">{parsed.mediaType}</span>
+                        <span className="text-console-muted">{parsed.reason}</span>
+                      </div>
+                    </div>
+                  )
+                }
+                // mediagen 结果展示 - 图片
+                const imageUrl = parsed?.imageUrl ?? parsed?.data?.imageUrl
+                const videoUrl = parsed?.videoUrl ?? parsed?.data?.videoUrl
+                if (imageUrl && typeof imageUrl === 'string') {
+                  return (
+                    <div className="mt-3">
+                      <img
+                        src={imageUrl}
+                        alt={parsed?.prompt ?? '生成图片'}
+                        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                        className="max-h-64 rounded border border-console-border object-contain"
+                      />
+                    </div>
+                  )
+                }
+                if (videoUrl && typeof videoUrl === 'string') {
+                  return (
+                    <div className="mt-3">
+                      <video
+                        src={videoUrl}
+                        controls
+                        className="max-h-64 rounded border border-console-border"
+                      />
+                    </div>
+                  )
+                }
+              } catch { /* not JSON, skip preview */ }
+              return null
+            })()}
+            <pre className="mt-3 max-h-48 overflow-auto rounded border border-console-border bg-console-card p-3 text-xs text-console-text whitespace-pre-wrap">
+              {testResult}
+            </pre>
+          </>
         )}
       </div>
     </div>

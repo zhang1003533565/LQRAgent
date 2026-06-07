@@ -32,6 +32,12 @@ public final class ConfigKeys {
     public static final String EMBEDDING_API_KEY = "embedding.api-key";
     public static final String EMBEDDING_HOST = "embedding.host";
 
+    /** 视频生成 API（对应 ai-server .env 中 VIDEO_*） */
+    public static final String VIDEO_BINDING = "video.binding";
+    public static final String VIDEO_MODEL = "video.model";
+    public static final String VIDEO_API_KEY = "video.api-key";
+    public static final String VIDEO_HOST = "video.host";
+
     /** RAG 知识库名称（ai-server 侧的知识库标识） */
     public static final String RAG_KB_NAME = "agent.rag.kb_name";
 
@@ -45,5 +51,11 @@ public final class ConfigKeys {
     public static final String QINIU_SECRET_KEY = "qiniu.secret-key";
     public static final String QINIU_BUCKET = "qiniu.bucket";
     public static final String QINIU_REGION = "qiniu.region";
+
+    /** 图片生成 API（对应 ai-server .env 中 IMAGE_*） */
+    public static final String IMAGE_BINDING = "image.binding";
+    public static final String IMAGE_MODEL = "image.model";
+    public static final String IMAGE_API_KEY = "image.api-key";
+    public static final String IMAGE_HOST = "image.host";
 
 }

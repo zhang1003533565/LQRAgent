@@ -1,13 +1,15 @@
 package com.lqragent.backend.systemconfig;
 
-import com.lqragent.backend.systemconfig.service.SysConfigService;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
+
+import com.lqragent.backend.systemconfig.service.SysConfigService;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 首次启动时将 application.properties 中的关键项写入 sys_config（仅当库中不存在时）。
@@ -35,6 +37,13 @@ public class SysConfigSeeder implements ApplicationRunner {
         seedDefault(ConfigKeys.EMBEDDING_BINDING, "openai", "嵌入模型提供商");
         seedDefault(ConfigKeys.EMBEDDING_MODEL, "text-embedding-3-large", "嵌入模型名称");
         seedDefault(ConfigKeys.EMBEDDING_HOST, "https://api.openai.com/v1/embeddings", "嵌入 API 完整 URL");
+
+        seedDefault(ConfigKeys.VIDEO_BINDING, "agnes", "视频生成提供商");
+        seedDefault(ConfigKeys.VIDEO_MODEL, "agnes-video-v2.0", "视频生成模型");
+        seedDefault(ConfigKeys.VIDEO_HOST, "https://apihub.agnes-ai.com/v1", "视频生成 API 地址");
+        seedDefault(ConfigKeys.IMAGE_BINDING, "agnes", "图片生成提供商");
+        seedDefault(ConfigKeys.IMAGE_MODEL, "agnes-image-2.1-flash", "图片生成模型");
+        seedDefault(ConfigKeys.IMAGE_HOST, "https://apihub.agnes-ai.com/v1", "图片生成 API 地址");
     }
 
     private void seedDefault(String key, String defaultValue, String remark) {

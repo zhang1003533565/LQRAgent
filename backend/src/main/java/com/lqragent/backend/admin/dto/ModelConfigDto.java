@@ -41,4 +41,34 @@ public class ModelConfigDto {
 
     @Schema(description = "嵌入 API 地址")
     private final String embeddingHost;
+
+    @Schema(description = "视频生成提供商")
+    private final String videoBinding;
+
+    @Schema(description = "视频生成模型")
+    private final String videoModel;
+
+    @Schema(description = "视频生成 API Key 掩码")
+    private final String videoApiKeyMasked;
+
+    @Schema(description = "是否已配置视频生成 API Key")
+    private final boolean videoApiKeySet;
+
+    @Schema(description = "视频生成 API 地址")
+    private final String videoHost;
+
+    @Schema(description = "图片生成提供商")
+    private final String imageBinding;
+
+    @Schema(description = "图片生成模型")
+    private final String imageModel;
+
+    @Schema(description = "图片生成 API Key 掩码")
+    private final String imageApiKeyMasked;
+
+    @Schema(description = "是否已配置图片生成 API Key")
+    private final boolean imageApiKeySet;
+
+    @Schema(description = "图片生成 API 地址")
+    private final String imageHost;
 }

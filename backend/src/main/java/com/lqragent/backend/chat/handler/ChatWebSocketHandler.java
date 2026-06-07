@@ -313,9 +313,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 }
                 sb.append("\n你可以在「学习路径」页面查看详细内容和进度。");
                 
-                // 自动触发资源推荐
+                // 自动触发资源推荐（传入学习目标作为上下文）
                 try {
-                    var recResult = getRecommendationTool.execute(Map.of("userId", userInfo.userId()));
+                    var recResult = getRecommendationTool.execute(Map.of(
+                        "userId", userInfo.userId(),
+                        "context", "用户想学习: " + content
+                    ));
                     if (recResult.success()) {
                         sb.append("\n\n---\n\n");
                         sb.append(formatToolResponse("recommendation", recResult.content()));

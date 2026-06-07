@@ -12,14 +12,82 @@ import { getAgentStats, listSysConfig, saveSysConfig, testAgent, type AgentStats
 
 // ==================== 可选的模型列表 ====================
 
-const LLM_MODELS = [
-  { label: 'DeepSeek Chat（默认）', value: 'deepseek-chat' },
-  { label: 'DeepSeek V3', value: 'deepseek-v3' },
-  { label: 'GPT-4o', value: 'gpt-4o' },
-  { label: 'GPT-4o-mini', value: 'gpt-4o-mini' },
-  { label: 'Qwen Plus', value: 'qwen-plus' },
-  { label: 'GLM-4', value: 'glm-4' },
-]
+/** LLM 供应商 → 默认模型映射（与 ModelConfigPanel 保持一致） */
+const LLM_PROVIDERS_MAP: Record<string, {
+  label: string; models: { label: string; value: string }[]
+}> = {
+  openai: {
+    label: 'OpenAI 兼容',
+    models: [
+      { label: 'GPT-4o-mini', value: 'gpt-4o-mini' },
+      { label: 'GPT-4o', value: 'gpt-4o' },
+    ],
+  },
+  deepseek: {
+    label: 'DeepSeek',
+    models: [
+      { label: 'DeepSeek Chat', value: 'deepseek-chat' },
+      { label: 'DeepSeek V3', value: 'deepseek-v3' },
+    ],
+  },
+  dashscope: {
+    label: '通义千问 (DashScope)',
+    models: [
+      { label: 'Qwen Plus', value: 'qwen-plus' },
+      { label: 'Qwen Max', value: 'qwen-max' },
+    ],
+  },
+  siliconflow: {
+    label: 'SiliconFlow',
+    models: [
+      { label: 'DeepSeek V2.5', value: 'deepseek-ai/DeepSeek-V2.5' },
+    ],
+  },
+  agnes: {
+    label: 'Agnes AI',
+    models: [
+      { label: 'Agnes 2.0 Flash', value: 'agnes-2.0-flash' },
+      { label: 'Agnes 1.5 Flash', value: 'agnes-1.5-flash' },
+    ],
+  },
+}
+
+/** 图片生成供应商 → 模型列表（与 ModelConfigPanel 保持一致） */
+const IMAGE_PROVIDERS_MAP: Record<string, {
+  label: string; models: { label: string; value: string }[]
+}> = {
+  mock: {
+    label: 'Mock（占位符）',
+    models: [{ label: '占位符', value: 'mock' }],
+  },
+  agnes: {
+    label: 'Agnes AI（免费）',
+    models: [
+      { label: 'Agnes Image 2.1 Flash', value: 'agnes-image-2.1-flash' },
+      { label: 'Agnes Image 2.0 Flash', value: 'agnes-image-2.0-flash' },
+    ],
+  },
+  siliconflow: {
+    label: 'SiliconFlow 可图（免费）',
+    models: [
+      { label: 'Kolors（可图）', value: 'Kwai-Kolors/Kolors' },
+      { label: 'Stable Diffusion XL', value: 'stabilityai/stable-diffusion-xl-base-1.0' },
+    ],
+  },
+  dalle3: {
+    label: 'DALL·E 3',
+    models: [{ label: 'DALL·E 3', value: 'dall-e-3' }],
+  },
+  sd3: {
+    label: 'Stable Diffusion 3',
+    models: [{ label: 'Stable Diffusion 3', value: 'stabilityai/stable-diffusion-3' }],
+  },
+}
+
+const LLM_MODELS = LLM_PROVIDERS_MAP.openai.models
+  .concat(LLM_PROVIDERS_MAP.deepseek.models)
+  .concat(LLM_PROVIDERS_MAP.dashscope.models)
+  .concat(LLM_PROVIDERS_MAP.agnes.models)
 
 // ==================== 静态 Agent 定义 ====================
 
@@ -172,32 +240,39 @@ const AGENT_DEFS: Record<string, AgentDef> = {
   },
   mediagen: {
     id: 'mediagen', name: '媒体生成 MediaGeneration', agentLogName: 'media_generation',
-    description: 'AI 图片生成 + Mermaid 图表',
-    aiSource: '🔗 SiliconFlow 可图（免费）+ 🔗 LLM API（Mermaid）',
+    description: 'AI 图片生成 + Mermaid 图表 + AI 视频生成',
+    aiSource: '🔗 Agnes AI（免费）+ 🔗 LLM API（Mermaid）',
     features: [
-      { label: 'AI 图片生成', status: 'done', note: 'SiliconFlow 可图 Kolors' },
+      { label: 'AI 图片生成', status: 'done', note: 'Agnes AI Image / SiliconFlow 可图' },
+      { label: 'AI 视频生成', status: 'done', note: 'Agnes Video V2.0' },
       { label: 'Mermaid 图表', status: 'done', note: 'LLM 生成 + 前端渲染' },
       { label: '图片质量检查', status: 'wip', note: '待接入' },
     ],
     configItems: [
-      { configKey: 'agent.mediagen.image_provider', label: '生图提供商', type: 'select', defaultValue: 'siliconflow',
+      { configKey: 'agent.mediagen.image_provider', label: '生图提供商', type: 'select', defaultValue: 'agnes',
+        options: Object.entries(IMAGE_PROVIDERS_MAP).map(([k, v]) => ({ label: v.label, value: k })) },
+      { configKey: 'agent.mediagen.model', label: '生图模型', type: 'select', defaultValue: 'agnes-image-2.1-flash',
+        options: IMAGE_PROVIDERS_MAP.agnes.models },
+      { configKey: 'agent.mediagen.host', label: 'API 地址', type: 'select', defaultValue: 'https://apihub.agnes-ai.com/v1',
         options: [
-          { label: 'Mock（占位符）', value: 'mock' },
-          { label: 'SiliconFlow 可图（免费）', value: 'siliconflow' },
-          { label: 'DALL·E 3', value: 'dalle3' },
-          { label: 'Stable Diffusion 3', value: 'sd3' },
-        ] },
-      { configKey: 'agent.mediagen.model', label: '生图模型', type: 'select', defaultValue: 'Kwai-Kolors/Kolors',
-        options: [
-          { label: 'Kolors（可图）', value: 'Kwai-Kolors/Kolors' },
-          { label: 'Stable Diffusion XL', value: 'stabilityai/stable-diffusion-xl-base-1.0' },
-        ] },
-      { configKey: 'agent.mediagen.host', label: 'API 地址', type: 'select', defaultValue: 'https://api.siliconflow.cn/v1',
-        options: [
+          { label: 'Agnes AI', value: 'https://apihub.agnes-ai.com/v1' },
           { label: 'SiliconFlow', value: 'https://api.siliconflow.cn/v1' },
           { label: 'OpenAI', value: 'https://api.openai.com/v1' },
         ] },
       { configKey: 'agent.mediagen.api_key', label: 'API Key', type: 'toggle', defaultValue: 'true' },
+      { configKey: 'agent.mediagen.video_provider', label: '视频提供商', type: 'select', defaultValue: 'agnes',
+        options: [
+          { label: 'Mock（占位符）', value: 'mock' },
+          { label: 'Agnes AI', value: 'agnes' },
+        ] },
+      { configKey: 'agent.mediagen.video_model', label: '视频模型', type: 'select', defaultValue: 'agnes-video-v2.0',
+        options: [
+          { label: 'Agnes Video V2.0', value: 'agnes-video-v2.0' },
+        ] },
+      { configKey: 'agent.mediagen.video_host', label: '视频 API 地址', type: 'select', defaultValue: 'https://apihub.agnes-ai.com/v1',
+        options: [
+          { label: 'Agnes AI', value: 'https://apihub.agnes-ai.com/v1' },
+        ] },
     ],
   },
 }
@@ -280,10 +355,11 @@ const AGENT_TEST_FIELDS: Record<string, TestFieldDef[]> = {
   ],
   mediagen: [
     { key: 'kpId', label: '知识点 ID', placeholder: '如：python_decorator' },
-    { key: 'mediaType', label: '媒体类型', type: 'select', defaultValue: 'illustration',
+    { key: 'mediaType', label: '媒体类型', placeholder: '选择媒体类型', type: 'select', defaultValue: 'illustration',
       options: [
         { label: 'illustration — 示意图', value: 'illustration' },
         { label: 'mindmap — 思维导图', value: 'mindmap' },
+        { label: 'video — AI 视频', value: 'video' },
       ] },
   ],
 }

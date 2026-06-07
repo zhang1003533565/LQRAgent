@@ -1,32 +1,37 @@
 package com.lqragent.backend.agents.mediageneration.service;
 
-import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
-import com.lqragent.backend.shared.knowledgegraph.service.KnowledgeGraphService;
-import com.lqragent.backend.agents.mediageneration.dto.MediaResult;
-import com.lqragent.backend.agents.content.summary.lessongeneration.entity.ResourceItem;
-import com.lqragent.backend.agents.content.summary.lessongeneration.repository.ResourceItemRepository;
-import com.lqragent.backend.systemconfig.AppRuntimeConfig;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.MediaType;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestClient;
-
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.http.MediaType;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestClient;
+
+import com.lqragent.backend.agents.content.summary.lessongeneration.entity.ResourceItem;
+import com.lqragent.backend.agents.content.summary.lessongeneration.repository.ResourceItemRepository;
+import com.lqragent.backend.agents.mediageneration.dto.MediaResult;
+import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.shared.knowledgegraph.service.KnowledgeGraphService;
+import com.lqragent.backend.systemconfig.AppRuntimeConfig;
+import com.lqragent.backend.systemconfig.ConfigKeys;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 /**
  * 媒体生成服务。
- * 图片模式（由 sys_config agent.mediagen.image_provider 控制）：
+ * 图片模式（由 image.binding / image.model / image.api-key / image.host 控制）：
+ * - agnes：Agnes AI 图片生成（免费，OpenAI 兼容协议）
+ * - siliconflow：SiliconFlow 可图 Kolors
+ * - dalle3：OpenAI DALL·E 3
+ * - sd3：Stability AI
  * - mock：占位符（默认）
- * - dalle3：调 OpenAI DALL·E 3 API
- * - sd3：调 Stability AI API
- * 视频模式（由 sys_config agent.mediagen.video_provider 控制）：
+ * 视频模式（由 video.binding / video.model / video.api-key / video.host 控制）：
+ * - agnes：Agnes AI 视频生成（免费，异步任务模式）
  * - mock：占位符（默认）
- * - seedance：预留，待接入字节 SeeDance API
  */
 @Slf4j
 @Service
@@ -44,14 +49,21 @@ public class MediaGenerationService {
         KnowledgePoint kp = kgService.getByKpId(kpId)
                 .orElseThrow(() -> new IllegalArgumentException("知识点不存在: " + kpId));
 
-        String provider = runtimeConfig.get("agent.mediagen.image_provider", "mock");
+        String provider = runtimeConfig.get(ConfigKeys.IMAGE_BINDING, "mock");
+        String apiKey = runtimeConfig.get(ConfigKeys.IMAGE_API_KEY, "");
+        String host = runtimeConfig.get(ConfigKeys.IMAGE_HOST, "https://apihub.agnes-ai.com/v1");
+        String model = runtimeConfig.get(ConfigKeys.IMAGE_MODEL, "agnes-image-2.1-flash");
         String finalPrompt = prompt != null ? prompt : kp.getTitle() + " 概念示意图，教学用，清晰简洁";
         String imageUrl;
         String mime;
 
         switch (provider) {
+            case "agnes" -> {
+                imageUrl = callAgnesImage(finalPrompt, apiKey, host, model);
+                mime = "image/png";
+            }
             case "siliconflow" -> {
-                imageUrl = callSiliconFlowKolors(finalPrompt);
+                imageUrl = callSiliconFlowKolors(finalPrompt, apiKey, host, model);
                 mime = "image/png";
             }
             case "dalle3" -> {
@@ -85,20 +97,56 @@ public class MediaGenerationService {
                 .mediaMime(mime).prompt(finalPrompt).newlyCreated(true).build();
     }
 
-    /** 调 OpenAI DALL·E 3 */
     /**
-     * 调用 SiliconFlow 可图 API 生成图片
+     * 调用 Agnes AI 图片生成（OpenAI 兼容协议）。
+     * POST /v1/images/generations
      */
-    private String callSiliconFlowKolors(String prompt) {
-        String apiKey = runtimeConfig.get("agent.mediagen.api_key", "");
-        String host = runtimeConfig.get("agent.mediagen.host", "https://api.siliconflow.cn/v1");
-        String model = runtimeConfig.get("agent.mediagen.model", "Kwai-Kolors/Kolors");
-        
+    private String callAgnesImage(String prompt, String apiKey, String host, String model) {
+        if (apiKey.isBlank()) {
+            log.warn("[MediaGeneration] Agnes Image API key not configured, using mock");
+            return buildPlaceholderSvg(prompt);
+        }
+        try {
+            String base = host.endsWith("/") ? host.substring(0, host.length() - 1) : host;
+            String response = RestClient.builder().build()
+                    .post()
+                    .uri(base + "/images/generations")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "model", model,
+                            "prompt", prompt,
+                            "size", "1024x1024"
+                    ))
+                    .retrieve()
+                    .body(String.class);
+
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            var root = mapper.readTree(response);
+            var data = root.path("data");
+            if (data.isArray() && data.size() > 0) {
+                String imageUrl = data.get(0).path("url").asText("");
+                if (!imageUrl.isBlank()) {
+                    log.info("[MediaGeneration] Agnes Image 生成成功: {}", imageUrl);
+                    return imageUrl;
+                }
+            }
+            log.warn("[MediaGeneration] Agnes Image 响应解析失败: {}", response);
+            return buildPlaceholderSvg(prompt);
+        } catch (Exception e) {
+            log.error("[MediaGeneration] Agnes Image 调用失败: {}", e.getMessage());
+            return buildPlaceholderSvg(prompt);
+        }
+    }
+
+    /**
+     * 调用 SiliconFlow 可图 Kolors API 生成图片
+     */
+    private String callSiliconFlowKolors(String prompt, String apiKey, String host, String model) {
         if (apiKey.isBlank()) {
             log.warn("[MediaGeneration] SiliconFlow API key not configured, using mock");
             return buildPlaceholderSvg(prompt);
         }
-        
         try {
             Map<String, Object> requestBody = Map.of(
                     "model", model,
@@ -106,17 +154,16 @@ public class MediaGenerationService {
                     "image_size", "1024x1024",
                     "num_inference_steps", 20
             );
-            
+            String base = host.endsWith("/") ? host.substring(0, host.length() - 1) : host;
             String response = RestClient.builder().build()
                     .post()
-                    .uri(host + "/images/generations")
+                    .uri(base + "/images/generations")
                     .header("Authorization", "Bearer " + apiKey)
                     .header("Content-Type", "application/json")
                     .body(requestBody)
                     .retrieve()
                     .body(String.class);
-            
-            // 解析响应，获取图片 URL
+
             var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             var root = mapper.readTree(response);
             var images = root.path("images");
@@ -127,17 +174,16 @@ public class MediaGenerationService {
                     return imageUrl;
                 }
             }
-            
-            log.warn("[MediaGeneration] SiliconFlow response parsing failed, using mock");
+            log.warn("[MediaGeneration] SiliconFlow 响应解析失败, using mock");
             return buildPlaceholderSvg(prompt);
         } catch (Exception e) {
-            log.error("[MediaGeneration] SiliconFlow call failed: {}", e.getMessage());
+            log.error("[MediaGeneration] SiliconFlow 调用失败: {}", e.getMessage());
             return buildPlaceholderSvg(prompt);
         }
     }
-    
+
     private String callDalle3(String prompt) {
-        String apiKey = runtimeConfig.get("llm.api-key", "");
+        String apiKey = runtimeConfig.get(ConfigKeys.LLM_API_KEY, "");
         if (apiKey.isBlank()) {
             log.warn("[MediaGeneration] DALL·E API Key 未配置");
             return buildPlaceholderSvg("API Key 未配置");
@@ -168,7 +214,7 @@ public class MediaGenerationService {
 
     /** 调 Stability AI */
     private String callStableDiffusion(String prompt) {
-        String apiKey = runtimeConfig.get("agent.mediagen.api_key", "");
+        String apiKey = runtimeConfig.get(ConfigKeys.IMAGE_API_KEY, "");
         if (apiKey.isBlank()) {
             log.warn("[MediaGeneration] Stability AI API Key 未配置");
             return buildPlaceholderSvg("API Key 未配置");
@@ -193,27 +239,28 @@ public class MediaGenerationService {
     }
 
     /**
-     * 生成教学视频（预留接口）。
-     * 视频 provider 由 sys_config agent.mediagen.video_provider 控制。
-     * 当前仅支持 mock 模式，返回占位符。
+     * 生成教学视频。
+     * 视频 provider 由 video.binding 控制。
+     * agnes 模式：调用 Agnes AI 视频生成 API（异步任务模式）。
      */
     @Transactional
     public MediaResult generateVideo(String kpId, String prompt) {
         KnowledgePoint kp = kgService.getByKpId(kpId)
                 .orElseThrow(() -> new IllegalArgumentException("知识点不存在: " + kpId));
 
-        String provider = runtimeConfig.get("agent.mediagen.video_provider", "mock");
+        String provider = runtimeConfig.get(ConfigKeys.VIDEO_BINDING, "mock");
+        String apiKey = runtimeConfig.get(ConfigKeys.VIDEO_API_KEY, "");
+        String host = runtimeConfig.get(ConfigKeys.VIDEO_HOST, "https://apihub.agnes-ai.com/v1");
+        String model = runtimeConfig.get(ConfigKeys.VIDEO_MODEL, "agnes-video-v2.0");
         String finalPrompt = prompt != null ? prompt : kp.getTitle() + " 教学演示视频";
         String videoUrl;
 
         switch (provider) {
-            case "seedance" -> {
-                // TODO: 接入字节 SeeDance API
-                log.warn("[MediaGeneration] seedance 视频生成尚未实现，使用占位符");
-                videoUrl = "";  // seedance 未实现，返回空
+            case "agnes" -> {
+                videoUrl = callAgnesVideo(finalPrompt, apiKey, host, model);
             }
             default -> {
-                videoUrl = "";  // mock 模式，视频暂不生成
+                videoUrl = "";
             }
         }
 
@@ -232,6 +279,138 @@ public class MediaGenerationService {
         return MediaResult.builder()
                 .resourceId(item.getId()).kpId(kpId).mediaUrl(videoUrl)
                 .mediaMime("video/mp4").prompt(finalPrompt).newlyCreated(true).build();
+    }
+
+    /**
+     * 调用 Agnes AI 视频生成（异步任务模式）。
+     * POST /v1/videos → 提交任务
+     * GET  /v1/videos/{taskId} → 轮询结果
+     */
+    private String callAgnesVideo(String prompt, String apiKey, String host, String model) {
+        if (apiKey.isBlank()) {
+            log.warn("[MediaGeneration] Agnes Video API key not configured");
+            return "";
+        }
+        try {
+            String base = host.endsWith("/") ? host.substring(0, host.length() - 1) : host;
+            RestClient client = RestClient.builder().build();
+
+            // Step 1: 提交生成任务
+            String submitResp = client.post()
+                    .uri(base + "/videos")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "model", model,
+                            "prompt", prompt,
+                            "height", 768,
+                            "width", 1152,
+                            "num_frames", 121,
+                            "frame_rate", 24
+                    ))
+                    .retrieve()
+                    .body(String.class);
+
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            var root = mapper.readTree(submitResp);
+            String taskId = root.path("id").asText("");
+            if (taskId.isBlank()) {
+                log.warn("[MediaGeneration] Agnes Video 任务提交失败: {}", submitResp);
+                return "";
+            }
+            log.info("[MediaGeneration] Agnes Video 任务已提交: taskId={}", taskId);
+
+            // Step 2: 轮询等待结果（最多 5 分钟）
+            int maxAttempts = 60;
+            int intervalSec = 5;
+            for (int i = 0; i < maxAttempts; i++) {
+                Thread.sleep(intervalSec * 1000L);
+                String pollResp = client.get()
+                        .uri(base + "/videos/" + taskId)
+                        .header("Authorization", "Bearer " + apiKey)
+                        .retrieve()
+                        .body(String.class);
+
+                var pollRoot = mapper.readTree(pollResp);
+                String status = pollRoot.path("status").asText("pending");
+                if ("completed".equalsIgnoreCase(status) || "succeeded".equalsIgnoreCase(status)) {
+                    String videoUrl = pollRoot.path("video_url").asText("");
+                    if (videoUrl.isBlank()) {
+                        videoUrl = pollRoot.path("url").asText("");
+                    }
+                    if (videoUrl.isBlank()) {
+                        var output = pollRoot.path("output");
+                        if (output.isObject()) {
+                            videoUrl = output.path("video_url").asText("");
+                            if (videoUrl.isBlank()) videoUrl = output.path("url").asText("");
+                        }
+                    }
+                    log.info("[MediaGeneration] Agnes Video 生成完成: url={}", videoUrl);
+                    return videoUrl;
+                }
+                if ("failed".equalsIgnoreCase(status) || "error".equalsIgnoreCase(status)) {
+                    log.error("[MediaGeneration] Agnes Video 生成失败: {}", pollResp);
+                    return "";
+                }
+                log.debug("[MediaGeneration] Agnes Video 轮询中: status={}, attempt={}/{}", status, i + 1, maxAttempts);
+            }
+            log.warn("[MediaGeneration] Agnes Video 轮询超时（{}秒）", maxAttempts * intervalSec);
+            return "";
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("[MediaGeneration] Agnes Video 轮询被中断");
+            return "";
+        } catch (Exception e) {
+            log.error("[MediaGeneration] Agnes Video 调用失败: {}", e.getMessage());
+            return "";
+        }
+    }
+
+    /**
+     * 自由生图：直接用 prompt 生成图片，不需要知识点 ID（控制台测试用）。
+     */
+    public String generateImageByPrompt(String prompt) {
+        String provider = runtimeConfig.get(ConfigKeys.IMAGE_BINDING, "mock");
+        String apiKey = runtimeConfig.get(ConfigKeys.IMAGE_API_KEY, "");
+        String host = runtimeConfig.get(ConfigKeys.IMAGE_HOST, "https://apihub.agnes-ai.com/v1");
+        String model = runtimeConfig.get(ConfigKeys.IMAGE_MODEL, "agnes-image-2.1-flash");
+
+        switch (provider) {
+            case "agnes" -> {
+                return callAgnesImage(prompt, apiKey, host, model);
+            }
+            case "siliconflow" -> {
+                return callSiliconFlowKolors(prompt, apiKey, host, model);
+            }
+            case "dalle3" -> {
+                return callDalle3(prompt);
+            }
+            case "sd3" -> {
+                return callStableDiffusion(prompt);
+            }
+            default -> {
+                return buildPlaceholderSvg("示意图");
+            }
+        }
+    }
+
+    /**
+     * 自由生视频：直接用 prompt 生成视频，不需要知识点 ID（控制台测试用）。
+     */
+    public String generateVideoByPrompt(String prompt) {
+        String provider = runtimeConfig.get(ConfigKeys.VIDEO_BINDING, "mock");
+        String apiKey = runtimeConfig.get(ConfigKeys.VIDEO_API_KEY, "");
+        String host = runtimeConfig.get(ConfigKeys.VIDEO_HOST, "https://apihub.agnes-ai.com/v1");
+        String model = runtimeConfig.get(ConfigKeys.VIDEO_MODEL, "agnes-video-v2.0");
+
+        switch (provider) {
+            case "agnes" -> {
+                return callAgnesVideo(prompt, apiKey, host, model);
+            }
+            default -> {
+                return "";
+            }
+        }
     }
 
     public Path getMediaPath(Long resourceId) {
