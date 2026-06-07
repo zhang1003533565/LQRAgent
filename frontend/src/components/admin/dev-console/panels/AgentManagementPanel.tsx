@@ -309,7 +309,7 @@ function AgentDetail({ agent, stats, configMap, onSave, saving }: {
           const r = await http.post<{ data: { success: boolean; videoUrl: string; prompt: string; duration: number } }>(
             '/media/test-video',
             { prompt, duration },
-            { timeout: 300000 }, // 视频生成最长等 5 分钟
+            { timeout: 600000 }, // 视频生成最长等 10 分钟
           )
           res = r.data.data
         } else {

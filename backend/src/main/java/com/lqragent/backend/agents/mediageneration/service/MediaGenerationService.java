@@ -320,8 +320,9 @@ public class MediaGenerationService {
             RestClient client = videoClient();
 
             // 根据目标时长计算 num_frames（需满足 8n+1，上限 441，固定 frame_rate=24）
+            // Agnes 官方文档推荐：5s→121, 10s→241, 18s→441
             int rawFrames = durationSeconds * 24;
-            int numFrames = Math.min(441, ((rawFrames - 1) / 8) * 8 + 1);
+            int numFrames = Math.min(441, ((rawFrames + 3) / 8) * 8 + 1);
             if (numFrames < 1) numFrames = 1;
 
             log.info("[MediaGeneration] Agnes Video 目标时长={}s, num_frames={}, frame_rate=24", durationSeconds, numFrames);
@@ -351,39 +352,72 @@ public class MediaGenerationService {
             }
             log.info("[MediaGeneration] Agnes Video 任务已提交: taskId={}", taskId);
 
-            // Step 2: 轮询等待结果（最多 5 分钟）
-            int maxAttempts = 60;
+            // Step 2: 轮询等待结果（最多 10 分钟）
+            int maxAttempts = 120;
             int intervalSec = 5;
             for (int i = 0; i < maxAttempts; i++) {
                 Thread.sleep(intervalSec * 1000L);
-                String pollResp = client.get()
-                        .uri(base + "/videos/" + taskId)
-                        .header("Authorization", "Bearer " + apiKey)
-                        .retrieve()
-                        .body(String.class);
+                String pollResp;
+                try {
+                    pollResp = client.get()
+                            .uri(base + "/videos/" + taskId)
+                            .header("Authorization", "Bearer " + apiKey)
+                            .retrieve()
+                            .body(String.class);
+                } catch (Exception pollEx) {
+                    log.warn("[MediaGeneration] Agnes Video 轮询请求失败 (attempt={}): {}", i + 1, pollEx.getMessage());
+                    continue; // 网络抖动时跳过，继续下一次轮询
+                }
 
                 var pollRoot = mapper.readTree(pollResp);
                 String status = pollRoot.path("status").asText("pending");
+
+                // 首次轮询和每10次打印完整响应用于调试
+                if (i == 0 || (i + 1) % 10 == 0) {
+                    log.info("[MediaGeneration] Agnes Video 轮询 #{}/{}: status={}, rawKeys={}",
+                            i + 1, maxAttempts, status, pollRoot.fieldNames());
+                }
+
                 if ("completed".equalsIgnoreCase(status) || "succeeded".equalsIgnoreCase(status)) {
+                    // Agnes 实际返回的字段名是 remixed_from_video_id，不是 video_url
+                    // 按优先级依次尝试：video_url → remixed_from_video_id → data.video_url → output.video_url
                     String videoUrl = pollRoot.path("video_url").asText("");
                     if (videoUrl.isBlank()) {
+                        videoUrl = pollRoot.path("remixed_from_video_id").asText("");
+                    }
+                    if (videoUrl.isBlank()) {
                         videoUrl = pollRoot.path("url").asText("");
+                    }
+                    if (videoUrl.isBlank()) {
+                        var data = pollRoot.path("data");
+                        if (data.isObject()) {
+                            videoUrl = data.path("video_url").asText("");
+                            if (videoUrl.isBlank()) videoUrl = data.path("remixed_from_video_id").asText("");
+                            if (videoUrl.isBlank()) videoUrl = data.path("url").asText("");
+                        }
                     }
                     if (videoUrl.isBlank()) {
                         var output = pollRoot.path("output");
                         if (output.isObject()) {
                             videoUrl = output.path("video_url").asText("");
+                            if (videoUrl.isBlank()) videoUrl = output.path("remixed_from_video_id").asText("");
                             if (videoUrl.isBlank()) videoUrl = output.path("url").asText("");
                         }
+                    }
+                    if (videoUrl.isBlank()) {
+                        log.warn("[MediaGeneration] Agnes Video 状态已完成但未找到 video_url, 完整响应: {}", pollResp);
                     }
                     log.info("[MediaGeneration] Agnes Video 生成完成: url={}", videoUrl);
                     return videoUrl;
                 }
                 if ("failed".equalsIgnoreCase(status) || "error".equalsIgnoreCase(status)) {
-                    log.error("[MediaGeneration] Agnes Video 生成失败: {}", pollResp);
+                    log.error("[MediaGeneration] Agnes Video 生成失败, 完整响应: {}", pollResp);
                     return "";
                 }
-                log.debug("[MediaGeneration] Agnes Video 轮询中: status={}, attempt={}/{}", status, i + 1, maxAttempts);
+                if (!"pending".equalsIgnoreCase(status) && !"processing".equalsIgnoreCase(status)
+                        && !"queued".equalsIgnoreCase(status) && !"running".equalsIgnoreCase(status)) {
+                    log.info("[MediaGeneration] Agnes Video 未知状态: status={}, 完整响应: {}", status, pollResp);
+                }
             }
             log.warn("[MediaGeneration] Agnes Video 轮询超时（{}秒）", maxAttempts * intervalSec);
             return "";

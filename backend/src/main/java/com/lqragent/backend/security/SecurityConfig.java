@@ -1,6 +1,7 @@
 package com.lqragent.backend.security;
 
-import lombok.RequiredArgsConstructor;
+import java.util.List;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -22,7 +23,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.lqragent.backend.user.repository.UserRepository;
 
-import java.util.List;
+import lombok.RequiredArgsConstructor;
 
 /**
  * Spring Security 配置：无状态 JWT，CORS 允许前端开发端口。

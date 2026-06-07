@@ -26,7 +26,6 @@ import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
 import com.lqragent.backend.agents.serve.assessment.tools.GradeAnswerTool;
 import com.lqragent.backend.agents.serve.intervention.tools.GetInterventionTool;
 import com.lqragent.backend.agents.serve.recommendation.tools.GetRecommendationTool;
-import com.lqragent.backend.chat.entity.ChatMessage;
 import com.lqragent.backend.chat.entity.ChatSession;
 import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import com.lqragent.backend.chat.repository.ChatMessageRepository;
