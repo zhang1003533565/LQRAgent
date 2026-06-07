@@ -10,6 +10,15 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/admin/dev-console/ui'
 import { panel } from './panelStyles'
 
+/** 敏感键名模式 */
+const SENSITIVE_KEY_PATTERN = /key|secret|token|password|credential/i
+
+/** 将敏感值脱敏：保留前4后4，中间用****替代 */
+function maskValue(key: string, value: string): string {
+  if (!SENSITIVE_KEY_PATTERN.test(key) || value.length <= 12) return value
+  return value.slice(0, 4) + '****' + value.slice(-4)
+}
+
 export default function SystemConfigPanel() {
   const [configs, setConfigs] = useState<SysConfigItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -148,7 +157,7 @@ export default function SystemConfigPanel() {
                 {configs.map((c) => (
                   <tr key={c.id}>
                     <td className={`${panel.td} font-mono text-xs`}>{c.configKey}</td>
-                    <td className={`${panel.td} max-w-xs truncate`}>{c.configValue}</td>
+                    <td className={`${panel.td} max-w-xs truncate`}>{maskValue(c.configKey, c.configValue)}</td>
                     <td className={panel.td}>{c.remark ?? '—'}</td>
                     <td className={`${panel.td} text-xs whitespace-nowrap`}>
                       {new Date(c.updatedAt).toLocaleString('zh-CN')}

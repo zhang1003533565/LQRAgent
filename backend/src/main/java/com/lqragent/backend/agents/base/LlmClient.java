@@ -59,7 +59,8 @@ public class LlmClient {
         
         try {
             String jsonBody = mapper.writeValueAsString(requestBody);
-            log.debug("[LlmClient] request: model={}, tools={}", model, tools != null ? tools.size() : 0);
+            log.info("[LlmClient] calling LLM: host={}, model={}, apiKey={}...", baseUrl, model, 
+                    apiKey.length() > 8 ? apiKey.substring(0, 4) + "****" + apiKey.substring(apiKey.length() - 4) : "(short)");
             
             String response = RestClient.builder().build()
                     .post()
@@ -70,6 +71,7 @@ public class LlmClient {
                     .retrieve()
                     .body(String.class);
             
+            log.info("[LlmClient] response received, length={}", response != null ? response.length() : 0);
             return parseResponse(response);
             
         } catch (Exception e) {

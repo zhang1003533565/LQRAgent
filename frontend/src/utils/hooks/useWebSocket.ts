@@ -242,8 +242,15 @@ export function useWebSocket() {
 
   useEffect(() => {
     mountedRef.current = true
-    if (token) connect()
-    return () => disconnect()
+    // 延迟连接，避免 React Strict Mode 双重渲染导致立即断开
+    const timer = setTimeout(() => {
+      if (mountedRef.current && token) connect()
+    }, 100)
+    return () => {
+      mountedRef.current = false
+      clearTimeout(timer)
+      disconnect()
+    }
   }, [token, connect, disconnect])
 
   return { send, connect, disconnect }

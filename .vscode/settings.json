@@ -1,4 +1,5 @@
 {
+  "java.jdt.ls.lombokSupport.enabled": true,
   "terminal.integrated.defaultProfile.windows": "Git Bash (UTF-8)",
   "terminal.integrated.profiles.windows": {
     "LQRAgent UTF-8": {

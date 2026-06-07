@@ -1,24 +1,26 @@
 package com.lqragent.backend.agents.learnerprofile.service;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lqragent.backend.chat.entity.ChatMessage;
-import com.lqragent.backend.chat.handler.WebSocketSessionManager;
-import com.lqragent.backend.chat.repository.ChatMessageRepository;
 import com.lqragent.backend.agents.learnerprofile.dto.ProfileDetailDto;
 import com.lqragent.backend.agents.learnerprofile.dto.ProfilePatchRequest;
 import com.lqragent.backend.agents.learnerprofile.dto.ProfileSummaryDto;
 import com.lqragent.backend.agents.learnerprofile.entity.LearnerProfile;
 import com.lqragent.backend.agents.learnerprofile.repository.LearnerProfileRepository;
+import com.lqragent.backend.chat.entity.ChatMessage;
+import com.lqragent.backend.chat.handler.WebSocketSessionManager;
+import com.lqragent.backend.chat.repository.ChatMessageRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
 
 /**
  * 学生画像服务。
@@ -114,8 +116,8 @@ public class LearnerProfileService {
     public ProfileSummaryDto extractFromSession(Long userId, String sessionId) {
         LearnerProfile profile = getOrCreate(userId);
 
-        List<ChatMessage> recent = chatMessageRepository.findBySessionIdOrderByCreatedAtDesc(
-                sessionId, PageRequest.of(0, EXTRACT_MESSAGE_LIMIT));
+        List<ChatMessage> recent = chatMessageRepository.findRecentBySession(
+                Long.parseLong(sessionId), PageRequest.of(0, EXTRACT_MESSAGE_LIMIT));
         if (recent.isEmpty()) {
             return toDto(profile);
         }
@@ -123,8 +125,8 @@ public class LearnerProfileService {
         Collections.reverse(chronological);
 
         for (ChatMessage m : chronological) {
-            if (m.getSender() == ChatMessage.Sender.USER) {
-                profileMergeService.mergeFromDialogueRules(profile, m.getBody());
+            if ("user".equals(m.getRole())) {
+                profileMergeService.mergeFromDialogueRules(profile, m.getContent());
             }
         }
 
@@ -148,7 +150,7 @@ public class LearnerProfileService {
         }
         List<ChatMessage> pseudo = new ArrayList<>();
         for (String line : dialogues) {
-            pseudo.add(ChatMessage.builder().sender(ChatMessage.Sender.USER).body(line).build());
+            pseudo.add(ChatMessage.builder().role("user").content(line).build());
         }
         String llmJson = profileExtractor.extract(pseudo);
         if (llmJson != null) {

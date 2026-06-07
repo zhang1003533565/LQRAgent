@@ -1,15 +1,17 @@
 package com.lqragent.backend.agents.intelligentqa.service;
 
-import com.lqragent.backend.chat.proxy.AiServerWsProxy;
-import com.lqragent.backend.chat.service.ChatSessionService;
-import com.lqragent.backend.chat.entity.AgentRunLog;
-import com.lqragent.backend.chat.service.AgentRunLogService;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-
 import java.util.List;
 import java.util.Map;
+
+import org.springframework.stereotype.Service;
+
+import com.lqragent.backend.chat.entity.AgentRunLog;
+import com.lqragent.backend.chat.proxy.AiServerWsProxy;
+import com.lqragent.backend.chat.service.AgentRunLogService;
+import com.lqragent.backend.chat.service.ChatSessionService;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * P0 默认答疑通道：用户消息直接转发 ai-server 进行流式对话。
@@ -55,7 +57,7 @@ public class QaAgentService {
                 int durationMs = (int) (System.currentTimeMillis() - startTime);
                 agentRunLogService.completeRun(runLog.getId(), durationMs, null);
                 if (aiServerSessionId != null) {
-                    chatSessionService.updateAiServerSessionId(sessionId, aiServerSessionId);
+                    chatSessionService.updateAiServerSessionId(Long.parseLong(sessionId), aiServerSessionId);
                 }
                 callback.onDone(aiServerSessionId);
             }

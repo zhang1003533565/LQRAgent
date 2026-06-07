@@ -147,10 +147,14 @@ public class OrchestratorCore {
                 // 根据发送方执行后续任务
                 switch (sender) {
                     case AgentIds.LEARNING_PATH -> {
-                        // 路径完成 → 发送到资源生成
-                        Object path = msg.getContent().get("path");
-                        sendTask(state.taskId, AgentIds.RESOURCE, "batch_generate",
-                                Map.of("path", path));
+                        // 路径完成 → 立即返回给前端，不等后续链
+                        log.info("[Orchestrator] learning path ready, sending to frontend");
+                        state.setComplete(true);
+                        sendToFrontend(state.session, Map.of(
+                                "type", "complete",
+                                "taskId", state.taskId,
+                                "results", state.results
+                        ));
                     }
                     case AgentIds.RESOURCE -> {
                         // 资源完成 → 发送到质量评估
@@ -237,6 +241,7 @@ public class OrchestratorCore {
         
         // 用 LLM 做意图识别
         String intent = recognizeIntent(message, userId);
+        log.info("[Orchestrator] intent recognized: {}, routing...", intent);
         
         switch (intent) {
             case "greeting":
@@ -287,8 +292,8 @@ public class OrchestratorCore {
                 "只返回以下意图之一（小写英文）：\n" +
                 "- greeting: 纯粹的打招呼、问候（如：你好、hi、hello）\n" +
                 "- help: 询问系统功能、帮助（如：你能做什么）\n" +
-                "- learning_path: 要求生成/规划学习路径、学习计划（如：帮我制定学习计划、生成学习路径）\n" +
-                "- resource: 要求生成学习资源、讲义（如：帮我生成讲义、给我学习资料）\n" +
+                "- learning_path: 想学习某个主题、要求规划学习路径/计划（如：我想学Python、帮我制定学习计划、生成学习路径、学什么好）\n" +
+                "- resource: 要求生成具体学习资源、讲义（如：帮我生成讲义、给我学习资料）\n" +
                 "- quiz: 要求做练习题、测试（如：给我出几道题）\n" +
                 "- recommendation: 要求推荐学习资源、推荐练习（如：推荐一些学习资源、推荐练习题）\n" +
                 "- diagram: 要求画图、生成图表、思维导图（如：画一个学习路线图、生成思维导图）\n" +
@@ -305,7 +310,8 @@ public class OrchestratorCore {
                 "重要规则：\n" +
                 "1. 如果消息同时包含问候和其他内容，忽略问候，返回主要内容的意图\n" +
                 "2. 仔细分析用户的真实需求，不要默认返回 qa\n" +
-                "3. 只返回意图词，不要其他内容。";
+                "3. 「我想学X」「我想学习X」「教我X」「X怎么学」→ learning_path\n" +
+                "4. 只返回意图词，不要其他内容。";
             
             // 获取对话历史
             String history = "";

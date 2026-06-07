@@ -65,10 +65,12 @@ public class AiServerWsProxy {
                         @Override
                         public void onOpen(WebSocket webSocket) {
                             log.info("[AiServerWsProxy] connected to ai-server");
+                            // 添加中文回复指令
+                            String chineseInstruction = "[System Instruction: Please respond in Chinese (中文). Use Simplified Chinese for all responses.]\\n\\n";
                             var payloadNode = objectMapper.createObjectNode()
                                     .put("type", "message")
-                                    .put("message", userMessage)
-                                    .put("content", userMessage)
+                                    .put("message", chineseInstruction + userMessage)
+                                    .put("content", chineseInstruction + userMessage)
                                     .put("session_id", sessionId != null ? sessionId : "");
                             String primaryKb = null;
                             var kbArray = payloadNode.putArray("knowledge_bases");

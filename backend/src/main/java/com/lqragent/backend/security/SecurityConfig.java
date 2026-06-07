@@ -56,6 +56,8 @@ public class SecurityConfig {
                 // 测试控制台
                 .requestMatchers("/api/test/**").permitAll()
                 .requestMatchers("/console.html").permitAll()
+                // 用户记忆
+                .requestMatchers("/api/memory/**").permitAll()
                 // 其余接口需要认证
                 .anyRequest().authenticated()
             )

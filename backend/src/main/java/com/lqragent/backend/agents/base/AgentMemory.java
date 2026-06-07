@@ -1,24 +1,34 @@
 package com.lqragent.backend.agents.base;
 
-import lombok.Data;
+import com.lqragent.backend.chat.entity.ChatMessage;
+import com.lqragent.backend.chat.service.ChatHistoryService;
+import com.lqragent.backend.chat.service.UserMemoryService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Agent 上下文记忆
- * 存储每个用户的对话历史，供 Agent 参考
+ * 支持短期记忆（内存）和长期记忆（数据库）
  */
+@Slf4j
 @Component
+@RequiredArgsConstructor
 public class AgentMemory {
     
-    // 用户对话历史：userId -> 消息列表
+    private final ChatHistoryService historyService;
+    private final UserMemoryService memoryService;
+    
+    // 用户对话历史：userId -> 消息列表（短期记忆，内存）
     private final Map<Long, List<MemoryEntry>> userMemories = new ConcurrentHashMap<>();
     
     private static final int MAX_MEMORY_SIZE = 20; // 每个用户最多存储 20 条
     
-    @Data
+    @lombok.Data
     public static class MemoryEntry {
         private final String role;      // user / assistant
         private final String content;   // 消息内容
@@ -34,21 +44,95 @@ public class AgentMemory {
     }
     
     /**
-     * 记录用户消息
+     * 记录用户消息（同时持久化）
      */
     public void addUserMessage(Long userId, String content) {
-        userMemories.computeIfAbsent(userId, k -> new ArrayList<>())
-                .add(new MemoryEntry("user", content, null));
-        trimMemory(userId);
+        addUserMessage(userId, null, content);
     }
     
     /**
-     * 记录 Agent 回复
+     * 记录用户消息（带 sessionId 持久化）
+     */
+    public void addUserMessage(Long userId, Long sessionId, String content) {
+        // 1. 保存到短期记忆
+        userMemories.computeIfAbsent(userId, k -> new ArrayList<>())
+                .add(new MemoryEntry("user", content, null));
+        trimMemory(userId);
+        
+        // 2. 持久化到数据库
+        if (sessionId != null) {
+            try {
+                historyService.saveMessage(sessionId, userId, "user", content, null);
+            } catch (Exception e) {
+                log.warn("[AgentMemory] save user message failed: {}", e.getMessage());
+            }
+        }
+    }
+    
+    /**
+     * 记录 Agent 回复（同时持久化）
      */
     public void addAgentResponse(Long userId, String content, String agent) {
+        addAgentResponse(userId, null, content, agent);
+    }
+    
+    /**
+     * 记录 Agent 回复（带 sessionId 持久化）
+     */
+    public void addAgentResponse(Long userId, Long sessionId, String content, String agent) {
+        // 1. 保存到短期记忆
         userMemories.computeIfAbsent(userId, k -> new ArrayList<>())
                 .add(new MemoryEntry("assistant", content, agent));
         trimMemory(userId);
+        
+        // 2. 持久化到数据库
+        if (sessionId != null) {
+            try {
+                historyService.saveMessage(sessionId, userId, "assistant", content, agent);
+            } catch (Exception e) {
+                log.warn("[AgentMemory] save agent response failed: {}", e.getMessage());
+            }
+        }
+    }
+    
+    /**
+     * 获取上下文（短期记忆 + 重要长期记忆）
+     */
+    public String getContext(Long userId, Long sessionId) {
+        StringBuilder context = new StringBuilder();
+        
+        // 1. 添加长期重要记忆
+        try {
+            String longTerm = memoryService.getImportantMemoriesForPrompt(userId, 3);
+            if (!longTerm.isEmpty()) {
+                context.append(longTerm).append("\n");
+            }
+        } catch (Exception e) {
+            log.warn("[AgentMemory] get long-term memory failed: {}", e.getMessage());
+        }
+        
+        // 2. 添加短期对话历史
+        String shortTerm = getFormattedHistory(userId, 10);
+        if (!shortTerm.isEmpty()) {
+            context.append(shortTerm);
+        }
+        
+        return context.toString();
+    }
+    
+    /**
+     * 加载历史会话到短期记忆
+     */
+    public void loadSession(Long userId, Long sessionId) {
+        try {
+            List<ChatMessage> messages = historyService.getSessionMessages(sessionId, 20);
+            List<MemoryEntry> entries = messages.stream()
+                    .map(m -> new MemoryEntry(m.getRole(), m.getContent(), m.getAgentName()))
+                    .collect(Collectors.toList());
+            userMemories.put(userId, entries);
+        } catch (Exception e) {
+            log.warn("[AgentMemory] load session failed: {}", e.getMessage());
+        }
     }
     
     /**
@@ -97,7 +181,7 @@ public class AgentMemory {
     
     private String truncate(String text, int maxLen) {
         if (text == null) return "";
-        text = text.replaceAll("\\n", " ").replaceAll("\n", " ");
+        text = text.replaceAll("\n", " ").replaceAll("\n", " ");
         return text.length() > maxLen ? text.substring(0, maxLen) + "..." : text;
     }
 }

@@ -319,7 +319,7 @@ const AGENT_TEST_FIELDS: Record<string, TestFieldDef[]> = {
   ],
   resourcefacade: [
     { key: 'kpId', label: '知识点 ID', placeholder: '如：python_decorator', hint: '要生成资源的知识点' },
-    { key: 'resourceType', label: '资源类型', type: 'select', defaultValue: 'LESSON',
+    { key: 'resourceType', label: '资源类型', placeholder: '选择资源类型', type: 'select', defaultValue: 'LESSON',
       options: [
         { label: 'LESSON — 讲义文档', value: 'LESSON' },
         { label: 'QUIZ — 练习题目', value: 'QUIZ' },
@@ -395,7 +395,7 @@ function AgentDetailView({
 
   const myStats = stats?.stats?.find((s) => s.agent === def.agentLogName)
   const totalCalls = myStats?.total ?? 0
-  const successRate = totalCalls > 0 ? Math.round((myStats.success / totalCalls) * 100) : 0
+  const successRate = totalCalls > 0 ? Math.round(((myStats?.success ?? 0) / totalCalls) * 100) : 0
   const status = totalCalls > 0 ? 'online' : 'idle'
   const statusDot = status === 'online' ? 'bg-green-500' : 'bg-yellow-500'
 

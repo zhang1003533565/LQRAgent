@@ -26,4 +26,8 @@ public final class AgentIds {
     public static final String RECOMMENDATION = "recommendation_agent";
     public static final String ASSESSMENT = "assessment_agent";
     public static final String INTERVENTION = "intervention_agent";
+    
+    // 新增：媒体生成相关
+    public static final String PROMPT_GEN = "prompt_gen_agent";   // Prompt 生成
+    public static final String MEDIA_GEN = "media_gen_agent";     // 媒体生成
 }

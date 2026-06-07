@@ -1,12 +1,14 @@
 package com.lqragent.backend.agents.learnerprofile.service;
 
-import com.lqragent.backend.chat.entity.ChatMessage;
-import com.lqragent.backend.chat.proxy.AiServerWsProxy;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.util.List;
+
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+import com.lqragent.backend.chat.entity.ChatMessage;
+import com.lqragent.backend.chat.proxy.AiServerWsProxy;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * LLM 画像抽取器。
@@ -34,8 +36,8 @@ public class ProfileExtractor {
         // 拼接对话摘要
         StringBuilder sb = new StringBuilder();
         for (ChatMessage m : messages) {
-            String who = m.getSender() == ChatMessage.Sender.USER ? "学生" : "AI";
-            sb.append(who).append(": ").append(m.getBody()).append("\n");
+            String who = "user".equals(m.getRole()) ? "学生" : "AI";
+            sb.append(who).append(": ").append(m.getContent()).append("\n");
         }
         String dialogSummary = sb.toString();
 

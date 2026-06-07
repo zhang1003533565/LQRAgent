@@ -1,11 +1,23 @@
 package com.lqragent.backend.chat.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
+import java.time.LocalDateTime;
+
 import org.hibernate.annotations.Comment;
 import org.hibernate.annotations.CreationTimestamp;
 
-import java.time.LocalDateTime;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "agent_run_log")
@@ -60,6 +72,28 @@ public class AgentRunLog {
     @Column(name = "created_at")
     @Comment("记录时间")
     private LocalDateTime createdAt;
+
+    // ====== 新增：链路追踪字段 ======
+
+    @Column(name = "trace_id", length = 64)
+    @Comment("链路ID（同一任务共享）")
+    private String traceId;
+
+    @Column(name = "span_id", length = 64)
+    @Comment("当前跨度ID")
+    private String spanId;
+
+    @Column(name = "parent_span_id", length = 64)
+    @Comment("父跨度ID")
+    private String parentSpanId;
+
+    @Column(name = "input_summary", length = 500)
+    @Comment("输入摘要")
+    private String inputSummary;
+
+    @Column(name = "output_summary", length = 500)
+    @Comment("输出摘要")
+    private String outputSummary;
 
     public enum RunStatus {
         RUNNING, SUCCESS, FAILED

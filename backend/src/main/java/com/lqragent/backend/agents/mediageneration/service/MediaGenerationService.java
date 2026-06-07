@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
@@ -43,6 +44,28 @@ public class MediaGenerationService {
     private final AppRuntimeConfig runtimeConfig;
 
     private static final String MEDIA_DIR = "media/generated";
+
+    /**
+     * 创建带超时配置的 RestClient。
+     * 图片生成 connectTimeout=10s, readTimeout=60s。
+     * 视频生成 connectTimeout=10s, readTimeout=120s。
+     */
+    private static RestClient createMediaRestClient(int connectTimeoutMs, int readTimeoutMs) {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(connectTimeoutMs);
+        factory.setReadTimeout(readTimeoutMs);
+        return RestClient.builder().requestFactory(factory).build();
+    }
+
+    /** 图片 RestClient：10s 连接超时 + 60s 读取超时 */
+    private static RestClient imageClient() {
+        return createMediaRestClient(10_000, 60_000);
+    }
+
+    /** 视频 RestClient：10s 连接超时 + 120s 读取超时 */
+    private static RestClient videoClient() {
+        return createMediaRestClient(10_000, 120_000);
+    }
 
     @Transactional
     public MediaResult generate(String kpId, String prompt) {
@@ -108,7 +131,7 @@ public class MediaGenerationService {
         }
         try {
             String base = host.endsWith("/") ? host.substring(0, host.length() - 1) : host;
-            String response = RestClient.builder().build()
+            String response = imageClient()
                     .post()
                     .uri(base + "/images/generations")
                     .header("Authorization", "Bearer " + apiKey)
@@ -155,7 +178,7 @@ public class MediaGenerationService {
                     "num_inference_steps", 20
             );
             String base = host.endsWith("/") ? host.substring(0, host.length() - 1) : host;
-            String response = RestClient.builder().build()
+            String response = imageClient()
                     .post()
                     .uri(base + "/images/generations")
                     .header("Authorization", "Bearer " + apiKey)
@@ -189,7 +212,7 @@ public class MediaGenerationService {
             return buildPlaceholderSvg("API Key 未配置");
         }
         try {
-            RestClient client = RestClient.builder().build();
+            RestClient client = imageClient();
             @SuppressWarnings("unchecked")
             Map<String, Object> resp = client.post()
                     .uri("https://api.openai.com/v1/images/generations")
@@ -220,7 +243,7 @@ public class MediaGenerationService {
             return buildPlaceholderSvg("API Key 未配置");
         }
         try {
-            RestClient client = RestClient.builder().build();
+            RestClient client = imageClient();
             @SuppressWarnings("unchecked")
             Map<String, Object> resp = client.post()
                     .uri("https://api.stability.ai/v2beta/stable-image/generate/ultra")
@@ -257,7 +280,7 @@ public class MediaGenerationService {
 
         switch (provider) {
             case "agnes" -> {
-                videoUrl = callAgnesVideo(finalPrompt, apiKey, host, model);
+                videoUrl = callAgnesVideo(finalPrompt, apiKey, host, model, 5);
             }
             default -> {
                 videoUrl = "";
@@ -285,15 +308,23 @@ public class MediaGenerationService {
      * 调用 Agnes AI 视频生成（异步任务模式）。
      * POST /v1/videos → 提交任务
      * GET  /v1/videos/{taskId} → 轮询结果
+     * @param durationSeconds 目标时长（秒），5/10/18，默认 5
      */
-    private String callAgnesVideo(String prompt, String apiKey, String host, String model) {
+    private String callAgnesVideo(String prompt, String apiKey, String host, String model, int durationSeconds) {
         if (apiKey.isBlank()) {
             log.warn("[MediaGeneration] Agnes Video API key not configured");
             return "";
         }
         try {
             String base = host.endsWith("/") ? host.substring(0, host.length() - 1) : host;
-            RestClient client = RestClient.builder().build();
+            RestClient client = videoClient();
+
+            // 根据目标时长计算 num_frames（需满足 8n+1，上限 441，固定 frame_rate=24）
+            int rawFrames = durationSeconds * 24;
+            int numFrames = Math.min(441, ((rawFrames - 1) / 8) * 8 + 1);
+            if (numFrames < 1) numFrames = 1;
+
+            log.info("[MediaGeneration] Agnes Video 目标时长={}s, num_frames={}, frame_rate=24", durationSeconds, numFrames);
 
             // Step 1: 提交生成任务
             String submitResp = client.post()
@@ -305,7 +336,7 @@ public class MediaGenerationService {
                             "prompt", prompt,
                             "height", 768,
                             "width", 1152,
-                            "num_frames", 121,
+                            "num_frames", numFrames,
                             "frame_rate", 24
                     ))
                     .retrieve()
@@ -396,8 +427,9 @@ public class MediaGenerationService {
 
     /**
      * 自由生视频：直接用 prompt 生成视频，不需要知识点 ID（控制台测试用）。
+     * @param durationSeconds 目标时长（秒），5/10/18，默认 5
      */
-    public String generateVideoByPrompt(String prompt) {
+    public String generateVideoByPrompt(String prompt, int durationSeconds) {
         String provider = runtimeConfig.get(ConfigKeys.VIDEO_BINDING, "mock");
         String apiKey = runtimeConfig.get(ConfigKeys.VIDEO_API_KEY, "");
         String host = runtimeConfig.get(ConfigKeys.VIDEO_HOST, "https://apihub.agnes-ai.com/v1");
@@ -405,12 +437,17 @@ public class MediaGenerationService {
 
         switch (provider) {
             case "agnes" -> {
-                return callAgnesVideo(prompt, apiKey, host, model);
+                return callAgnesVideo(prompt, apiKey, host, model, durationSeconds);
             }
             default -> {
                 return "";
             }
         }
+    }
+
+    /** 兼容旧接口：默认 5 秒 */
+    public String generateVideoByPrompt(String prompt) {
+        return generateVideoByPrompt(prompt, 5);
     }
 
     public Path getMediaPath(Long resourceId) {

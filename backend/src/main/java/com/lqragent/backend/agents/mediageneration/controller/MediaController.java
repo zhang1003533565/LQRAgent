@@ -72,16 +72,23 @@ public class MediaController {
         ));
     }
 
-    @Operation(summary = "自由生视频测试", description = "直接用 prompt 生成视频，不需要知识点 ID")
+    @Operation(summary = "自由生视频测试", description = "直接用 prompt 生成视频，不需要知识点 ID。可选 duration 控制时长（5/10/18秒，默认5）")
     @PostMapping("/test-video")
     public ApiResponse<java.util.Map<String, Object>> testVideo(
-            @RequestBody java.util.Map<String, String> body) {
-        String prompt = body.getOrDefault("prompt", "教学演示视频");
-        String videoUrl = mediaGenerationService.generateVideoByPrompt(prompt);
+            @RequestBody java.util.Map<String, Object> body) {
+        String prompt = String.valueOf(body.getOrDefault("prompt", "教学演示视频"));
+        int duration = 5;
+        try {
+            Object d = body.get("duration");
+            if (d instanceof Number n) duration = n.intValue();
+            else if (d instanceof String s && !s.isBlank()) duration = Integer.parseInt(s);
+        } catch (NumberFormatException ignored) { /* use default */ }
+        String videoUrl = mediaGenerationService.generateVideoByPrompt(prompt, duration);
         return ApiResponse.ok(java.util.Map.of(
                 "success", true,
                 "videoUrl", videoUrl,
-                "prompt", prompt
+                "prompt", prompt,
+                "duration", duration
         ));
     }
 

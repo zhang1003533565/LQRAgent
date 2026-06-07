@@ -55,9 +55,10 @@ export function useOrchestrator() {
             break
 
           case 'complete':
-            // 提取路径数据
-            const pathData = data.results?.learning_path_agent?.path
-            if (pathData) {
+            // 提取路径数据：优先 path key，回退到 result key
+            const agentResult = data.results?.learning_path_agent
+            const pathData = agentResult?.path || agentResult?.result
+            if (pathData && typeof pathData === 'object' && pathData.nodes) {
               setPath(pathData)
             }
             setRunning(false)

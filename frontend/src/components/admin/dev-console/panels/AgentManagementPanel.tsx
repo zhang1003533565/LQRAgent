@@ -182,6 +182,12 @@ const AGENTS: AgentDef[] = [
           { label: 'illustration — 图片', value: 'illustration' },
           { label: 'video — AI 视频', value: 'video' },
         ] },
+      { key: 'duration', label: '视频时长', placeholder: '选择视频时长', type: 'select', defaultValue: '5',
+        options: [
+          { label: '~5 秒 (121 frames)', value: '5' },
+          { label: '~10 秒 (241 frames)', value: '10' },
+          { label: '~18 秒 (441 frames)', value: '18' },
+        ] },
     ],
   },
   
@@ -299,9 +305,11 @@ function AgentDetail({ agent, stats, configMap, onSave, saving }: {
           return
         }
         if (mediaType === 'video') {
-          const r = await http.post<{ data: { success: boolean; videoUrl: string; prompt: string } }>(
+          const duration = parseInt((payload.duration as string) || '5', 10)
+          const r = await http.post<{ data: { success: boolean; videoUrl: string; prompt: string; duration: number } }>(
             '/media/test-video',
-            { prompt },
+            { prompt, duration },
+            { timeout: 300000 }, // 视频生成最长等 5 分钟
           )
           res = r.data.data
         } else {

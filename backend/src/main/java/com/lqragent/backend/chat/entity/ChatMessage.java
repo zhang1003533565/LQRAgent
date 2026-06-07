@@ -1,15 +1,28 @@
 package com.lqragent.backend.chat.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
+import java.time.LocalDateTime;
+
 import org.hibernate.annotations.Comment;
 import org.hibernate.annotations.CreationTimestamp;
 
-import java.time.LocalDateTime;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
+/**
+ * 聊天消息实体
+ */
 @Entity
 @Table(name = "chat_message")
-@Comment("智能体交互对话历史表")
+@Comment("聊天消息表")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -22,39 +35,37 @@ public class ChatMessage {
     @Comment("主键ID")
     private Long id;
 
+    @Column(name = "session_id", nullable = false)
+    @Comment("会话ID")
+    private Long sessionId;
+
     @Column(name = "user_id", nullable = false)
-    @Comment("学生用户ID")
+    @Comment("用户ID")
     private Long userId;
 
-    @Column(name = "session_id", nullable = false, length = 64)
-    @Comment("会话隔离ID")
-    private String sessionId;
+    @Column(nullable = false, length = 20)
+    @Comment("角色：user/assistant/system")
+    private String role;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 16)
-    @Comment("发送方：USER用户/AI智能体")
-    private Sender sender;
+    @Column(columnDefinition = "TEXT")
+    @Comment("消息内容")
+    private String content;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "content_type", nullable = false, length = 32)
+    @Column(name = "content_type", length = 20)
     @Builder.Default
-    @Comment("内容类型：TEXT纯文本/MULTI_CARD多模态卡片")
-    private ContentType contentType = ContentType.TEXT;
+    @Comment("内容类型：text/multi_card/diagram")
+    private String contentType = "text";
 
-    @Column(columnDefinition = "LONGTEXT", nullable = false)
-    @Comment("消息主体（文本或多模态卡片JSON）")
-    private String body;
+    @Column(name = "agent_name", length = 50)
+    @Comment("处理该消息的Agent")
+    private String agentName;
+
+    @Column(columnDefinition = "JSON")
+    @Comment("附加信息（RAG源、图表代码等）")
+    private String metadata;
 
     @CreationTimestamp
     @Column(name = "created_at")
-    @Comment("消息创建时间")
+    @Comment("创建时间")
     private LocalDateTime createdAt;
-
-    public enum Sender {
-        USER, AI
-    }
-
-    public enum ContentType {
-        TEXT, MULTI_CARD
-    }
 }

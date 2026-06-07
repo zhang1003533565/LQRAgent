@@ -35,13 +35,15 @@ public class OrchLearningPathAgent extends OrchBaseAgent {
     
     @Override
     protected Map<String, Object> callService(AgentMessage request, String action) {
-        if ("generate_path".equals(action)) {
+        // Orchestrator 发消息时未设置 action，默认 "default"，需兼容处理
+        if ("generate_path".equals(action) || "default".equals(action)) {
             try {
                 String goal = (String) request.getContent().getOrDefault("goal", "");
                 String userIdStr = request.getContent().get("userId") != null
                         ? request.getContent().get("userId").toString() : "2";
                 Long userId = Long.parseLong(userIdStr);
                 
+                log.info("[{}] callService executing with goal='{}', userId={}", agentId, goal, userId);
                 var path = pathService.generatePath(userId, goal, null);
                 Map<String, Object> result = new java.util.HashMap<>();
                 result.put("path", path);
@@ -51,6 +53,7 @@ public class OrchLearningPathAgent extends OrchBaseAgent {
                 return null;
             }
         }
+        log.warn("[{}] callService skipped: unknown action '{}'", agentId, action);
         return null;
     }
 }

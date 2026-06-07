@@ -1,41 +1,41 @@
 package com.lqragent.backend.chat.handler;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.lqragent.backend.orchestrator.OrchestratorCore;
-import com.lqragent.backend.core.session.RequestContext;
-import com.lqragent.backend.chat.entity.ChatMessage;
-import com.lqragent.backend.chat.entity.ChatSession;
-import com.lqragent.backend.chat.proxy.AiServerWsProxy;
-import com.lqragent.backend.chat.repository.ChatMessageRepository;
-import com.lqragent.backend.chat.service.ChatSessionService;
-import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
-import com.lqragent.backend.agents.intelligentqa.service.QaAgentService;
-import com.lqragent.backend.agents.learn.path.service.LearningPathService;
-import com.lqragent.backend.agents.base.AgentMemory;
-import com.lqragent.backend.agents.base.LlmClient;
-import com.lqragent.backend.agents.serve.recommendation.tools.GetRecommendationTool;
-import com.lqragent.backend.agents.learn.state.tools.AnalyzeWeaknessTool;
-import com.lqragent.backend.agents.learn.spacedrepetition.tools.GetReviewScheduleTool;
-import com.lqragent.backend.agents.learn.difficulty.tools.AdjustDifficultyTool;
-import com.lqragent.backend.agents.learn.learningstyle.tools.DetectLearningStyleTool;
-import com.lqragent.backend.agents.content.summarygen.tools.GenerateSummaryTool;
-import com.lqragent.backend.agents.serve.intervention.tools.GetInterventionTool;
-import com.lqragent.backend.agents.serve.assessment.tools.GradeAnswerTool;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lqragent.backend.agents.base.AgentMemory;
+import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.content.summarygen.tools.GenerateSummaryTool;
+import com.lqragent.backend.agents.intelligentqa.service.QaAgentService;
+import com.lqragent.backend.agents.learn.difficulty.tools.AdjustDifficultyTool;
+import com.lqragent.backend.agents.learn.learningstyle.tools.DetectLearningStyleTool;
+import com.lqragent.backend.agents.learn.path.service.LearningPathService;
+import com.lqragent.backend.agents.learn.spacedrepetition.tools.GetReviewScheduleTool;
+import com.lqragent.backend.agents.learn.state.tools.AnalyzeWeaknessTool;
+import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
+import com.lqragent.backend.agents.serve.assessment.tools.GradeAnswerTool;
+import com.lqragent.backend.agents.serve.intervention.tools.GetInterventionTool;
+import com.lqragent.backend.agents.serve.recommendation.tools.GetRecommendationTool;
+import com.lqragent.backend.chat.entity.ChatMessage;
+import com.lqragent.backend.chat.entity.ChatSession;
+import com.lqragent.backend.chat.proxy.AiServerWsProxy;
+import com.lqragent.backend.chat.repository.ChatMessageRepository;
+import com.lqragent.backend.chat.service.ChatSessionService;
+import com.lqragent.backend.core.session.RequestContext;
+import com.lqragent.backend.orchestrator.OrchestratorCore;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * /ws/chat WebSocket 端点处理器。
@@ -89,6 +89,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
+        log.info("[WS] received message: sessionId={}, payload={}", session.getId(), message.getPayload());
         var userInfo = sessionManager.getUserInfo(session.getId());
         if (userInfo == null) {
             sendEvent(session, "error", "未认证");
@@ -108,39 +109,44 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         String type = node.has("type") ? node.get("type").asText() : "";
         String content = node.has("content") ? node.get("content").asText() : "";
-        String sessionId = node.has("session_id") ? node.get("session_id").asText() : null;
 
         if (!"message".equals(type) || content.isBlank()) {
             return;
         }
 
         // Resolve or create chat session
-        if (sessionId == null || sessionId.isBlank()) {
+        Long sessionId = null;
+        if (node.has("session_id") && !node.get("session_id").asText().isBlank()) {
+            try {
+                sessionId = Long.parseLong(node.get("session_id").asText());
+            } catch (NumberFormatException e) {
+                // ignore
+            }
+        }
+        
+        String sessionIdStr = null;
+        if (sessionId == null) {
             ChatSession chatSession = chatSessionService.createSession(userInfo.userId(), generateTitle(content));
             sessionId = chatSession.getId();
+            sessionIdStr = String.valueOf(sessionId);
             sendEvent(session, "session_created", objectMapper.createObjectNode()
-                    .put("session_id", sessionId)
+                    .put("session_id", sessionIdStr)
                     .put("title", chatSession.getTitle())
                     .toString());
         } else {
-            chatSessionService.findById(sessionId)
-                    .orElseGet(() -> chatSessionService.createSession(userInfo.userId(), generateTitle(content)));
+            // 验证会话是否存在，如果不存在则创建新会话并更新 sessionId
+            ChatSession existingSession = chatSessionService.findById(sessionId).orElse(null);
+            if (existingSession == null) {
+                ChatSession newSession = chatSessionService.createSession(userInfo.userId(), generateTitle(content));
+                sessionId = newSession.getId();
+            }
+            sessionIdStr = String.valueOf(sessionId);
         }
 
-        // 记录用户消息到 Agent 记忆
-        agentMemory.addUserMessage(userInfo.userId(), content);
-        
-        // Persist user message
-        ChatMessage userMsg = ChatMessage.builder()
-                .userId(userInfo.userId())
-                .sessionId(sessionId)
-                .sender(ChatMessage.Sender.USER)
-                .contentType(ChatMessage.ContentType.TEXT)
-                .body(content)
-                .build();
-        chatMessageRepository.save(userMsg);
+        // 记录用户消息到 Agent 记忆（同时持久化到DB）
+        agentMemory.addUserMessage(userInfo.userId(), sessionId, content);
 
-        final String finalSessionId = sessionId;
+        final String finalSessionId = sessionIdStr;
 
         // OrchestratorCore: 意图识别 + 路由
         sendEvent(session, "agent_step", objectMapper.createObjectNode()
@@ -161,7 +167,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     .put("status", "failed")
                     .toString());
             sendEvent(session, "error", "处理异常: " + e.getMessage());
-            persistAiMessage(userInfo.userId(), finalSessionId, "抱歉，处理异常: " + e.getMessage());
+            agentMemory.addAgentResponse(userInfo.userId(), Long.parseLong(finalSessionId), "抱歉，处理异常: " + e.getMessage(), "orchestrator");
             return;
         }
 
@@ -179,7 +185,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             sendEvent(session, "done", objectMapper.createObjectNode()
                     .put("session_id", finalSessionId)
                     .toString());
-            persistAiMessage(userInfo.userId(), finalSessionId, response);
+            agentMemory.addAgentResponse(userInfo.userId(), Long.parseLong(finalSessionId), response, "orchestrator");
             triggerProfileExtractionAsync(userInfo.userId(), finalSessionId, session);
             return;
         }
@@ -211,8 +217,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     sendEvent(session, "done", objectMapper.createObjectNode()
                             .put("session_id", finalSessionId)
                             .toString());
-                    persistAiMessage(userInfo.userId(), finalSessionId, fullResponse.toString());
-                    agentMemory.addAgentResponse(userInfo.userId(), fullResponse.toString(), "qa_agent");
+                    agentMemory.addAgentResponse(userInfo.userId(), Long.parseLong(finalSessionId), fullResponse.toString(), "qa_agent");
                     triggerProfileExtractionAsync(currentUserId, finalSessionId, session);
                 }
 
@@ -228,7 +233,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     sendEvent(session, "done", objectMapper.createObjectNode()
                             .put("session_id", finalSessionId)
                             .toString());
-                    persistAiMessage(userInfo.userId(), finalSessionId, fallbackResponse);
+                    agentMemory.addAgentResponse(userInfo.userId(), Long.parseLong(finalSessionId), fallbackResponse, "qa_agent");
                 }
 
                 @Override
@@ -507,7 +512,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         sendEvent(session, "done", objectMapper.createObjectNode()
                 .put("session_id", finalSessionId)
                 .toString());
-        persistAiMessage(userInfo.userId(), finalSessionId, response);
+        agentMemory.addAgentResponse(userInfo.userId(), Long.parseLong(finalSessionId), response, agent);
         triggerProfileExtractionAsync(userInfo.userId(), finalSessionId, session);
     }
 
@@ -578,17 +583,6 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                         .toString());
             }
         });
-    }
-
-    private void persistAiMessage(Long userId, String sessionId, String body) {
-        ChatMessage aiMsg = ChatMessage.builder()
-                .userId(userId)
-                .sessionId(sessionId)
-                .sender(ChatMessage.Sender.AI)
-                .contentType(ChatMessage.ContentType.TEXT)
-                .body(body)
-                .build();
-        chatMessageRepository.save(aiMsg);
     }
 
     /**
