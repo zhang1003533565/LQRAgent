@@ -11,6 +11,7 @@ import com.lqragent.backend.agents.base.BaseAgent;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.user.profile.tools.GetProfileTool;
 import com.lqragent.backend.orchestrator.AgentIds;
+import com.lqragent.backend.prompt.service.PromptService;
 
 /**
  * 画像构建智能体
@@ -22,14 +23,15 @@ public class ProfileAgent extends BaseAgent {
     private final GetProfileTool getProfileTool;
     
     public ProfileAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                        GetProfileTool getProfileTool, AgentRegistry agentRegistry) {
-        super(AgentIds.PROFILE, llmClient, toolRegistry, agentRegistry);
+                        GetProfileTool getProfileTool, AgentRegistry agentRegistry,
+                        PromptService promptService) {
+        super(AgentIds.PROFILE, llmClient, toolRegistry, agentRegistry, promptService);
         this.getProfileTool = getProfileTool;
     }
     
     @Override
     protected String getSystemPrompt() {
-        return loadPrompt("agents/profile/prompts/system.md");
+        return getManagedPrompt();
     }
     
     @Override

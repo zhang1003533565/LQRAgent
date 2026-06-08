@@ -1,13 +1,26 @@
 /**
  * 合并的 Agent 管理面板 — 左侧列表 + 右侧详情
  * 替代原来 9 个独立的 Agent 面板
+ * 集成提示词管理功能
  */
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getAgentStats, listSysConfig, saveSysConfig, testAgent, type AgentStatsResponse } from '@/api/admin/admin'
 import http from '@/api/http'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/admin/dev-console/ui'
+import { Card, CardContent, CardHeader, CardTitle, ConsoleBadge } from '@/components/admin/dev-console/ui'
 import { panel } from './panelStyles'
+
+// ==================== 提示词管理接口 ====================
+
+interface AgentPrompt {
+  id: number
+  agentId: string
+  agentName: string
+  promptContent: string
+  defaultContent: string
+  version: number
+  updatedAt: string
+}
 
 // ==================== Agent 定义 ====================
 
@@ -22,6 +35,8 @@ interface AgentDef {
   aiSource: string
   features: AgentFeature[]
   testFields: { key: string; label: string; placeholder: string; type?: 'text' | 'textarea' | 'select'; options?: { label: string; value: string }[]; defaultValue?: string }[]
+  /** 对应的 PromptService agentId */
+  promptAgentId?: string
 }
 
 const AGENTS: AgentDef[] = [
@@ -35,6 +50,7 @@ const AGENTS: AgentDef[] = [
       { label: '任务分发', status: 'done', note: 'Redis Streams 消息队列' },
     ],
     testFields: [{ key: 'message', label: '用户意图', placeholder: '如：我想学 Python 装饰器' }],
+    promptAgentId: 'planning_agent',
   },
   
   // 用户模块
@@ -46,6 +62,7 @@ const AGENTS: AgentDef[] = [
       { label: '学习画像分析', status: 'done', note: 'LLM 分析用户知识水平' },
     ],
     testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
+    promptAgentId: 'profile_agent',
   },
   
   // 学习模块
@@ -58,6 +75,7 @@ const AGENTS: AgentDef[] = [
       { label: '动态路径生成', status: 'done', note: '无匹配时 LLM 生成' },
     ],
     testFields: [{ key: 'goal', label: '学习目标', placeholder: '如：掌握 Python 装饰器' }],
+    promptAgentId: 'learning_path_agent',
   },
   {
     id: 'knowledgestate', name: '知识状态', logName: 'knowledge_state_agent', category: '学习',
@@ -68,6 +86,7 @@ const AGENTS: AgentDef[] = [
       { label: '薄弱点识别', status: 'done', note: '正确率<60%为薄弱' },
     ],
     testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
+    promptAgentId: 'knowledge_state_agent',
   },
   {
     id: 'spacedrepetition', name: '间隔复习', logName: 'spaced_repetition_agent', category: '学习',
@@ -77,6 +96,7 @@ const AGENTS: AgentDef[] = [
       { label: '复习调度', status: 'done', note: '间隔重复算法' },
     ],
     testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
+    promptAgentId: 'spaced_repetition_agent',
   },
   {
     id: 'difficulty', name: '自适应难度', logName: 'difficulty_agent', category: '学习',
@@ -86,6 +106,7 @@ const AGENTS: AgentDef[] = [
       { label: '难度评估', status: 'done', note: '基于答题表现' },
     ],
     testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
+    promptAgentId: 'difficulty_agent',
   },
   {
     id: 'learningstyle', name: '学习风格', logName: 'learning_style_agent', category: '学习',
@@ -95,6 +116,7 @@ const AGENTS: AgentDef[] = [
       { label: '风格识别', status: 'done', note: '基于学习行为' },
     ],
     testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
+    promptAgentId: 'learning_style_agent',
   },
   {
     id: 'effect', name: '效果评估', logName: 'effect_agent', category: '学习',
@@ -105,6 +127,7 @@ const AGENTS: AgentDef[] = [
       { label: 'LLM 薄弱点分析', status: 'done', note: 'analyzeWeakness()' },
     ],
     testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
+    promptAgentId: 'effect_agent',
   },
   
   // 内容模块
@@ -117,6 +140,7 @@ const AGENTS: AgentDef[] = [
       { label: '练习题目', status: 'done', note: '选择+填空+编程' },
     ],
     testFields: [{ key: 'pathId', label: '路径ID', placeholder: '如：258' }],
+    promptAgentId: 'resource_agent',
   },
   {
     id: 'diagram', name: '图表生成', logName: 'diagram_agent', category: '内容',
@@ -127,6 +151,7 @@ const AGENTS: AgentDef[] = [
       { label: '思维导图', status: 'done', note: '知识结构可视化' },
     ],
     testFields: [{ key: 'topic', label: '主题', placeholder: '如：Python 装饰器' }],
+    promptAgentId: 'diagram_agent',
   },
   {
     id: 'summary', name: '总结生成', logName: 'summary_agent', category: '内容',
@@ -136,6 +161,7 @@ const AGENTS: AgentDef[] = [
       { label: '知识点总结', status: 'done', note: '提炼核心要点' },
     ],
     testFields: [{ key: 'topic', label: '主题', placeholder: '如：Python 装饰器' }],
+    promptAgentId: 'summary_agent',
   },
   {
     id: 'content', name: '内容分析', logName: 'content_analysis_agent', category: '内容',
@@ -146,6 +172,7 @@ const AGENTS: AgentDef[] = [
       { label: 'LLM 提取', status: 'done', note: 'analyzeWithLlm()' },
     ],
     testFields: [{ key: 'message', label: '文档内容', type: 'textarea', placeholder: '粘贴文档内容' }],
+    promptAgentId: 'content_analysis_agent',
   },
   {
     id: 'promptgen', name: '提示词生成', logName: 'prompt_generation', category: '内容',
@@ -164,6 +191,7 @@ const AGENTS: AgentDef[] = [
           { label: 'video — 视频', value: 'video' },
         ] },
     ],
+    promptAgentId: 'prompt_gen_agent',
   },
   {
     id: 'mediagen', name: '媒体生成', logName: 'media_generation', category: '内容',
@@ -189,6 +217,7 @@ const AGENTS: AgentDef[] = [
           { label: '~18 秒 (441 frames)', value: '18' },
         ] },
     ],
+    promptAgentId: 'media_gen_agent',
   },
   
   // 质检模块
@@ -201,6 +230,7 @@ const AGENTS: AgentDef[] = [
       { label: '敏感内容过滤', status: 'done', note: 'SensitiveFilter' },
     ],
     testFields: [{ key: 'content', label: '资源内容', type: 'textarea', placeholder: '粘贴需要质检的文本' }],
+    promptAgentId: 'quality_agent',
   },
   
   // 服务模块
@@ -213,6 +243,7 @@ const AGENTS: AgentDef[] = [
       { label: '知识库检索', status: 'done', note: 'RAG 向量检索' },
     ],
     testFields: [{ key: 'message', label: '问题内容', placeholder: '如：Python 中 *args 和 **kwargs 区别？' }],
+    promptAgentId: 'qa_agent',
   },
   {
     id: 'recommendation', name: '个性化推荐', logName: 'recommendation_agent', category: '服务',
@@ -222,6 +253,7 @@ const AGENTS: AgentDef[] = [
       { label: '资源推荐', status: 'done', note: '基于学习画像' },
     ],
     testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
+    promptAgentId: 'recommendation_agent',
   },
   {
     id: 'assessment', name: '评估批改', logName: 'assessment_agent', category: '服务',
@@ -231,6 +263,7 @@ const AGENTS: AgentDef[] = [
       { label: '答案评分', status: 'done', note: '多维度评估' },
     ],
     testFields: [{ key: 'answer', label: '答案', type: 'textarea', placeholder: '粘贴待评估的答案' }],
+    promptAgentId: 'assessment_agent',
   },
   {
     id: 'intervention', name: '学习干预', logName: 'intervention_agent', category: '服务',
@@ -240,6 +273,7 @@ const AGENTS: AgentDef[] = [
       { label: '问题检测', status: 'done', note: '识别学习困难' },
     ],
     testFields: [{ key: 'userId', label: '用户ID', placeholder: '如：2' }],
+    promptAgentId: 'intervention_agent',
   },
 
 ]
@@ -260,9 +294,10 @@ function StatusBadge({ status }: { status: 'done' | 'wip' | 'todo' }) {
   return <span className={`text-xs ${(m[status] ?? m.todo).cls}`}>{(m[status] ?? m.todo).label}</span>
 }
 
-function AgentDetail({ agent, stats, configMap, onSave, saving }: {
+function AgentDetail({ agent, stats, configMap, onSave, saving, promptData, promptLoading, onPromptSave, promptSaving }: {
   agent: AgentDef; stats: AgentStatsResponse | undefined; configMap: Map<string, string>
   onSave: (key: string, value: string) => void; saving: boolean
+  promptData: AgentPrompt | null; promptLoading: boolean; onPromptSave: (content: string) => void; promptSaving: boolean
 }) {
   const [testValues, setTestValues] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {}
@@ -271,6 +306,16 @@ function AgentDetail({ agent, stats, configMap, onSave, saving }: {
   })
   const [testResult, setTestResult] = useState<string | null>(null)
   const [testLoading, setTestLoading] = useState(false)
+  const [showPromptEditor, setShowPromptEditor] = useState(false)
+  const [editPromptContent, setEditPromptContent] = useState('')
+  
+  // 当 agent 或 promptData 变化时重置编辑器状态
+  const prevAgentIdRef = useState(agent.id)
+  if (prevAgentIdRef[0] !== agent.id) {
+    prevAgentIdRef[1](agent.id)
+    setShowPromptEditor(false)
+    setEditPromptContent('')
+  }
 
   const myStats = stats?.stats?.find(s => s.agent === agent.logName)
   const total = myStats?.total ?? 0
@@ -384,6 +429,87 @@ function AgentDetail({ agent, stats, configMap, onSave, saving }: {
           </select>
         </div>
       </div>
+
+      {/* 提示词管理 */}
+      {agent.promptAgentId && (
+        <div className="rounded-lg border border-console-border p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-medium uppercase tracking-wider text-console-muted">提示词配置</h4>
+              {promptData && <ConsoleBadge variant="muted">v{promptData.version}</ConsoleBadge>}
+              {promptLoading && <ConsoleBadge variant="muted">加载中...</ConsoleBadge>}
+            </div>
+            <button
+              onClick={() => {
+                if (showPromptEditor) {
+                  setShowPromptEditor(false)
+                  setEditPromptContent('')
+                } else {
+                  setShowPromptEditor(true)
+                  setEditPromptContent(promptData?.promptContent ?? '')
+                }
+              }}
+              disabled={!promptData}
+              className="text-xs text-console-blue hover:underline disabled:opacity-50"
+            >
+              {showPromptEditor ? '收起' : '编辑提示词'}
+            </button>
+          </div>
+          
+          {showPromptEditor ? (
+            <div className="space-y-2">
+              <textarea
+                value={editPromptContent}
+                onChange={e => setEditPromptContent(e.target.value)}
+                rows={12}
+                className="w-full rounded border border-console-border bg-console-card px-3 py-2 text-xs font-mono text-console-text resize-y focus:outline-none focus:border-console-blue"
+                placeholder="输入系统提示词（Markdown 格式）"
+              />
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={async () => {
+                    if (!confirm('确定要重置为默认提示词吗？')) return
+                    try {
+                      await fetch(`/api/admin/prompts/${agent.promptAgentId}/reset`, { method: 'POST' })
+                      onPromptSave('') // 触发刷新
+                    } catch (e) {
+                      console.error('Reset failed:', e)
+                    }
+                  }}
+                  className="text-xs text-console-red hover:underline"
+                >
+                  重置为默认
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setShowPromptEditor(false); setEditPromptContent('') }}
+                    className="rounded border border-console-border px-3 py-1 text-xs text-console-text hover:bg-console-border/30"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={() => onPromptSave(editPromptContent)}
+                    disabled={promptSaving}
+                    className="rounded bg-console-blue px-3 py-1 text-xs text-white hover:bg-blue-500 disabled:opacity-50"
+                  >
+                    {promptSaving ? '保存中...' : '保存提示词'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <pre className="max-h-32 overflow-auto rounded bg-console-card/80 p-3 text-xs font-mono text-console-text whitespace-pre-wrap">
+              {promptData?.promptContent ?? '加载中...'}
+            </pre>
+          )}
+          
+          {promptData?.updatedAt && (
+            <p className="mt-2 text-[10px] text-console-muted">
+              最后更新: {new Date(promptData.updatedAt).toLocaleString()}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* 测试 */}
       <div className="rounded-lg border border-console-border p-4">
@@ -510,6 +636,36 @@ export default function AgentManagementPanel() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin', 'sys-config'] }),
   })
 
+  // 提示词管理
+  const selectedAgent = AGENTS.find(a => a.id === selectedId) ?? AGENTS[0]
+  const promptAgentId = selectedAgent.promptAgentId
+  
+  const { data: promptData, refetch: refetchPrompt, isLoading: promptLoading } = useQuery({
+    queryKey: ['admin', 'prompt', promptAgentId],
+    queryFn: async () => {
+      if (!promptAgentId) return null
+      const res = await fetch(`/api/admin/prompts/${promptAgentId}`)
+      if (!res.ok) return null
+      return res.json() as Promise<AgentPrompt>
+    },
+    enabled: !!promptAgentId,
+  })
+  
+  const promptMutation = useMutation({
+    mutationFn: async ({ agentId, content }: { agentId: string; content: string }) => {
+      const res = await fetch(`/api/admin/prompts/${agentId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, updatedBy: 'admin' }),
+      })
+      if (!res.ok) throw new Error('保存失败')
+      return res.json()
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'prompt'] })
+    },
+  })
+
   const configMap = new Map<string, string>()
   configs.forEach(c => configMap.set(c.configKey, c.configValue))
 
@@ -550,6 +706,7 @@ export default function AgentManagementPanel() {
                       {agentsInCat.map(a => {
                         const s = stats?.stats?.find(x => x.agent === a.logName)
                         const total = s?.total ?? 0
+                        const hasPrompt = !!a.promptAgentId
                         return (
                           <button
                             key={a.id}
@@ -560,7 +717,10 @@ export default function AgentManagementPanel() {
                                 : 'text-console-text hover:bg-console-border/30'
                             }`}
                           >
-                            <div className="font-medium text-[13px]">{a.name}</div>
+                            <div className="flex items-center gap-1">
+                              <span className="font-medium text-[13px]">{a.name}</span>
+                              {hasPrompt && <span className="text-[9px] text-console-blue">✦</span>}
+                            </div>
                             <div className="text-[10px] text-console-muted">
                               {total > 0 ? `${total} 次调用` : '未调用'}
                             </div>
@@ -584,6 +744,14 @@ export default function AgentManagementPanel() {
           configMap={configMap}
           onSave={(k, v) => saveMutation.mutate({ key: k, value: v })}
           saving={saveMutation.isPending}
+          promptData={promptData ?? null}
+          promptLoading={promptLoading}
+          onPromptSave={(content) => {
+            if (promptAgentId && content.trim()) {
+              promptMutation.mutate({ agentId: promptAgentId, content })
+            }
+          }}
+          promptSaving={promptMutation.isPending}
         />
       </div>
     </div>

@@ -10,6 +10,7 @@ import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.BaseAgent;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.learn.spacedrepetition.tools.GetReviewScheduleTool;
+import com.lqragent.backend.prompt.service.PromptService;
 
 @Component
 public class SpacedRepetitionAgent extends BaseAgent {
@@ -17,14 +18,15 @@ public class SpacedRepetitionAgent extends BaseAgent {
     private final GetReviewScheduleTool tool;
     
     public SpacedRepetitionAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                                   GetReviewScheduleTool tool, AgentRegistry agentRegistry) {
-        super("spaced_repetition_agent", llmClient, toolRegistry, agentRegistry);
+                                   GetReviewScheduleTool tool, AgentRegistry agentRegistry,
+                                   PromptService promptService) {
+        super("spaced_repetition_agent", llmClient, toolRegistry, agentRegistry, promptService);
         this.tool = tool;
     }
     
     @Override
     protected String getSystemPrompt() {
-        return loadPrompt("agents.spacedrepetition.prompts.system.md");
+        return getManagedPrompt();
     }
     
     @Override

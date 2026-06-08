@@ -10,6 +10,7 @@ import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.BaseAgent;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.content.summarygen.tools.GenerateSummaryTool;
+import com.lqragent.backend.prompt.service.PromptService;
 
 @Component
 public class SummaryAgent extends BaseAgent {
@@ -17,14 +18,15 @@ public class SummaryAgent extends BaseAgent {
     private final GenerateSummaryTool tool;
     
     public SummaryAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                       GenerateSummaryTool tool, AgentRegistry agentRegistry) {
-        super("summary_agent", llmClient, toolRegistry, agentRegistry);
+                       GenerateSummaryTool tool, AgentRegistry agentRegistry,
+                       PromptService promptService) {
+        super("summary_agent", llmClient, toolRegistry, agentRegistry, promptService);
         this.tool = tool;
     }
     
     @Override
     protected String getSystemPrompt() {
-        return loadPrompt("agents.summarygen.prompts.system.md");
+        return getManagedPrompt();
     }
     
     @Override

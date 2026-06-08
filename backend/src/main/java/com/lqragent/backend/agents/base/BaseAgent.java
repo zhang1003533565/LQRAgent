@@ -12,6 +12,7 @@ import org.springframework.core.io.ClassPathResource;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.orchestrator.context.TaskContext;
+import com.lqragent.backend.prompt.service.PromptService;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -27,6 +28,7 @@ public abstract class BaseAgent implements AgentInterface {
     protected final LlmClient llmClient;
     protected final AgentToolRegistry toolRegistry;
     protected final AgentRegistry agentRegistry;
+    protected final PromptService promptService;
     protected final ObjectMapper mapper = new ObjectMapper();
     
     /** 当前任务上下文（由 Orchestrator 传入，用于 Agent 间数据共享） */
@@ -36,10 +38,15 @@ public abstract class BaseAgent implements AgentInterface {
     private static final int MAX_ITERATIONS = 5;
     
     protected BaseAgent(String agentId, LlmClient llmClient, AgentToolRegistry toolRegistry, AgentRegistry agentRegistry) {
+        this(agentId, llmClient, toolRegistry, agentRegistry, null);
+    }
+    
+    protected BaseAgent(String agentId, LlmClient llmClient, AgentToolRegistry toolRegistry, AgentRegistry agentRegistry, PromptService promptService) {
         this.agentId = agentId;
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.agentRegistry = agentRegistry;
+        this.promptService = promptService;
     }
     
     @Override
@@ -175,6 +182,17 @@ public abstract class BaseAgent implements AgentInterface {
             sb.append("上下文: ").append(mapper.valueToTree(request.context()).toString());
         }
         return sb.toString();
+    }
+    
+    /**
+     * 从 PromptService 获取提示词（支持动态管理）
+     * 如果 PromptService 不可用，则从 classpath 文件加载
+     */
+    protected String getManagedPrompt() {
+        if (promptService != null) {
+            return promptService.getPrompt(agentId);
+        }
+        return "You are a helpful assistant.";
     }
     
     /**

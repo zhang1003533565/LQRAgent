@@ -10,6 +10,7 @@ import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.BaseAgent;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.serve.assessment.tools.GradeAnswerTool;
+import com.lqragent.backend.prompt.service.PromptService;
 
 @Component
 public class AssessmentAgent extends BaseAgent {
@@ -17,14 +18,15 @@ public class AssessmentAgent extends BaseAgent {
     private final GradeAnswerTool tool;
     
     public AssessmentAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                                   GradeAnswerTool tool, AgentRegistry agentRegistry) {
-        super("assessment_agent", llmClient, toolRegistry, agentRegistry);
+                                   GradeAnswerTool tool, AgentRegistry agentRegistry,
+                                   PromptService promptService) {
+        super("assessment_agent", llmClient, toolRegistry, agentRegistry, promptService);
         this.tool = tool;
     }
     
     @Override
     protected String getSystemPrompt() {
-        return loadPrompt("agents.assessment.prompts.system.md");
+        return getManagedPrompt();
     }
     
     @Override

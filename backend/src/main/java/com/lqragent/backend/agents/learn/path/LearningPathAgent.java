@@ -12,6 +12,7 @@ import com.lqragent.backend.agents.base.BaseAgent;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.learn.path.tools.GeneratePathTool;
 import com.lqragent.backend.orchestrator.AgentIds;
+import com.lqragent.backend.prompt.service.PromptService;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -22,14 +23,15 @@ public class LearningPathAgent extends BaseAgent {
     private final GeneratePathTool generatePathTool;
     
     public LearningPathAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                             GeneratePathTool generatePathTool, AgentRegistry agentRegistry) {
-        super(AgentIds.LEARNING_PATH, llmClient, toolRegistry, agentRegistry);
+                             GeneratePathTool generatePathTool, AgentRegistry agentRegistry,
+                             PromptService promptService) {
+        super(AgentIds.LEARNING_PATH, llmClient, toolRegistry, agentRegistry, promptService);
         this.generatePathTool = generatePathTool;
     }
     
     @Override
     protected String getSystemPrompt() {
-        return loadPrompt("agents/learningpath/prompts/system.md");
+        return getManagedPrompt();
     }
     
     @Override

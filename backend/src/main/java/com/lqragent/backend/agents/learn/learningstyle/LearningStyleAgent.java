@@ -10,6 +10,7 @@ import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.BaseAgent;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.learn.learningstyle.tools.DetectLearningStyleTool;
+import com.lqragent.backend.prompt.service.PromptService;
 
 @Component
 public class LearningStyleAgent extends BaseAgent {
@@ -17,14 +18,15 @@ public class LearningStyleAgent extends BaseAgent {
     private final DetectLearningStyleTool tool;
     
     public LearningStyleAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                       DetectLearningStyleTool tool, AgentRegistry agentRegistry) {
-        super("learning_style_agent", llmClient, toolRegistry, agentRegistry);
+                       DetectLearningStyleTool tool, AgentRegistry agentRegistry,
+                       PromptService promptService) {
+        super("learning_style_agent", llmClient, toolRegistry, agentRegistry, promptService);
         this.tool = tool;
     }
     
     @Override
     protected String getSystemPrompt() {
-        return loadPrompt("agents.learningstyle.prompts.system.md");
+        return getManagedPrompt();
     }
     
     @Override

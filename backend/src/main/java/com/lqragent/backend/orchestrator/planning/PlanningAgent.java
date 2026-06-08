@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -123,24 +124,16 @@ public class PlanningAgent {
             )
         )
     );
-
-    /** 系统提示词 */
-    private static final String SYSTEM_PROMPT = """
-        你是一个智能学习助手的任务路由器。
-        根据用户消息的语义和意图，选择最合适的工具来处理。
-            
-        核心原则：
-        1. 理解用户的真实意图，而不是匹配关键词
-        2. 只有纯粹的问候才选 greeting，包含任何学习意图的都不要选 greeting
-        3. 询问具体内容（如"知识库有什么"、"我的学习情况"）不是询问功能，应该路由到对应功能
-        4. 当不确定时，优先选择 route_qa（通用问答），因为它最灵活
-        """;
-
+    
     private final AtomicInteger stepCounter = new AtomicInteger(0);
+    
+    /** 系统提示词（从文件加载） */
+    private final String systemPrompt;
 
     public PlanningAgent(LlmClient llmClient, CapabilityRegistry capabilityRegistry) {
         this.llmClient = llmClient;
         this.capabilityRegistry = capabilityRegistry;
+        this.systemPrompt = loadPrompt("agents/planning/prompts/system.md");
     }
 
     /**
@@ -159,7 +152,7 @@ public class PlanningAgent {
                 Map.of("role", "user", "content", message)
             );
             
-            LlmClient.LlmResponse response = llmClient.chat(SYSTEM_PROMPT, messages, INTENT_TOOLS);
+            LlmClient.LlmResponse response = llmClient.chat(systemPrompt, messages, INTENT_TOOLS);
             
             // 检查是否有 tool_calls
             if (response.toolCalls() != null && !response.toolCalls().isEmpty()) {
@@ -304,5 +297,18 @@ public class PlanningAgent {
     private String truncate(String text, int maxLen) {
         if (text == null) return "";
         return text.length() > maxLen ? text.substring(0, maxLen) + "..." : text;
+    }
+    
+    /**
+     * 从 classpath 加载提示词文件
+     */
+    private String loadPrompt(String path) {
+        try {
+            ClassPathResource resource = new ClassPathResource(path);
+            return resource.getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            log.error("[PlanningAgent] failed to load prompt: {}", path, e);
+            return "You are a helpful assistant.";
+        }
     }
 }

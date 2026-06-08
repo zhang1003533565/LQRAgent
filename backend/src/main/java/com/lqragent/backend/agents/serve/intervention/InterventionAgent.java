@@ -11,6 +11,7 @@ import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.BaseAgent;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.serve.intervention.tools.GetInterventionTool;
+import com.lqragent.backend.prompt.service.PromptService;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -21,14 +22,15 @@ public class InterventionAgent extends BaseAgent {
     private final GetInterventionTool tool;
     
     public InterventionAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                                   GetInterventionTool tool, AgentRegistry agentRegistry) {
-        super("intervention_agent", llmClient, toolRegistry, agentRegistry);
+                                   GetInterventionTool tool, AgentRegistry agentRegistry,
+                                   PromptService promptService) {
+        super("intervention_agent", llmClient, toolRegistry, agentRegistry, promptService);
         this.tool = tool;
     }
     
     @Override
     protected String getSystemPrompt() {
-        return loadPrompt("agents.intervention.prompts.system.md");
+        return getManagedPrompt();
     }
     
     @Override

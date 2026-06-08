@@ -12,6 +12,7 @@ import com.lqragent.backend.agents.base.BaseAgent;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.serve.qa.tools.SearchKnowledgeTool;
 import com.lqragent.backend.orchestrator.AgentIds;
+import com.lqragent.backend.prompt.service.PromptService;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -22,14 +23,15 @@ public class QaAgent extends BaseAgent {
     private final SearchKnowledgeTool searchKnowledgeTool;
     
     public QaAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                   SearchKnowledgeTool searchKnowledgeTool, AgentRegistry agentRegistry) {
-        super(AgentIds.QA, llmClient, toolRegistry, agentRegistry);
+                   SearchKnowledgeTool searchKnowledgeTool, AgentRegistry agentRegistry,
+                   PromptService promptService) {
+        super(AgentIds.QA, llmClient, toolRegistry, agentRegistry, promptService);
         this.searchKnowledgeTool = searchKnowledgeTool;
     }
     
     @Override
     protected String getSystemPrompt() {
-        return loadPrompt("agents/qa/prompts/system.md");
+        return getManagedPrompt();
     }
     
     @Override

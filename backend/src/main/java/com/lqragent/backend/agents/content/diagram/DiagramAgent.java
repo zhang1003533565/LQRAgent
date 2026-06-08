@@ -10,6 +10,7 @@ import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.BaseAgent;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.content.diagram.tools.GenerateDiagramTool;
+import com.lqragent.backend.prompt.service.PromptService;
 
 @Component
 public class DiagramAgent extends BaseAgent {
@@ -17,14 +18,15 @@ public class DiagramAgent extends BaseAgent {
     private final GenerateDiagramTool tool;
     
     public DiagramAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                       GenerateDiagramTool tool, AgentRegistry agentRegistry) {
-        super("diagram_agent", llmClient, toolRegistry, agentRegistry);
+                       GenerateDiagramTool tool, AgentRegistry agentRegistry,
+                       PromptService promptService) {
+        super("diagram_agent", llmClient, toolRegistry, agentRegistry, promptService);
         this.tool = tool;
     }
     
     @Override
     protected String getSystemPrompt() {
-        return loadPrompt("agents.diagram.prompts.system.md");
+        return getManagedPrompt();
     }
     
     @Override

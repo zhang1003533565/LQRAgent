@@ -28,6 +28,7 @@ public class SchemaFixRunner {
         fixAutoIncrement("chat_session");
         fixAutoIncrement("chat_message");
         fixChatMessageBodyColumn();
+        fixAgentPromptDefaultContentColumn();
         log.info("[SchemaFixRunner] 数据库表结构检查完成");
     }
 
@@ -107,6 +108,34 @@ public class SchemaFixRunner {
 
         } catch (Exception e) {
             log.error("[SchemaFixRunner] 修复 chat_message body 字段失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 修复 agent_prompt 表的 default_content 和 prompt_content 字段为 TEXT 类型。
+     * JPA @Lob 注解不会自动修改已存在的列类型。
+     */
+    private void fixAgentPromptDefaultContentColumn() {
+        try {
+            List<Map<String, Object>> columns = jdbc.queryForList(
+                    "SELECT COLUMN_NAME, COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'agent_prompt' AND COLUMN_NAME IN ('default_content', 'prompt_content')");
+
+            if (columns.isEmpty()) {
+                log.debug("[SchemaFixRunner] agent_prompt 表不存在，跳过");
+                return;
+            }
+
+            for (Map<String, Object> col : columns) {
+                String colName = (String) col.get("COLUMN_NAME");
+                String colType = (String) col.get("COLUMN_TYPE");
+                if (!"text".equalsIgnoreCase(colType) && !"longtext".equalsIgnoreCase(colType)) {
+                    log.info("[SchemaFixRunner] 修复 agent_prompt 表的 {} 字段：{} -> TEXT", colName, colType);
+                    jdbc.execute("ALTER TABLE agent_prompt MODIFY COLUMN " + colName + " TEXT NOT NULL");
+                }
+            }
+            log.info("[SchemaFixRunner] agent_prompt 表修复完成");
+        } catch (Exception e) {
+            log.error("[SchemaFixRunner] 修复 agent_prompt 表失败: {}", e.getMessage());
         }
     }
 }

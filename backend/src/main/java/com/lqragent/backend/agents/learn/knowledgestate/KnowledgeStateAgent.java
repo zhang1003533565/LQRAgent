@@ -10,6 +10,7 @@ import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.BaseAgent;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.learn.knowledgestate.tools.GetKnowledgeStateTool;
+import com.lqragent.backend.prompt.service.PromptService;
 
 @Component
 public class KnowledgeStateAgent extends BaseAgent {
@@ -17,14 +18,15 @@ public class KnowledgeStateAgent extends BaseAgent {
     private final GetKnowledgeStateTool getKnowledgeStateTool;
     
     public KnowledgeStateAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                               GetKnowledgeStateTool getKnowledgeStateTool, AgentRegistry agentRegistry) {
-        super("knowledge_state_agent", llmClient, toolRegistry, agentRegistry);
+                               GetKnowledgeStateTool getKnowledgeStateTool, AgentRegistry agentRegistry,
+                               PromptService promptService) {
+        super("knowledge_state_agent", llmClient, toolRegistry, agentRegistry, promptService);
         this.getKnowledgeStateTool = getKnowledgeStateTool;
     }
     
     @Override
     protected String getSystemPrompt() {
-        return loadPrompt("agents/knowledgestate/prompts/system.md");
+        return getManagedPrompt();
     }
     
     @Override

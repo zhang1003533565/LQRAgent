@@ -11,6 +11,7 @@ import com.lqragent.backend.agents.base.BaseAgent;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.learn.state.tools.AnalyzeWeaknessTool;
 import com.lqragent.backend.orchestrator.AgentIds;
+import com.lqragent.backend.prompt.service.PromptService;
 
 @Component
 public class EffectAgent extends BaseAgent {
@@ -18,14 +19,15 @@ public class EffectAgent extends BaseAgent {
     private final AnalyzeWeaknessTool analyzeWeaknessTool;
     
     public EffectAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                       AnalyzeWeaknessTool analyzeWeaknessTool, AgentRegistry agentRegistry) {
-        super(AgentIds.EFFECT, llmClient, toolRegistry, agentRegistry);
+                       AnalyzeWeaknessTool analyzeWeaknessTool, AgentRegistry agentRegistry,
+                       PromptService promptService) {
+        super(AgentIds.EFFECT, llmClient, toolRegistry, agentRegistry, promptService);
         this.analyzeWeaknessTool = analyzeWeaknessTool;
     }
     
     @Override
     protected String getSystemPrompt() {
-        return loadPrompt("agents/effect/prompts/system.md");
+        return getManagedPrompt();
     }
     
     @Override

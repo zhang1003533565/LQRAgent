@@ -12,6 +12,7 @@ import com.lqragent.backend.agents.base.BaseAgent;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.check.content.tools.CheckQualityTool;
 import com.lqragent.backend.orchestrator.AgentIds;
+import com.lqragent.backend.prompt.service.PromptService;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -22,14 +23,15 @@ public class QualityAgent extends BaseAgent {
     private final CheckQualityTool checkQualityTool;
     
     public QualityAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                        CheckQualityTool checkQualityTool, AgentRegistry agentRegistry) {
-        super(AgentIds.QUALITY, llmClient, toolRegistry, agentRegistry);
+                        CheckQualityTool checkQualityTool, AgentRegistry agentRegistry,
+                        PromptService promptService) {
+        super(AgentIds.QUALITY, llmClient, toolRegistry, agentRegistry, promptService);
         this.checkQualityTool = checkQualityTool;
     }
     
     @Override
     protected String getSystemPrompt() {
-        return loadPrompt("agents/quality/prompts/system.md");
+        return getManagedPrompt();
     }
     
     @Override
