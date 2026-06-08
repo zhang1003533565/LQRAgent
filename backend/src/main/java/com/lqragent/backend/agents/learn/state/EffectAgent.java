@@ -1,11 +1,16 @@
 package com.lqragent.backend.agents.learn.state;
 
-import com.lqragent.backend.agents.base.*;
-import com.lqragent.backend.agents.learn.state.tools.AnalyzeWeaknessTool;
-import com.lqragent.backend.orchestrator.AgentIds;
+import java.util.List;
+
 import org.springframework.stereotype.Component;
 
-import java.util.List;
+import com.lqragent.backend.agents.base.AgentRegistry;
+import com.lqragent.backend.agents.base.AgentTool;
+import com.lqragent.backend.agents.base.AgentToolRegistry;
+import com.lqragent.backend.agents.base.BaseAgent;
+import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.learn.state.tools.AnalyzeWeaknessTool;
+import com.lqragent.backend.orchestrator.AgentIds;
 
 @Component
 public class EffectAgent extends BaseAgent {
@@ -13,8 +18,8 @@ public class EffectAgent extends BaseAgent {
     private final AnalyzeWeaknessTool analyzeWeaknessTool;
     
     public EffectAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                       AnalyzeWeaknessTool analyzeWeaknessTool) {
-        super(AgentIds.EFFECT, llmClient, toolRegistry);
+                       AnalyzeWeaknessTool analyzeWeaknessTool, AgentRegistry agentRegistry) {
+        super(AgentIds.EFFECT, llmClient, toolRegistry, agentRegistry);
         this.analyzeWeaknessTool = analyzeWeaknessTool;
     }
     

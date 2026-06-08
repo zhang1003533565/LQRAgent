@@ -1,10 +1,15 @@
 package com.lqragent.backend.agents.learn.spacedrepetition;
 
-import com.lqragent.backend.agents.base.*;
-import com.lqragent.backend.agents.learn.spacedrepetition.tools.GetReviewScheduleTool;
+import java.util.List;
+
 import org.springframework.stereotype.Component;
 
-import java.util.List;
+import com.lqragent.backend.agents.base.AgentRegistry;
+import com.lqragent.backend.agents.base.AgentTool;
+import com.lqragent.backend.agents.base.AgentToolRegistry;
+import com.lqragent.backend.agents.base.BaseAgent;
+import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.learn.spacedrepetition.tools.GetReviewScheduleTool;
 
 @Component
 public class SpacedRepetitionAgent extends BaseAgent {
@@ -12,8 +17,8 @@ public class SpacedRepetitionAgent extends BaseAgent {
     private final GetReviewScheduleTool tool;
     
     public SpacedRepetitionAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                                   GetReviewScheduleTool tool) {
-        super("spaced_repetition_agent", llmClient, toolRegistry);
+                                   GetReviewScheduleTool tool, AgentRegistry agentRegistry) {
+        super("spaced_repetition_agent", llmClient, toolRegistry, agentRegistry);
         this.tool = tool;
     }
     

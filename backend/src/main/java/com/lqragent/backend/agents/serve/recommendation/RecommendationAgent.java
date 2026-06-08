@@ -1,10 +1,15 @@
 package com.lqragent.backend.agents.serve.recommendation;
 
-import com.lqragent.backend.agents.base.*;
-import com.lqragent.backend.agents.serve.recommendation.tools.GetRecommendationTool;
+import java.util.List;
+
 import org.springframework.stereotype.Component;
 
-import java.util.List;
+import com.lqragent.backend.agents.base.AgentRegistry;
+import com.lqragent.backend.agents.base.AgentTool;
+import com.lqragent.backend.agents.base.AgentToolRegistry;
+import com.lqragent.backend.agents.base.BaseAgent;
+import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.serve.recommendation.tools.GetRecommendationTool;
 
 @Component
 public class RecommendationAgent extends BaseAgent {
@@ -12,8 +17,8 @@ public class RecommendationAgent extends BaseAgent {
     private final GetRecommendationTool tool;
     
     public RecommendationAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                                   GetRecommendationTool tool) {
-        super("recommendation_agent", llmClient, toolRegistry);
+                                   GetRecommendationTool tool, AgentRegistry agentRegistry) {
+        super("recommendation_agent", llmClient, toolRegistry, agentRegistry);
         this.tool = tool;
     }
     

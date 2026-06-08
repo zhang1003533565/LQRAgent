@@ -1,10 +1,15 @@
 package com.lqragent.backend.agents.content.summarygen;
 
-import com.lqragent.backend.agents.base.*;
-import com.lqragent.backend.agents.content.summarygen.tools.GenerateSummaryTool;
+import java.util.List;
+
 import org.springframework.stereotype.Component;
 
-import java.util.List;
+import com.lqragent.backend.agents.base.AgentRegistry;
+import com.lqragent.backend.agents.base.AgentTool;
+import com.lqragent.backend.agents.base.AgentToolRegistry;
+import com.lqragent.backend.agents.base.BaseAgent;
+import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.content.summarygen.tools.GenerateSummaryTool;
 
 @Component
 public class SummaryAgent extends BaseAgent {
@@ -12,8 +17,8 @@ public class SummaryAgent extends BaseAgent {
     private final GenerateSummaryTool tool;
     
     public SummaryAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                                   GenerateSummaryTool tool) {
-        super("summary_agent", llmClient, toolRegistry);
+                       GenerateSummaryTool tool, AgentRegistry agentRegistry) {
+        super("summary_agent", llmClient, toolRegistry, agentRegistry);
         this.tool = tool;
     }
     

@@ -1,10 +1,15 @@
 package com.lqragent.backend.agents.learn.learningstyle;
 
-import com.lqragent.backend.agents.base.*;
-import com.lqragent.backend.agents.learn.learningstyle.tools.DetectLearningStyleTool;
+import java.util.List;
+
 import org.springframework.stereotype.Component;
 
-import java.util.List;
+import com.lqragent.backend.agents.base.AgentRegistry;
+import com.lqragent.backend.agents.base.AgentTool;
+import com.lqragent.backend.agents.base.AgentToolRegistry;
+import com.lqragent.backend.agents.base.BaseAgent;
+import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.learn.learningstyle.tools.DetectLearningStyleTool;
 
 @Component
 public class LearningStyleAgent extends BaseAgent {
@@ -12,8 +17,8 @@ public class LearningStyleAgent extends BaseAgent {
     private final DetectLearningStyleTool tool;
     
     public LearningStyleAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                                   DetectLearningStyleTool tool) {
-        super("learning_style_agent", llmClient, toolRegistry);
+                       DetectLearningStyleTool tool, AgentRegistry agentRegistry) {
+        super("learning_style_agent", llmClient, toolRegistry, agentRegistry);
         this.tool = tool;
     }
     

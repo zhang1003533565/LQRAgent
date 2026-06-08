@@ -1,11 +1,15 @@
 package com.lqragent.backend.agents.learn.knowledgestate;
 
-import com.lqragent.backend.agents.base.*;
-import com.lqragent.backend.agents.learn.knowledgestate.tools.GetKnowledgeStateTool;
-import com.lqragent.backend.orchestrator.AgentIds;
+import java.util.List;
+
 import org.springframework.stereotype.Component;
 
-import java.util.List;
+import com.lqragent.backend.agents.base.AgentRegistry;
+import com.lqragent.backend.agents.base.AgentTool;
+import com.lqragent.backend.agents.base.AgentToolRegistry;
+import com.lqragent.backend.agents.base.BaseAgent;
+import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.learn.knowledgestate.tools.GetKnowledgeStateTool;
 
 @Component
 public class KnowledgeStateAgent extends BaseAgent {
@@ -13,8 +17,8 @@ public class KnowledgeStateAgent extends BaseAgent {
     private final GetKnowledgeStateTool getKnowledgeStateTool;
     
     public KnowledgeStateAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                               GetKnowledgeStateTool getKnowledgeStateTool) {
-        super("knowledge_state_agent", llmClient, toolRegistry);
+                               GetKnowledgeStateTool getKnowledgeStateTool, AgentRegistry agentRegistry) {
+        super("knowledge_state_agent", llmClient, toolRegistry, agentRegistry);
         this.getKnowledgeStateTool = getKnowledgeStateTool;
     }
     

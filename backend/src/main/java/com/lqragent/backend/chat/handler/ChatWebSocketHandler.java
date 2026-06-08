@@ -28,6 +28,7 @@ import com.lqragent.backend.agents.serve.assessment.tools.GradeAnswerTool;
 import com.lqragent.backend.agents.serve.intervention.tools.GetInterventionTool;
 import com.lqragent.backend.agents.serve.qa.QaAgent;
 import com.lqragent.backend.agents.serve.recommendation.tools.GetRecommendationTool;
+import com.lqragent.backend.agents.user.profile.ProfileAgent;
 import com.lqragent.backend.chat.entity.ChatSession;
 import com.lqragent.backend.chat.repository.ChatMessageRepository;
 import com.lqragent.backend.chat.service.ChatSessionService;
@@ -68,6 +69,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final GenerateSummaryTool generateSummaryTool;
     private final GetInterventionTool getInterventionTool;
     private final GradeAnswerTool gradeAnswerTool;
+    private final ProfileAgent profileAgent;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -493,6 +495,32 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     response = result.success() ? formatToolResponse("intervention", result.content()) : "分析失败，请稍后再试";
                 } catch (Exception e) {
                     response = "干预服务暂时不可用：" + e.getMessage();
+                }
+
+            } else if ("profile".equals(route)) {
+                // 调用用户画像 Agent
+                try {
+                    log.info("[WS] calling profile_agent for userId={}", userInfo.userId());
+                    
+                    sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                            .put("agent", "profile_agent")
+                            .put("label", "正在获取学习画像...")
+                            .put("status", "running")
+                            .toString());
+                    
+                    var profileRequest = new AgentRequest("profile", "获取学习画像",
+                            Map.of("userId", String.valueOf(userInfo.userId())));
+                    var profileResponse = profileAgent.process(profileRequest);
+                    
+                    if (profileResponse.success()) {
+                        response = profileResponse.content();
+                    } else {
+                        log.warn("[WS] profile_agent failed: {}", profileResponse.error());
+                        response = "获取学习画像失败，请稍后再试。";
+                    }
+                } catch (Exception e) {
+                    log.error("[WS] profile_agent error: {}", e.getMessage(), e);
+                    response = "学习画像服务暂时不可用：" + e.getMessage();
                 }
 
             } else if ("pipeline_complete".equals(route)) {

@@ -1,11 +1,16 @@
 package com.lqragent.backend.orchestrator;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.WebSocketSession;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.agents.base.AgentMemory;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.chat.service.AgentRunLogService;
@@ -14,16 +19,13 @@ import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
 import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
-import com.lqragent.backend.orchestrator.message.Performative;
 import com.lqragent.backend.orchestrator.pipeline.PipelineConfig;
 import com.lqragent.backend.orchestrator.pipeline.PipelineEngine;
 import com.lqragent.backend.orchestrator.pipeline.PipelineResult;
-import com.lqragent.backend.orchestrator.pipeline.PipelineStep;
 import com.lqragent.backend.orchestrator.pipeline.StepResult;
 import com.lqragent.backend.orchestrator.planning.PlanIntent;
 import com.lqragent.backend.orchestrator.planning.PlanResult;
 import com.lqragent.backend.orchestrator.planning.PlanningAgent;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
@@ -147,6 +149,7 @@ public class OrchestratorCore {
                     capabilityRegistry.matchBestAgent("recommendation"));
             case ASSESSMENT -> Map.of("route", "assessment", "agent",
                     capabilityRegistry.matchBestAgent("assessment"));
+            case PROFILE -> Map.of("route", "profile", "agent", "profile_agent", "message", message);
             default -> Map.of("route", "qa", "agent", AgentIds.QA, "message", message);
         };
     }

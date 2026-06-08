@@ -1,10 +1,15 @@
 package com.lqragent.backend.agents.serve.assessment;
 
-import com.lqragent.backend.agents.base.*;
-import com.lqragent.backend.agents.serve.assessment.tools.GradeAnswerTool;
+import java.util.List;
+
 import org.springframework.stereotype.Component;
 
-import java.util.List;
+import com.lqragent.backend.agents.base.AgentRegistry;
+import com.lqragent.backend.agents.base.AgentTool;
+import com.lqragent.backend.agents.base.AgentToolRegistry;
+import com.lqragent.backend.agents.base.BaseAgent;
+import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.serve.assessment.tools.GradeAnswerTool;
 
 @Component
 public class AssessmentAgent extends BaseAgent {
@@ -12,8 +17,8 @@ public class AssessmentAgent extends BaseAgent {
     private final GradeAnswerTool tool;
     
     public AssessmentAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                                   GradeAnswerTool tool) {
-        super("assessment_agent", llmClient, toolRegistry);
+                                   GradeAnswerTool tool, AgentRegistry agentRegistry) {
+        super("assessment_agent", llmClient, toolRegistry, agentRegistry);
         this.tool = tool;
     }
     

@@ -1,10 +1,15 @@
 package com.lqragent.backend.agents.content.lesson;
 
-import com.lqragent.backend.agents.base.*;
-import com.lqragent.backend.agents.content.lesson.tools.GenerateLessonTool;
+import java.util.List;
+
 import org.springframework.stereotype.Component;
 
-import java.util.List;
+import com.lqragent.backend.agents.base.AgentRegistry;
+import com.lqragent.backend.agents.base.AgentTool;
+import com.lqragent.backend.agents.base.AgentToolRegistry;
+import com.lqragent.backend.agents.base.BaseAgent;
+import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.content.lesson.tools.GenerateLessonTool;
 
 @Component
 public class LessonAgent extends BaseAgent {
@@ -12,8 +17,8 @@ public class LessonAgent extends BaseAgent {
     private final GenerateLessonTool tool;
     
     public LessonAgent(LlmClient llmClient, AgentToolRegistry toolRegistry,
-                       GenerateLessonTool tool) {
-        super("lesson_agent", llmClient, toolRegistry);
+                   GenerateLessonTool tool, AgentRegistry agentRegistry) {
+        super("lesson_agent", llmClient, toolRegistry, agentRegistry);
         this.tool = tool;
     }
     

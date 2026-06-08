@@ -42,21 +42,21 @@ public class PlanningAgent {
             "type", "function",
             "function", Map.of(
                 "name", "route_greeting",
-                "description", "用户发送纯粹的问候（如你好、hi、hello、在吗），没有任何学习相关意图"
+                "description", "用户发送纯粹的问候，没有任何学习相关意图。只有完全的问候语才选这个。"
             )
         ),
         Map.of(
             "type", "function",
             "function", Map.of(
                 "name", "route_help",
-                "description", "用户询问系统功能、使用帮助、能做什么"
+                "description", "用户明确询问这个系统能做什么、有哪些功能、如何使用。注意：询问具体内容（如知识库、画像）不算询问功能。"
             )
         ),
         Map.of(
             "type", "function",
             "function", Map.of(
                 "name", "route_learning_path",
-                "description", "用户想学习某项技能或知识（如我想学Python、教我编程、零基础入门、学习计划、学习路线）",
+                "description", "用户想要学习某项技能或知识，需要制定学习计划或学习路线",
                 "parameters", Map.of(
                     "type", "object",
                     "properties", Map.of(
@@ -70,7 +70,7 @@ public class PlanningAgent {
             "type", "function",
             "function", Map.of(
                 "name", "route_resource_generate",
-                "description", "用户请求生成学习资源（如讲义、练习题、代码示例、知识点讲解）",
+                "description", "用户请求生成学习资源，如讲义、练习题、代码示例、文档等",
                 "parameters", Map.of(
                     "type", "object",
                     "properties", Map.of(
@@ -84,7 +84,7 @@ public class PlanningAgent {
             "type", "function",
             "function", Map.of(
                 "name", "route_qa",
-                "description", "用户提问或需要解答（如什么是X、X怎么用、X的原理、X和Y的区别）",
+                "description", "用户提出具体问题需要解答，包括：知识概念查询、知识库内容查询、技术问题、原理问题等。这是最通用的路由，大部分请求都应该走这里。",
                 "parameters", Map.of(
                     "type", "object",
                     "properties", Map.of(
@@ -97,8 +97,15 @@ public class PlanningAgent {
         Map.of(
             "type", "function",
             "function", Map.of(
+                "name", "route_profile",
+                "description", "用户想要查看自己的学习画像、学习统计、知识掌握度、学习偏好、学习记录等个人信息"
+            )
+        ),
+        Map.of(
+            "type", "function",
+            "function", Map.of(
                 "name", "route_diagram",
-                "description", "用户请求生成图表、流程图、思维导图",
+                "description", "用户请求生成图表、流程图、思维导图、架构图等可视化内容",
                 "parameters", Map.of(
                     "type", "object",
                     "properties", Map.of(
@@ -107,24 +114,26 @@ public class PlanningAgent {
                     "required", List.of("topic")
                 )
             )
+        ),
+        Map.of(
+            "type", "function",
+            "function", Map.of(
+                "name", "route_recommendation",
+                "description", "用户请求推荐学习资源、练习题、学习内容"
+            )
         )
     );
 
     /** 系统提示词 */
     private static final String SYSTEM_PROMPT = """
         你是一个智能学习助手的任务路由器。
-        根据用户消息，选择最合适的工具来处理：
-        - 纯粹问候 → route_greeting
-        - 询问功能/帮助 → route_help
-        - 想学习某项技能/知识 → route_learning_path
-        - 请求生成学习资源 → route_resource_generate
-        - 提问/答疑 → route_qa
-        - 请求生成图表 → route_diagram
-        
-        重要规则：
-        1. 如果消息同时包含问候和学习意图（如"你好，我想学Python"），选择学习相关工具，不要选 greeting
-        2. 只有纯粹的问候（如"你好"、"在吗"）才选 greeting
-        3. "我想学"、"想学习"、"教我"、"入门"、"怎么学" 都表示学习意图
+        根据用户消息的语义和意图，选择最合适的工具来处理。
+            
+        核心原则：
+        1. 理解用户的真实意图，而不是匹配关键词
+        2. 只有纯粹的问候才选 greeting，包含任何学习意图的都不要选 greeting
+        3. 询问具体内容（如"知识库有什么"、"我的学习情况"）不是询问功能，应该路由到对应功能
+        4. 当不确定时，优先选择 route_qa（通用问答），因为它最灵活
         """;
 
     private final AtomicInteger stepCounter = new AtomicInteger(0);
@@ -195,6 +204,8 @@ public class PlanningAgent {
                 case "route_resource_generate" -> PlanResult.simple(PlanIntent.RESOURCE);
                 case "route_qa" -> PlanResult.simple(PlanIntent.QA);
                 case "route_diagram" -> PlanResult.simple(PlanIntent.DIAGRAM);
+                case "route_profile" -> PlanResult.simple(PlanIntent.PROFILE);
+                case "route_recommendation" -> PlanResult.simple(PlanIntent.RECOMMENDATION);
                 default -> {
                     log.warn("[PlanningAgent] unknown tool: {}, falling back to qa", toolName);
                     yield PlanResult.simple(PlanIntent.QA);
@@ -268,41 +279,10 @@ public class PlanningAgent {
     }
 
     /**
-     * 降级：基于关键词的意图匹配
+     * 降级：当 LLM 不可用时，直接返回 QA（完全依赖 LLM 判断）
      */
     private PlanResult fallbackIntentMatch(String message) {
-        String lower = message.toLowerCase();
-        if (lower.matches("^(你好|hi|hello|嗨|您好).*") || lower.matches("^(你好|hi|hello|嗨|您好)")) {
-            return PlanResult.simple(PlanIntent.GREETING);
-        }
-        if (lower.contains("帮助") || lower.contains("功能") || lower.contains("能做什么")) {
-            return PlanResult.simple(PlanIntent.HELP);
-        }
-
-        // 使用 CapabilityRegistry 智能匹配（按标签/关键词）
-        String matchedAgent = null;
-        if (lower.contains("学") || lower.contains("路径") || lower.contains("计划") || lower.contains("规划")) {
-            matchedAgent = capabilityRegistry.matchBestAgent("learning_path");
-            return PlanResult.simple(matchedAgent.equals("qa_agent") ? PlanIntent.LEARNING_PATH : PlanIntent.LEARNING_PATH);
-        }
-        if (lower.contains("资源") || lower.contains("讲义") || lower.contains("材料") || lower.contains("资料")) {
-            return PlanResult.simple(PlanIntent.RESOURCE);
-        }
-        if (lower.contains("题") || lower.contains("测验") || lower.contains("考试") || lower.contains("练习")) {
-            return PlanResult.simple(PlanIntent.QUIZ);
-        }
-        if (lower.contains("图") || lower.contains("图表") || lower.contains("思维导图") || lower.contains("流程图")) {
-            return PlanResult.simple(PlanIntent.DIAGRAM);
-        }
-        if (lower.contains("总结") || lower.contains("归纳") || lower.contains("概括")) {
-            return PlanResult.simple(PlanIntent.SUMMARY);
-        }
-        if (lower.contains("推荐")) {
-            return PlanResult.simple(PlanIntent.RECOMMENDATION);
-        }
-        if (lower.contains("评估") || lower.contains("批改") || lower.contains("打分")) {
-            return PlanResult.simple(PlanIntent.ASSESSMENT);
-        }
+        log.warn("[PlanningAgent] LLM 意图识别失败，降级为 QA");
         return PlanResult.simple(PlanIntent.QA);
     }
 

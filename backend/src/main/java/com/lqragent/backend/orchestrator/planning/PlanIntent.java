@@ -13,5 +13,6 @@ public enum PlanIntent {
     DIAGRAM,
     SUMMARY,
     RECOMMENDATION,
-    ASSESSMENT
+    ASSESSMENT,
+    PROFILE
 }
