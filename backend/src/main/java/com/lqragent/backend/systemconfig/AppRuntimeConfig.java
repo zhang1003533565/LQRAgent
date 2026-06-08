@@ -1,9 +1,11 @@
 package com.lqragent.backend.systemconfig;
 
-import com.lqragent.backend.systemconfig.service.SysConfigService;
-import lombok.RequiredArgsConstructor;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
+
+import com.lqragent.backend.systemconfig.service.SysConfigService;
+
+import lombok.RequiredArgsConstructor;
 
 /**
  * 运行时配置：数据库 sys_config 优先，否则回退 application.properties。
@@ -55,5 +57,15 @@ public class AppRuntimeConfig {
 
     public int getUploadMaxConcurrent() {
         return Integer.parseInt(get(ConfigKeys.UPLOAD_MAX_CONCURRENT, "2"));
+    }
+
+    /** ai-server WebSocket 连接超时（秒） */
+    public int getWsConnectTimeoutSec() {
+        return Integer.parseInt(get(ConfigKeys.AI_SERVER_WS_CONNECT_TIMEOUT_SEC, "10"));
+    }
+
+    /** ai-server WebSocket 响应等待超时（秒） */
+    public int getWsResponseTimeoutSec() {
+        return Integer.parseInt(get(ConfigKeys.AI_SERVER_WS_RESPONSE_TIMEOUT_SEC, "120"));
     }
 }

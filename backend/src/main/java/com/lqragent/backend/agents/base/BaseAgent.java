@@ -1,12 +1,17 @@
 package com.lqragent.backend.agents.base;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.ClassPathResource;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.core.io.ClassPathResource;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Agent 基类
@@ -45,6 +50,14 @@ public abstract class BaseAgent {
      * 实现 LLM 推理循环
      */
     public AgentResponse process(AgentRequest request) {
+        return process(request, List.of());
+    }
+    
+    /**
+     * 处理请求（主入口，支持对话历史）
+     * 实现 LLM 推理循环
+     */
+    public AgentResponse process(AgentRequest request, List<Map<String, Object>> history) {
         log.info("[{}] processing request: {}", agentId, request);
         
         // 注册工具
@@ -58,6 +71,14 @@ public abstract class BaseAgent {
         
         // LLM 推理循环
         List<Map<String, Object>> messages = new ArrayList<>();
+        
+        // 添加对话历史（如果有）
+        if (history != null && !history.isEmpty()) {
+            messages.addAll(history);
+            log.info("[{}] added {} history messages", agentId, history.size());
+        }
+        
+        // 添加当前用户消息
         messages.add(Map.of("role", "user", "content", userMessage));
         
         List<Map<String, Object>> toolSchemas = toolRegistry.getToolSchemas();

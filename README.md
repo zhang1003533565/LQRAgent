@@ -161,7 +161,9 @@ taskkill /PID <进程ID> /F
 
 ---
 
-## 当前功能完成度（简要）
+## 当前功能完成度
+
+### 核心架构
 
 | 模块 | 状态 | 说明 |
 |------|------|------|
@@ -170,14 +172,43 @@ taskkill /PID <进程ID> /F
 | 数据库表结构 | ✅ | 14 张业务表，启动时自动执行 DDL |
 | ai-server 自动拉起 | ✅ | 后端启动时自动 pip install + 启动进程 |
 | 学生工作台 UI 框架 | ✅ | 页面、路由、组件壳子、类型定义就绪 |
-| 流式对话（WebSocket） | ❌ | P0 最高优先级，后端待开发 |
-| 学习路径 / 知识图谱 | ❌ | 仅占位数据，待填写图谱+真逻辑 |
-| 资源生成（讲义/题目/示意图） | ❌ | P1 待开发 |
-| 答题 / 学习画像 | ❌ | P2 待开发 |
-| 上传进知识库 | ❌ | 队列有，AI 对接待开发（P3） |
-| 多模态（生图 / 生视频） | ❌ | P1 示意图 / P4 短视频 |
+| **意图识别（Function Calling）** | ✅ | LLM 自动选择工具，支持 6 种意图 |
+| **ReAct QA Agent** | ✅ | 真正的 ReAct 循环，支持 RAG 搜索 |
+
+### 多 Agent 组件
+
+| 分类 | Agent | 状态 | 说明 |
+|------|-------|------|------|
+| **调度层** | Orchestrator | ✅ | Function Calling 意图识别 + Pipeline 调度 |
+| | PlanningAgent | ✅ | LLM 任务拆解 |
+| **用户层** | ProfileAgent | ✅ | 用户画像分析 |
+| | LearningStyleAgent | ✅ | 学习风格检测 |
+| **学习层** | KnowledgeStateAgent | ✅ | 知识掌握度追踪 |
+| | SpacedRepetitionAgent | ✅ | 间隔复习调度 |
+| | DifficultyAgent | ✅ | 自适应难度调整 |
+| | EffectAgent | ✅ | 学习效果评估 |
+| **内容层** | QaAgent | ✅ | ReAct 问答（含 RAG） |
+| | LessonAgent | ✅ | 讲义生成 |
+| | DiagramAgent | ✅ | 图表生成 |
+| | SummaryAgent | ✅ | 总结生成 |
+| **服务层** | RecommendationAgent | ✅ | 学习推荐 |
+| | AssessmentAgent | ✅ | 评估批改 |
+| | InterventionAgent | ✅ | 学习干预 |
+| **基础层** | LearningPathService | ✅ | 学习路径规划 |
+
+### 待开发功能
+
+| 模块 | 优先级 | 说明 |
+|------|--------|------|
+| 流式对话（WebSocket） | P0 | 实时流式输出 |
+| 学习路径 / 知识图谱可视化 | P1 | 图谱可视化展示 |
+| 资源生成优化 | P1 | 讲义/题目/示意图增强 |
+| 多模态（生图 / 生视频） | P2 | 示意图/短视频生成 |
+| 上传进知识库 | P3 | 文档上传 + 向量化 |
 
 详细开发计划见 [docs/项目精简开发指南.md](./docs/项目精简开发指南.md)。
+
+**统计：** 已实现 16 个 Agent 组件，覆盖用户画像、学习路径、智能问答、资源生成、效果评估等核心功能。
 
 ---
 

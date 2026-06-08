@@ -1,19 +1,24 @@
 package com.lqragent.backend.agents.serve.qa.tools;
 
+import java.util.Map;
+
+import org.springframework.stereotype.Component;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.agents.base.AgentTool;
 import com.lqragent.backend.agents.base.AgentTool.ToolResult;
 import com.lqragent.backend.chat.proxy.AiServerWsProxy;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
+import com.lqragent.backend.systemconfig.AppRuntimeConfig;
+import com.lqragent.backend.systemconfig.ConfigKeys;
 
-import java.util.Map;
+import lombok.RequiredArgsConstructor;
 
 @Component
 @RequiredArgsConstructor
 public class SearchKnowledgeTool implements AgentTool {
     
     private final AiServerWsProxy aiServerWsProxy;
+    private final AppRuntimeConfig runtimeConfig;
     private final ObjectMapper mapper = new ObjectMapper();
     
     @Override
@@ -41,34 +46,62 @@ public class SearchKnowledgeTool implements AgentTool {
             int topK = args.containsKey("topK") ? Integer.parseInt(args.get("topK").toString()) : 3;
             
             // 调用 ai-server 知识库检索
-            // 注意：这里简化实现，实际应该调用 ai-server 的检索接口
-            // 暂时返回模拟结果
+            // 使用 streamChat 方法进行 RAG 检索
+            StringBuilder resultContent = new StringBuilder();
+            java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+            java.util.concurrent.atomic.AtomicReference<String> errorRef = new java.util.concurrent.atomic.AtomicReference<>();
             
-            java.util.List<Map<String, Object>> results = new java.util.ArrayList<>();
+            // 获取知识库配置
+            String publicKb = runtimeConfig.get(ConfigKeys.KB_PUBLIC, "kb-public");
             
-            // 模拟检索结果
-            results.add(Map.of(
-                    "content", "Python 是一种解释型、面向对象、动态数据类型的高级程序设计语言。",
-                    "source", "python_basics.md",
-                    "score", 0.95
-            ));
+            // 使用 streamChat 进行 RAG 检索
+            aiServerWsProxy.streamChat(
+                null, // sessionId
+                query, // userMessage
+                java.util.List.of(publicKb), // knowledgeBases
+                new AiServerWsProxy.StreamCallback() {
+                    @Override
+                    public void onChunk(String content) {
+                        resultContent.append(content);
+                    }
+                    
+                    @Override
+                    public void onDone(String aiServerSessionId) {
+                        latch.countDown();
+                    }
+                    
+                    @Override
+                    public void onError(String error) {
+                        errorRef.set(error);
+                        latch.countDown();
+                    }
+                }
+            );
             
-            results.add(Map.of(
-                    "content", "Python 由 Guido van Rossum 于 1991 年底设计第一个公开发行版。",
-                    "source", "python_history.md",
-                    "score", 0.85
-            ));
+            // 等待结果（最多 30 秒）
+            boolean completed = latch.await(30, java.util.concurrent.TimeUnit.SECONDS);
             
-            results.add(Map.of(
-                    "content", "Python 支持多种编程范式，包括面向对象、命令式、函数式和过程式编程。",
-                    "source", "python_features.md",
-                    "score", 0.80
-            ));
-            
-            // 限制返回数量
-            if (results.size() > topK) {
-                results = results.subList(0, topK);
+            if (!completed) {
+                return ToolResult.failure("知识检索超时");
             }
+            
+            if (errorRef.get() != null) {
+                return ToolResult.failure("知识检索失败: " + errorRef.get());
+            }
+            
+            String content = resultContent.toString().trim();
+            if (content.isEmpty()) {
+                // 如果没有检索到内容，返回默认提示
+                content = "未找到与 \"" + query + "\" 相关的知识库内容。请尝试更具体的查询。";
+            }
+            
+            // 构建结果
+            java.util.List<Map<String, Object>> results = new java.util.ArrayList<>();
+            results.add(Map.of(
+                    "content", content,
+                    "source", "knowledge_base",
+                    "score", 1.0
+            ));
             
             return ToolResult.success(mapper.writeValueAsString(Map.of(
                     "query", query,

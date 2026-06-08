@@ -12,5 +12,7 @@ public enum Performative {
     REFUSE,     // 拒绝：Agent 无法完成任务
     CFP,        // Call for Proposal：招标式任务分配
     PROPOSE,    // 提案：响应 CFP
-    CONFIRM     // 确认：任务完成确认
+    CONFIRM,     // 确认：任务完成确认
+    REQUEST_PEER, // Agent间协作请求
+    INFORM_PEER   // Agent间协作响应
 }

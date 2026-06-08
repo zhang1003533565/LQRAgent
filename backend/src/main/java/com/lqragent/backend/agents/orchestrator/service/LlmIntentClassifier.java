@@ -1,17 +1,19 @@
 package com.lqragent.backend.agents.orchestrator.service;
 
-import com.lqragent.backend.agents.orchestrator.dto.IntentResult;
-import com.lqragent.backend.systemconfig.AppRuntimeConfig;
-import com.lqragent.backend.systemconfig.ConfigKeys;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
+
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
-import java.util.List;
-import java.util.Map;
-import java.util.regex.Pattern;
+import com.lqragent.backend.agents.orchestrator.dto.IntentResult;
+import com.lqragent.backend.systemconfig.AppRuntimeConfig;
+import com.lqragent.backend.systemconfig.ConfigKeys;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * LLM 意图分类器。
@@ -30,12 +32,17 @@ public class LlmIntentClassifier {
     private static final String SYSTEM_PROMPT = """
             你是一个学习助手系统的意图分类器。根据用户输入，只返回以下之一：
             
-            qa_question    — 提问/答疑（关于概念、用法、原理、区别等所有需要解答的问题）
-            learning_path  — 规划学习路径/路线/学习顺序
+            learning_path    — 想学某项技能/知识（如"我想学Python"、"教我编程"、"零基础入门"）
             resource_generate — 生成讲义/题目/代码等学习资源
             media_generate    — 生成图片/流程图/思维导图
-            greeting          — 问候
+            qa_question      — 提问/答疑（关于概念、用法、原理、区别等）
+            greeting          — 纯粹问候，没有任何学习相关意图
             help              — 询问功能/使用帮助
+            
+            重要规则：
+            1. 如果消息同时包含问候和学习意图（如"你好，我想学Python"），返回学习意图，不要返回greeting
+            2. 只有纯粹的问候（如"你好"、"在吗"）才返回greeting
+            3. "我想学"、"想学习"、"教我"、"入门"等表达都表示learning_path意图
             
             只输出意图名称，不要任何其他文字。
             """;

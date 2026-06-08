@@ -72,4 +72,36 @@ public class AgentMessage {
                 .timestamp(System.currentTimeMillis())
                 .build();
     }
+
+    /**
+     * Agent间协作请求：一个Agent请求另一个Agent协助
+     */
+    public static AgentMessage requestPeer(String taskId, String sender, String peerAgent,
+                                            Map<String, Object> content) {
+        return AgentMessage.builder()
+                .id(UUID.randomUUID().toString())
+                .taskId(taskId)
+                .performative(Performative.REQUEST_PEER)
+                .sender(sender)
+                .receiver(peerAgent)
+                .content(content != null ? content : new HashMap<>())
+                .timestamp(System.currentTimeMillis())
+                .build();
+    }
+
+    /**
+     * Agent间协作响应
+     */
+    public static AgentMessage informPeer(String taskId, String sender, String peerAgent,
+                                           Map<String, Object> content) {
+        return AgentMessage.builder()
+                .id(UUID.randomUUID().toString())
+                .taskId(taskId)
+                .performative(Performative.INFORM_PEER)
+                .sender(sender)
+                .receiver(peerAgent)
+                .content(content != null ? content : new HashMap<>())
+                .timestamp(System.currentTimeMillis())
+                .build();
+    }
 }

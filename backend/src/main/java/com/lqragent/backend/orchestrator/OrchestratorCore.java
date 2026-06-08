@@ -1,8 +1,6 @@
 package com.lqragent.backend.orchestrator;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Service;
@@ -11,15 +9,30 @@ import org.springframework.web.socket.WebSocketSession;
 import com.lqragent.backend.agents.base.AgentMemory;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.chat.service.AgentRunLogService;
+import com.lqragent.backend.orchestrator.capability.AgentCapability;
+import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
+import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.orchestrator.message.Performative;
+import com.lqragent.backend.orchestrator.pipeline.PipelineConfig;
+import com.lqragent.backend.orchestrator.pipeline.PipelineEngine;
+import com.lqragent.backend.orchestrator.pipeline.PipelineResult;
+import com.lqragent.backend.orchestrator.pipeline.PipelineStep;
+import com.lqragent.backend.orchestrator.pipeline.StepResult;
+import com.lqragent.backend.orchestrator.planning.PlanIntent;
+import com.lqragent.backend.orchestrator.planning.PlanResult;
+import com.lqragent.backend.orchestrator.planning.PlanningAgent;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Orchestrator 调度中枢
- * 接收前端请求 → 拆分任务 → 分发到各智能体 → 监听结果 → 聚合返回
+ * Orchestrator 调度中枢 v3
+ * 接收前端请求 → PlanningAgent LLM拆解 → PipelineEngine DAG执行 → 聚合返回
+ * <p>
+ * v3 变更：集成 CapabilityRegistry，实现动态能力发现和智能路由
  */
 @Slf4j
 @Service("orchestratorCore")
@@ -29,41 +42,333 @@ public class OrchestratorCore {
     private final AgentRunLogService runLogService;
     private final LlmClient llmClient;
     private final AgentMemory agentMemory;
+    private final PlanningAgent planningAgent;
+    private final PipelineEngine pipelineEngine;
+    private final CapabilityRegistry capabilityRegistry;
+    private final ObjectMapper mapper = new ObjectMapper();
 
-    // 任务状态跟踪
+    // 任务状态跟踪（用于 learn 流程的 WebSocket 推送）
     private final Map<String, TaskState> tasks = new ConcurrentHashMap<>();
 
-    public OrchestratorCore(RedisStreamsService streams, AgentRunLogService runLogService, 
-                           LlmClient llmClient, AgentMemory agentMemory) {
+    public OrchestratorCore(RedisStreamsService streams, AgentRunLogService runLogService,
+                           LlmClient llmClient, AgentMemory agentMemory,
+                           PlanningAgent planningAgent, PipelineEngine pipelineEngine,
+                           CapabilityRegistry capabilityRegistry) {
         this.streams = streams;
         this.runLogService = runLogService;
         this.llmClient = llmClient;
         this.agentMemory = agentMemory;
+        this.planningAgent = planningAgent;
+        this.pipelineEngine = pipelineEngine;
+        this.capabilityRegistry = capabilityRegistry;
+    }
+
+    @PostConstruct
+    public void registerOrchestrator() {
+        capabilityRegistry.register(AgentCapability.builder()
+                .agentId(AgentIds.ORCHESTRATOR)
+                .displayName("调度中枢")
+                .description("统一调度中心：任务分解、Agent编排、结果聚合")
+                .actions(List.of("route", "plan", "execute", "aggregate"))
+                .tags(Set.of("orchestrator", "scheduler", "coordinator"))
+                .build());
+        log.info("[OrchestratorCore] registered orchestrator and {} agent capabilities",
+                capabilityRegistry.size());
+    }
+
+    // ==================== 核心入口 ====================
+
+    /**
+     * 统一消息入口：PlanningAgent 拆解 → PipelineEngine 执行
+     * 简单请求（问候/帮助）直接返回响应Map
+     * QA请求返回 qa 路由（由 ChatWebSocketHandler 走流式通道）
+     * 复杂请求交给 PipelineEngine 并行执行
+     */
+    public Map<String, Object> handleChatMessage(String userId, String message) {
+        log.info("[Orchestrator] chat message: userId={}, msg={}", userId, message);
+
+        // Step 1: PlanningAgent LLM 拆解
+        PlanResult plan = planningAgent.decompose(message, userId);
+
+        if (plan.isSimple()) {
+            return handleSimpleRequest(plan.intent(), message);
+        }
+
+        // Step 2: 复杂请求 → PipelineEngine DAG 执行
+        if (plan.isPipeline() && plan.pipelineConfig() != null) {
+            return handlePipelineRequest(plan, userId, message);
+        }
+
+        // 兜底：QA
+        return Map.of("route", "qa", "agent", AgentIds.QA, "message", message);
     }
 
     /**
-     * 主入口：处理用户学习请求
+     * 完整消息处理（用于 WebSocket 场景，含结果推送）
+     */
+    public void handleMessage(String userId, String sessionId, String message,
+                              WebSocketSession session,
+                              java.util.function.Consumer<Map<String, Object>> eventCallback) {
+        log.info("[Orchestrator] handleMessage: userId={}, msg={}", userId, message);
+
+        PlanResult plan = planningAgent.decompose(message, userId);
+
+        if (plan.isSimple()) {
+            Map<String, Object> simpleResult = handleSimpleRequest(plan.intent(), message);
+            eventCallback.accept(simpleResult);
+            return;
+        }
+
+        if (plan.isPipeline() && plan.pipelineConfig() != null) {
+            executePipelineAndNotify(plan, userId, sessionId, message, session, eventCallback);
+            return;
+        }
+
+        // 兜底
+        eventCallback.accept(Map.of("route", "qa", "agent", AgentIds.QA, "message", message));
+    }
+
+    // ==================== 简单请求处理 ====================
+
+    private Map<String, Object> handleSimpleRequest(PlanIntent intent, String message) {
+        return switch (intent) {
+            case GREETING -> Map.of("route", "direct", "response",
+                    "你好！我是 LQRAgent 智能学习助手，可以帮你解答问题、规划学习路径、生成学习资源。请问有什么可以帮助你的？");
+            case HELP -> Map.of("route", "direct", "response", buildHelpMessage());
+            case LEARNING_PATH -> Map.of("route", "learning_path", "agent",
+                    capabilityRegistry.matchBestAgent("learning_path"));
+            case RESOURCE -> Map.of("route", "resource", "agent",
+                    capabilityRegistry.matchBestAgent("resource"));
+            case QUIZ -> Map.of("route", "resource", "agent",
+                    capabilityRegistry.matchBestAgent("quiz"));
+            case DIAGRAM -> Map.of("route", "diagram", "agent", AgentIds.DIAGRAM);
+            case SUMMARY -> Map.of("route", "summary", "agent", AgentIds.SUMMARY);
+            case RECOMMENDATION -> Map.of("route", "recommendation", "agent",
+                    capabilityRegistry.matchBestAgent("recommendation"));
+            case ASSESSMENT -> Map.of("route", "assessment", "agent",
+                    capabilityRegistry.matchBestAgent("assessment"));
+            default -> Map.of("route", "qa", "agent", AgentIds.QA, "message", message);
+        };
+    }
+
+    /**
+     * 从 CapabilityRegistry 动态构建帮助信息
+     */
+    private String buildHelpMessage() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("我可以帮你做这些事情：\n");
+        int idx = 1;
+        for (AgentCapability cap : capabilityRegistry.getAllCapabilities()) {
+            if (cap.agentId().equals(AgentIds.ORCHESTRATOR)) continue;
+            sb.append(idx++).append(". ").append(cap.description()).append("\n");
+        }
+        sb.append("\n请问有什么可以帮助你的？");
+        return sb.toString();
+    }
+
+    // ==================== Pipeline 执行 ====================
+
+    /**
+     * 执行 Pipeline 并返回同步结果（用于 /agent-test 等 HTTP 接口）
+     */
+    private Map<String, Object> handlePipelineRequest(PlanResult plan, String userId, String message) {
+        String taskId = UUID.randomUUID().toString();
+        PipelineConfig config = plan.pipelineConfig();
+
+        log.info("[Orchestrator] executing pipeline: {}, steps={}",
+                config.getName(), config.getSteps().size());
+
+        TaskContext context = new TaskContext(taskId, userId, null, message);
+        PipelineResult result = pipelineEngine.execute(config, context);
+
+        if (result.isSuccess()) {
+            // 聚合所有步骤结果
+            String aggregated = aggregateResults(config, result);
+            return Map.of(
+                    "route", "pipeline_complete",
+                    "agent", "pipeline_engine",
+                    "response", aggregated,
+                    "stepResults", result.getStepResults() != null
+                            ? result.getStepResults().stream()
+                                .map(sr -> Map.of("stepId", sr.getStepId(), "agentId", sr.getAgentId(), "success", sr.isSuccess()))
+                                .toList()
+                            : List.of(),
+                    "durationMs", result.getTotalDurationMs()
+            );
+        } else {
+            return Map.of(
+                    "route", "pipeline_error",
+                    "agent", "pipeline_engine",
+                    "response", "任务执行失败: " + result.getErrorMessage(),
+                    "error", result.getErrorMessage()
+            );
+        }
+    }
+
+    /**
+     * 执行 Pipeline 并通过 WebSocket 推送进度（用于 ChatWebSocketHandler）
+     */
+    private void executePipelineAndNotify(PlanResult plan, String userId, String sessionId,
+                                          String message, WebSocketSession session,
+                                          java.util.function.Consumer<Map<String, Object>> eventCallback) {
+        String taskId = UUID.randomUUID().toString();
+        PipelineConfig config = plan.pipelineConfig();
+
+        log.info("[Orchestrator] pipeline execute: {}, steps={}", config.getName(), config.getSteps().size());
+
+        // 推送进度：准备开始
+        eventCallback.accept(Map.of(
+                "type", "pipeline_start",
+                "pipelineName", config.getName(),
+                "stepCount", config.getSteps().size(),
+                "steps", config.getSteps().stream()
+                        .map(s -> Map.of("stepId", s.getStepId(), "agentId", s.getAgentId(), "action", s.getAction()))
+                        .toList()
+        ));
+
+        TaskContext context = new TaskContext(taskId, userId, sessionId, message);
+
+        // 在后台线程执行 Pipeline，不阻塞 WebSocket 线程
+        Thread executor = new Thread(() -> {
+            try {
+                PipelineResult result = pipelineEngine.execute(config, context);
+
+                if (result.isSuccess()) {
+                    String aggregated = aggregateResults(config, result);
+                    eventCallback.accept(Map.of(
+                            "type", "pipeline_complete",
+                            "pipelineName", config.getName(),
+                            "response", aggregated,
+                            "route", "pipeline_complete",
+                            "durationMs", result.getTotalDurationMs()
+                    ));
+                } else {
+                    eventCallback.accept(Map.of(
+                            "type", "pipeline_error",
+                            "error", result.getErrorMessage()
+                    ));
+                }
+            } catch (Exception e) {
+                log.error("[Orchestrator] pipeline execution failed: {}", e.getMessage(), e);
+                eventCallback.accept(Map.of(
+                        "type", "pipeline_error",
+                        "error", e.getMessage()
+                ));
+            }
+        }, "pipeline-exec-" + taskId);
+        executor.setDaemon(true);
+        executor.start();
+    }
+
+    // ==================== 结果聚合 ====================
+
+    /**
+     * 将 Pipeline 多步骤结果聚合为自然语言
+     */
+    private String aggregateResults(PipelineConfig config, PipelineResult result) {
+        if (result.getStepResults() == null || result.getStepResults().isEmpty()) {
+            return "任务执行完成，但未获得结果。";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        int stepNum = 0;
+        for (StepResult sr : result.getStepResults()) {
+            if (!sr.isSuccess()) continue;
+            stepNum++;
+            Map<String, Object> data = sr.getData();
+            if (data == null) continue;
+
+            // 各 Agent 结果格式化
+            String stepSummary = extractStepSummary(sr.getAgentId(), data);
+            if (stepSummary != null && !stepSummary.isBlank()) {
+                if (stepNum > 1) sb.append("\n\n---\n\n");
+                sb.append(stepSummary);
+            }
+        }
+
+        return sb.isEmpty() ? "任务执行完成。" : sb.toString();
+    }
+
+    private String extractStepSummary(String agentId, Map<String, Object> data) {
+        // 优先取 summary/result 字段
+        if (data.containsKey("summary")) {
+            return String.valueOf(data.get("summary"));
+        }
+        if (data.containsKey("result")) {
+            return String.valueOf(data.get("result"));
+        }
+        if (data.containsKey("llm_analysis")) {
+            return String.valueOf(data.get("llm_analysis"));
+        }
+        // 学习路径特殊处理
+        if (agentId.contains("learning_path") && data.containsKey("nodes")) {
+            return "学习路径已生成，包含 " + data.get("nodeCount") + " 个节点。";
+        }
+        // 媒体生成特殊处理
+        if (agentId.contains("media_gen") && data.containsKey("imageUrl")) {
+            return "![生成图片](" + data.get("imageUrl") + ")";
+        }
+        if (agentId.contains("media_gen") && data.containsKey("videoUrl")) {
+            return "视频已生成: " + data.get("videoUrl");
+        }
+        // 默认：返回 data 的描述
+        return "步骤完成 (" + agentId + ")";
+    }
+
+    // ==================== Learn 流程（保留兼容） ====================
+
+    /**
+     * 处理用户学习请求（WebSocket learn 流程）
      */
     public String handleLearnRequest(String userId, String goal, WebSocketSession session) {
         String taskId = UUID.randomUUID().toString();
         TaskState state = new TaskState(taskId, userId, goal, session);
         tasks.put(taskId, state);
 
-        log.info("[Orchestrator] new task: {}, goal={}", taskId, goal);
+        log.info("[Orchestrator] new learn task: {}, goal={}", taskId, goal);
 
-        // Step 1: 并行发送到画像 + 路径规划
-        sendTask(taskId, AgentIds.PROFILE, "get_profile", Map.of("userId", userId));
-        sendTask(taskId, AgentIds.LEARNING_PATH, "generate_path", Map.of("goal", goal, "userId", userId));
+        // 使用 learning_path 模板 Pipeline
+        PipelineConfig config = com.lqragent.backend.orchestrator.pipeline.PipelineTemplates.learningPath();
+        TaskContext context = new TaskContext(taskId, userId, null, goal);
 
-        // 启动结果监听
-        startResultListener(taskId);
+        // 在后台线程执行
+        Thread executor = new Thread(() -> {
+            try {
+                PipelineResult result = pipelineEngine.execute(config, context);
+                if (result.isSuccess()) {
+                    Map<String, Object> output = result.getOutput() != null
+                            ? result.getOutput() : Map.of();
+                    sendToFrontend(session, Map.of(
+                            "type", "complete",
+                            "taskId", taskId,
+                            "results", output
+                    ));
+                } else {
+                    sendToFrontend(session, Map.of(
+                            "type", "error",
+                            "taskId", taskId,
+                            "message", result.getErrorMessage()
+                    ));
+                }
+            } catch (Exception e) {
+                log.error("[Orchestrator] learn pipeline failed: {}", e.getMessage(), e);
+                sendToFrontend(session, Map.of(
+                        "type", "error",
+                        "taskId", taskId,
+                        "message", e.getMessage()
+                ));
+            } finally {
+                tasks.remove(taskId);
+            }
+        }, "learn-exec-" + taskId);
+        executor.setDaemon(true);
+        executor.start();
 
         return taskId;
     }
 
-    /**
-     * 发送任务到指定智能体
-     */
+    // ==================== 工具方法 ====================
+
     private void sendTask(String taskId, String agentId, String action, Map<String, Object> payload) {
         Map<String, Object> content = new HashMap<>(payload);
         content.put("action", action);
@@ -72,141 +377,10 @@ public class OrchestratorCore {
         log.info("[Orchestrator] sent task to {}: {}", agentId, action);
     }
 
-    /**
-     * 启动结果监听线程
-     */
-    private void startResultListener(String taskId) {
-        Thread listener = new Thread(() -> {
-            String stream = "stream:agent:events";
-            String group = "group:orchestrator";
-            streams.createGroup(stream, group);
-
-            TaskState state = tasks.get(taskId);
-            int timeout = 120; // 秒
-            int waited = 0;
-
-            while (state != null && !state.isComplete() && waited < timeout) {
-                try {
-                    // Read all available messages (pending + new)
-                    var messages = streams.consumePending(stream, group, "orchestrator:worker-1", 20);
-                    for (AgentMessage msg : messages) {
-                        if (!taskId.equals(msg.getTaskId())) continue;
-                        handleAgentResult(state, msg);
-                    }
-                    if (messages.isEmpty()) {
-                        Thread.sleep(1000);
-                        waited++;
-                    } else {
-                        waited = 0; // reset timeout on activity
-                    }
-                } catch (Exception e) {
-                    log.error("[Orchestrator] listener error: {}", e.getMessage());
-                }
-            }
-
-            if (state != null && !state.isComplete()) {
-                log.warn("[Orchestrator] task {} timed out", taskId);
-                sendToFrontend(state.session, Map.of(
-                        "type", "error",
-                        "taskId", taskId,
-                        "message", "任务超时"
-                ));
-            }
-            tasks.remove(taskId);
-        }, "orch-listener-" + taskId);
-        listener.setDaemon(true);
-        listener.start();
-    }
-
-    /**
-     * 处理智能体返回结果
-     */
-    private void handleAgentResult(TaskState state, AgentMessage msg) {
-        String sender = msg.getSender();
-        Performative perf = msg.getPerformative();
-
-        log.info("[Orchestrator] received from {}: {}", sender, perf);
-
-        switch (perf) {
-            case PROGRESS -> {
-                // 转发进度到前端
-                sendToFrontend(state.session, Map.of(
-                        "type", "progress",
-                        "taskId", state.taskId,
-                        "agent", sender,
-                        "message", msg.getContent().get("message")
-                ));
-            }
-            case INFORM -> {
-                // 记录调用日志
-                try {
-                    runLogService.recordCall(sender, true, 0);
-                } catch (Exception e) {
-                    log.warn("[Orchestrator] record call failed: {}", e.getMessage());
-                }
-                
-                // 收集结果
-                state.results.put(sender, msg.getContent());
-
-                // 根据发送方执行后续任务
-                switch (sender) {
-                    case AgentIds.LEARNING_PATH -> {
-                        // 路径完成 → 立即返回给前端，不等后续链
-                        log.info("[Orchestrator] learning path ready, sending to frontend");
-                        state.setComplete(true);
-                        sendToFrontend(state.session, Map.of(
-                                "type", "complete",
-                                "taskId", state.taskId,
-                                "results", state.results
-                        ));
-                    }
-                    case AgentIds.RESOURCE -> {
-                        // 资源完成 → 发送到质量评估
-                        Object resources = msg.getContent().get("resources");
-                        if (resources == null) {
-                            resources = msg.getContent().get("result");
-                        }
-                        sendTask(state.taskId, AgentIds.QUALITY, "check",
-                                Map.of("resources", resources != null ? resources : "none"));
-                    }
-                    case AgentIds.QUALITY -> {
-                        // 质量评估完成 → 全流程结束
-                        state.setComplete(true);
-                        sendToFrontend(state.session, Map.of(
-                                "type", "complete",
-                                "taskId", state.taskId,
-                                "results", state.results
-                        ));
-                    }
-                    default -> {
-                        // 画像等其他结果，暂存
-                    }
-                }
-            }
-            case ERROR -> {
-                // 记录失败
-                try {
-                    String errorMsg = (String) msg.getContent().get("error");
-                    runLogService.recordCall(sender, false, 0, errorMsg);
-                } catch (Exception e) {
-                    log.warn("[Orchestrator] record call failed: {}", e.getMessage());
-                }
-                
-                log.error("[Orchestrator] agent {} error: {}", sender, msg.getContent().get("error"));
-                sendToFrontend(state.session, Map.of(
-                        "type", "agent_error",
-                        "taskId", state.taskId,
-                        "agent", sender,
-                        "error", msg.getContent().get("error")
-                ));
-            }
-        }
-    }
-
     private void sendToFrontend(WebSocketSession session, Map<String, Object> data) {
         try {
             if (session != null && session.isOpen()) {
-                String json = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(data);
+                String json = mapper.writeValueAsString(data);
                 session.sendMessage(new org.springframework.web.socket.TextMessage(json));
             }
         } catch (Exception e) {
@@ -235,113 +409,4 @@ public class OrchestratorCore {
         boolean isComplete() { return complete; }
         void setComplete(boolean c) { this.complete = c; }
     }
-
-    /**
-     * 聊天消息入口：意图识别 → 路由到对应 Agent
-     * 返回 Map: {route, response, agent}
-     */
-    public Map<String, Object> handleChatMessage(String userId, String message) {
-        log.info("[Orchestrator] chat message: userId={}, msg={}", userId, message);
-        
-        // 用 LLM 做意图识别
-        String intent = recognizeIntent(message, userId);
-        log.info("[Orchestrator] intent recognized: {}, routing...", intent);
-        
-        switch (intent) {
-            case "greeting":
-                return Map.of("route", "direct", "response", 
-                    "你好！我是 LQRAgent 智能学习助手，可以帮你解答问题、规划学习路径、生成学习资源。请问有什么可以帮助你的？");
-            case "help":
-                return Map.of("route", "direct", "response",
-                    "我可以帮你做这些事情：\n1. 解答问题\n2. 规划学习路径\n3. 生成学习资源（讲义/题目/代码）\n4. 分析学习效果\n5. 个性化推荐\n6. 生成图表\n7. 学习总结");
-            case "learning_path":
-                return Map.of("route", "learning_path", "agent", AgentIds.LEARNING_PATH);
-            case "resource":
-                return Map.of("route", "resource", "agent", AgentIds.RESOURCE);
-            case "quiz":
-                return Map.of("route", "resource", "agent", AgentIds.RESOURCE);
-            case "recommendation":
-                return Map.of("route", "recommendation", "agent", "recommendation_agent");
-            case "diagram":
-                return Map.of("route", "diagram", "agent", "diagram_agent");
-            case "summary":
-                return Map.of("route", "summary", "agent", "summary_agent");
-            case "assessment":
-                return Map.of("route", "assessment", "agent", "assessment_agent");
-            case "knowledge_state":
-                return Map.of("route", "knowledge_state", "agent", "knowledge_state_agent");
-            case "spaced_repetition":
-                return Map.of("route", "spaced_repetition", "agent", "spaced_repetition_agent");
-            case "difficulty":
-                return Map.of("route", "difficulty", "agent", "difficulty_agent");
-            case "learning_style":
-                return Map.of("route", "learning_style", "agent", "learning_style_agent");
-            case "effect":
-                return Map.of("route", "effect", "agent", "effect_agent");
-            case "intervention":
-                return Map.of("route", "intervention", "agent", "intervention_agent");
-
-            case "qa":
-            default:
-                return Map.of("route", "qa", "agent", AgentIds.QA, "message", message);
-        }
-    }
-    
-    /**
-     * 用 LLM 识别用户意图
-     */
-    private String recognizeIntent(String message, String userId) {
-        try {
-            String systemPrompt = "你是一个意图识别系统。根据用户消息，判断用户的主要意图。\n" +
-                "只返回以下意图之一（小写英文）：\n" +
-                "- greeting: 纯粹的打招呼、问候（如：你好、hi、hello）\n" +
-                "- help: 询问系统功能、帮助（如：你能做什么）\n" +
-                "- learning_path: 想学习某个主题、要求规划学习路径/计划（如：我想学Python、帮我制定学习计划、生成学习路径、学什么好）\n" +
-                "- resource: 要求生成具体学习资源、讲义（如：帮我生成讲义、给我学习资料）\n" +
-                "- quiz: 要求做练习题、测试（如：给我出几道题）\n" +
-                "- recommendation: 要求推荐学习资源、推荐练习（如：推荐一些学习资源、推荐练习题）\n" +
-                "- diagram: 要求画图、生成图表、思维导图（如：画一个学习路线图、生成思维导图）\n" +
-                "- summary: 要求总结、归纳知识点（如：总结一下装饰器、归纳要点）\n" +
-                "- assessment: 要求评估、批改、打分（如：帮我批改、评估一下）\n" +
-                "- knowledge_state: 询问知识掌握情况、薄弱点（如：我哪些知识点薄弱、掌握情况）\n" +
-                "- spaced_repetition: 询问复习计划、什么时候复习（如：今天复习什么、复习计划）\n" +
-                "- difficulty: 询问难度、推荐难度（如：根据水平推荐、适合什么难度）\n" +
-                "- learning_style: 询问学习风格、学习方式（如：我是什么学习风格）\n" +
-                "- effect: 询问学习效果、学习评估（如：评估学习效果、学习怎么样）\n" +
-                "- intervention: 表达学习困难、遇到问题（如：学不下去了、遇到困难）\n" +
-                "- motivation: 需要鼓励、激励（如：没动力、坚持不下去）\n" +
-                "- qa: 提问、讨论问题、想了解某个知识点、其他所有情况\n" +
-                "重要规则：\n" +
-                "1. 如果消息同时包含问候和其他内容，忽略问候，返回主要内容的意图\n" +
-                "2. 仔细分析用户的真实需求，不要默认返回 qa\n" +
-                "3. 「我想学X」「我想学习X」「教我X」「X怎么学」→ learning_path\n" +
-                "4. 只返回意图词，不要其他内容。";
-            
-            // 获取对话历史
-            String history = "";
-            try {
-                Long userIdLong = Long.parseLong(userId);
-                history = agentMemory.getFormattedHistory(userIdLong, 5);
-            } catch (Exception ignored) {}
-            
-            String fullMessage = history.isEmpty() ? message : history + "\n当前用户消息: " + message;
-            String result = llmClient.chatSimple(systemPrompt, fullMessage);
-            if (result != null) {
-                result = result.trim().toLowerCase().replaceAll("[^a-z_]", "");
-            }
-            
-            // 验证是否是有效意图
-            if (result != null && java.util.Set.of("greeting", "help", "learning_path", "resource", "quiz", "recommendation", "diagram", "summary", "assessment", "knowledge_state", "spaced_repetition", "difficulty", "learning_style", "effect", "intervention", "qa").contains(result)) {
-                log.info("[Orchestrator] intent recognized: {}", result);
-                return result;
-            }
-            
-            log.warn("[Orchestrator] invalid intent: {}, defaulting to qa", result);
-            return "qa";
-        } catch (Exception e) {
-            log.error("[Orchestrator] intent recognition failed: {}", e.getMessage());
-            return "qa";
-        }
-    }
-
 }

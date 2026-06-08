@@ -1,19 +1,26 @@
 package com.lqragent.backend.admin.controller;
 
-import com.lqragent.backend.orchestrator.OrchestratorCore;
-import com.lqragent.backend.orchestrator.AgentIds;
-import com.lqragent.backend.core.session.RequestContext;
-import com.lqragent.backend.agents.learn.stateassessment.service.EffectAssessmentService;
-import com.lqragent.backend.agents.learn.path.service.LearningPathService;
-import com.lqragent.backend.agents.learn.path.dto.LearningPathDto;
-import com.lqragent.backend.agents.content.summary.lessongeneration.dto.ResourceGenerateRequest;
-import com.lqragent.backend.agents.content.summary.lessongeneration.dto.ResourceGenerateResponse;
-import com.lqragent.backend.agents.content.summary.lessongeneration.service.ResourceGenerationService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.*;
-
 import java.util.HashMap;
 import java.util.Map;
+
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.lqragent.backend.agents.base.BaseAgent.AgentRequest;
+import com.lqragent.backend.agents.base.BaseAgent.AgentResponse;
+import com.lqragent.backend.agents.content.summary.lessongeneration.dto.ResourceGenerateRequest;
+import com.lqragent.backend.agents.content.summary.lessongeneration.dto.ResourceGenerateResponse;
+import com.lqragent.backend.agents.learn.path.dto.LearningPathDto;
+import com.lqragent.backend.agents.learn.path.service.LearningPathService;
+import com.lqragent.backend.agents.learn.stateassessment.service.EffectAssessmentService;
+import com.lqragent.backend.agents.resourcegeneration.service.ResourceGenerationService;
+import com.lqragent.backend.agents.serve.qa.QaAgent;
+import com.lqragent.backend.core.session.RequestContext;
+import com.lqragent.backend.orchestrator.OrchestratorCore;
+
+import lombok.RequiredArgsConstructor;
 
 /**
  * Agent 测试控制台 REST API — 免认证，直接测试各 Agent。
@@ -27,6 +34,7 @@ public class AgentTestController {
     private final LearningPathService learningPathService;
     private final ResourceGenerationService resourceGenerationService;
     private final EffectAssessmentService effectAssessmentService;
+    private final QaAgent qaAgent;
 
     // ===== 通用 Agent 测试 =====
 
@@ -46,6 +54,34 @@ public class AgentTestController {
         data.put("agent", result.get("agent"));
         data.put("durationMs", duration);
         return data;
+    }
+    
+    /** 直接测试 QA Agent（ReAct 模式） */
+    @PostMapping("/qa-agent")
+    public Map<String, Object> testQaAgent(@RequestBody Map<String, String> body) {
+        String message = body.getOrDefault("message", "");
+        
+        long start = System.currentTimeMillis();
+        try {
+            AgentRequest request = new AgentRequest("qa", message, Map.of());
+            AgentResponse response = qaAgent.process(request);
+            long duration = System.currentTimeMillis() - start;
+            
+            Map<String, Object> data = new HashMap<>();
+            data.put("success", response.success());
+            data.put("content", response.content());
+            data.put("executions", response.executions());
+            data.put("error", response.error());
+            data.put("durationMs", duration);
+            return data;
+        } catch (Exception e) {
+            long duration = System.currentTimeMillis() - start;
+            return Map.of(
+                "success", false,
+                "error", e.getMessage(),
+                "durationMs", duration
+            );
+        }
     }
 
     // ===== 快捷测试端点 =====

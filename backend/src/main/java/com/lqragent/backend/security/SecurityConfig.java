@@ -59,6 +59,8 @@ public class SecurityConfig {
                 .requestMatchers("/console.html").permitAll()
                 // 用户记忆
                 .requestMatchers("/api/memory/**").permitAll()
+                // 聊天历史（会话/消息列表，按 userId 查询）
+                .requestMatchers("/api/chat/**").permitAll()
                 // 其余接口需要认证
                 .anyRequest().authenticated()
             )

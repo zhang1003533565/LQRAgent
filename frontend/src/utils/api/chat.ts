@@ -21,7 +21,10 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     throw new Error(error || `Request failed: ${response.status}`)
   }
   
-  return response.json()
+  // DELETE 等操作可能没有响应体
+  const text = await response.text()
+  if (!text) return undefined as T
+  return JSON.parse(text)
 }
 
 /**

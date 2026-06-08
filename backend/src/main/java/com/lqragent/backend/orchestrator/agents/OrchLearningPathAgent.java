@@ -1,16 +1,22 @@
 package com.lqragent.backend.orchestrator.agents;
 
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lqragent.backend.agents.base.AgentMemory;
 import com.lqragent.backend.agents.learn.path.service.LearningPathService;
 import com.lqragent.backend.orchestrator.AgentIds;
+import com.lqragent.backend.orchestrator.capability.AgentCapability;
+import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -22,12 +28,28 @@ import lombok.extern.slf4j.Slf4j;
 public class OrchLearningPathAgent extends OrchBaseAgent {
 
     private final LearningPathService pathService;
+    private final CapabilityRegistry capabilityRegistry;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public OrchLearningPathAgent(RedisStreamsService streams, ApplicationContext applicationContext,
-                                 LearningPathService pathService) {
-        super(AgentIds.LEARNING_PATH, streams, applicationContext);
+                                 LearningPathService pathService, CapabilityRegistry capabilityRegistry,
+                                 AgentMemory agentMemory) {
+        super(AgentIds.LEARNING_PATH, streams, applicationContext, agentMemory);
         this.pathService = pathService;
+        this.capabilityRegistry = capabilityRegistry;
+    }
+
+    @PostConstruct
+    public void registerCapability() {
+        setCapabilityRegistry(capabilityRegistry);
+        capabilityRegistry.register(AgentCapability.builder()
+                .agentId(AgentIds.LEARNING_PATH)
+                .displayName("学习路径规划Agent")
+                .description("规划学习路径、制定学习计划、知识图谱匹配")
+                .actions(List.of("generate_path", "plan"))
+                .tags(Set.of("learning_path", "path", "plan", "curriculum"))
+                .avgLatencyMs(25000)
+                .build());
     }
     
     @Override

@@ -14,9 +14,10 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.agents.base.AgentMemory;
+import com.lqragent.backend.agents.base.BaseAgent.AgentRequest;
+import com.lqragent.backend.agents.base.BaseAgent.AgentResponse;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.content.summarygen.tools.GenerateSummaryTool;
-import com.lqragent.backend.agents.intelligentqa.service.QaAgentService;
 import com.lqragent.backend.agents.learn.difficulty.tools.AdjustDifficultyTool;
 import com.lqragent.backend.agents.learn.learningstyle.tools.DetectLearningStyleTool;
 import com.lqragent.backend.agents.learn.path.service.LearningPathService;
@@ -25,9 +26,9 @@ import com.lqragent.backend.agents.learn.state.tools.AnalyzeWeaknessTool;
 import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
 import com.lqragent.backend.agents.serve.assessment.tools.GradeAnswerTool;
 import com.lqragent.backend.agents.serve.intervention.tools.GetInterventionTool;
+import com.lqragent.backend.agents.serve.qa.QaAgent;
 import com.lqragent.backend.agents.serve.recommendation.tools.GetRecommendationTool;
 import com.lqragent.backend.chat.entity.ChatSession;
-import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import com.lqragent.backend.chat.repository.ChatMessageRepository;
 import com.lqragent.backend.chat.service.ChatSessionService;
 import com.lqragent.backend.core.session.RequestContext;
@@ -51,7 +52,7 @@ import lombok.extern.slf4j.Slf4j;
 public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private final ChatSessionService chatSessionService;
-    private final QaAgentService qaAgentService;
+    private final QaAgent qaAgent;
     private final OrchestratorCore orchestratorCore;
     private final ChatMessageRepository chatMessageRepository;
     private final WebSocketSessionManager sessionManager;
@@ -189,7 +190,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        // QA → 流式答疑通道
+        // QA → ReAct 智能体（通过 QaAgent 的 LLM 推理 + 工具调用循环）
         if ("qa".equals(route)) {
             sendEvent(session, "agent_step", objectMapper.createObjectNode()
                     .put("agent", "intelligent_qa")
@@ -197,62 +198,51 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     .put("status", "running")
                     .toString());
 
-            StringBuilder fullResponse = new StringBuilder();
             final Long currentUserId = userInfo.userId();
-            qaAgentService.handleMessage(currentUserId, finalSessionId, content, new AiServerWsProxy.StreamCallback() {
-                @Override
-                public void onChunk(String chunk) {
-                    fullResponse.append(chunk);
-                    sendEvent(session, "chunk", chunk);
+            try {
+                // 加载对话历史
+                List<AgentMemory.MemoryEntry> recentHistory = agentMemory.getRecentHistory(currentUserId, 10);
+                List<Map<String, Object>> history = recentHistory.stream()
+                        .map(entry -> {
+                            Map<String, Object> msg = new java.util.LinkedHashMap<>();
+                            msg.put("role", entry.getRole());
+                            msg.put("content", entry.getContent());
+                            return msg;
+                        })
+                        .toList();
+
+                // 通过 QaAgent ReAct 循环处理（LLM 推理 + 工具调用）
+                AgentRequest agentRequest = new AgentRequest("qa", content, Map.of());
+                AgentResponse agentResponse = qaAgent.process(agentRequest, history);
+
+                String qaResponse;
+                if (agentResponse.success()) {
+                    qaResponse = agentResponse.content();
+                } else {
+                    log.warn("[WS] QA agent failed: {}", agentResponse.error());
+                    qaResponse = "抱歉，处理问题时出现异常。请稍后再试。";
                 }
 
-                @Override
-                public void onDone(String aiServerSessionId) {
-                    sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                            .put("agent", "intelligent_qa")
-                            .put("label", "回答完成")
-                            .put("status", "done")
-                            .toString());
-                    sendEvent(session, "done", objectMapper.createObjectNode()
-                            .put("session_id", finalSessionId)
-                            .toString());
-                    agentMemory.addAgentResponse(userInfo.userId(), Long.parseLong(finalSessionId), fullResponse.toString(), "qa_agent");
-                    triggerProfileExtractionAsync(currentUserId, finalSessionId, session);
-                }
-
-                @Override
-                public void onError(String error) {
-                    log.warn("[WS] QA error: {}", error);
-                    // 降级到简单回复
-                    String fallbackResponse = "抱歉，AI 服务暂时不可用。请稍后再试，或者你可以尝试：\n" +
-                        "1. 换一种方式提问\n" +
-                        "2. 检查网络连接\n" +
-                        "3. 稍后再试";
-                    sendEvent(session, "chunk", fallbackResponse);
-                    sendEvent(session, "done", objectMapper.createObjectNode()
-                            .put("session_id", finalSessionId)
-                            .toString());
-                    agentMemory.addAgentResponse(userInfo.userId(), Long.parseLong(finalSessionId), fallbackResponse, "qa_agent");
-                }
-
-                @Override
-                public void onSources(List<Map<String, Object>> sources) {
-                    if (sources != null && !sources.isEmpty()) {
-                        try {
-                            var artifactNode = objectMapper.createObjectNode()
-                                    .put("type", "artifact")
-                                    .put("kind", "rag_sources");
-                            var sourcesArray = objectMapper.valueToTree(sources);
-                            artifactNode.set("payload", sourcesArray);
-                            synchronized (session) {
-                                session.sendMessage(new TextMessage(artifactNode.toString()));
-                            }
-                        } catch (IOException e) {
-                            log.warn("[WS] rag_sources push failed", e);
-                        }
-                    }
-                }
-            });
+                sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                        .put("agent", "intelligent_qa")
+                        .put("label", "回答完成")
+                        .put("status", "done")
+                        .toString());
+                sendEvent(session, "chunk", qaResponse);
+                sendEvent(session, "done", objectMapper.createObjectNode()
+                        .put("session_id", finalSessionId)
+                        .toString());
+                agentMemory.addAgentResponse(currentUserId, Long.parseLong(finalSessionId), qaResponse, "qa_agent");
+                triggerProfileExtractionAsync(currentUserId, finalSessionId, session);
+            } catch (Exception e) {
+                log.error("[WS] QA agent error: {}", e.getMessage(), e);
+                String fallbackResponse = "抱歉，AI 服务暂时不可用。请稍后再试。";
+                sendEvent(session, "chunk", fallbackResponse);
+                sendEvent(session, "done", objectMapper.createObjectNode()
+                        .put("session_id", finalSessionId)
+                        .toString());
+                agentMemory.addAgentResponse(currentUserId, Long.parseLong(finalSessionId), fallbackResponse, "qa_agent");
+            }
             return;
         }
 
@@ -331,7 +321,23 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 
                 response = sb.toString();
             } else if ("resource".equals(route)) {
-                response = "好的，我来帮你生成学习资源。请告诉我你想学习哪个知识点？";
+                // 调用 LLM 生成真实学习资源
+                try {
+                    String systemPrompt = "你是一个教学资源生成专家。根据用户需求，生成结构化的学习资源。\n" +
+                        "要求：\n" +
+                        "1. 使用 Markdown 格式\n" +
+                        "2. 包含核心概念讲解\n" +
+                        "3. 包含代码示例（如适用）\n" +
+                        "4. 包含2-3个练习题\n" +
+                        "5. 语言要清晰易懂";
+                    String generated = llmClient.chatSimple(systemPrompt, content);
+                    response = generated != null && !generated.isBlank()
+                            ? generated
+                            : "抱歉，资源生成服务暂时不可用，请稍后再试。";
+                } catch (Exception e) {
+                    log.warn("[WS] resource generation failed", e);
+                    response = "资源生成服务暂时不可用：" + e.getMessage();
+                }
             } else if ("recommendation".equals(route)) {
                 // 调用推荐工具
                 try {
@@ -489,6 +495,13 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     response = "干预服务暂时不可用：" + e.getMessage();
                 }
 
+            } else if ("pipeline_complete".equals(route)) {
+                // Pipeline 多Agent协作完成 → 直接使用聚合后的响应
+                response = routeResult.containsKey("response")
+                        ? (String) routeResult.get("response")
+                        : "任务执行完成。";
+            } else if ("pipeline_error".equals(route)) {
+                response = "抱歉，任务执行失败：" + routeResult.getOrDefault("error", "未知错误");
             } else {
                 response = "我可以帮你：\n" +
                     "1. 解答问题 - 直接提问即可\n" +

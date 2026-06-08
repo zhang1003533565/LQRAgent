@@ -1,4 +1,4 @@
-package com.lqragent.backend.agents.content.summary.lessongeneration.service;
+package com.lqragent.backend.agents.resourcegeneration.service;
 
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;

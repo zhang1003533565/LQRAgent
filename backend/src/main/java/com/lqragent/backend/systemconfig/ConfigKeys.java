@@ -58,4 +58,8 @@ public final class ConfigKeys {
     public static final String IMAGE_API_KEY = "image.api-key";
     public static final String IMAGE_HOST = "image.host";
 
+    /** ai-server WebSocket 超时配置 */
+    public static final String AI_SERVER_WS_CONNECT_TIMEOUT_SEC = "ai-server.ws.connect-timeout-sec";
+    public static final String AI_SERVER_WS_RESPONSE_TIMEOUT_SEC = "ai-server.ws.response-timeout-sec";
+
 }

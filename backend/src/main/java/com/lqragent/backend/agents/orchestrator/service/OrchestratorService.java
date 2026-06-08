@@ -1,12 +1,14 @@
 package com.lqragent.backend.agents.orchestrator.service;
 
-import com.lqragent.backend.agents.orchestrator.dto.IntentResult;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-
 import java.util.List;
 import java.util.Map;
+
+import org.springframework.stereotype.Service;
+
+import com.lqragent.backend.agents.orchestrator.dto.IntentResult;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 意图识别与路由服务。
@@ -25,7 +27,9 @@ public class OrchestratorService {
     private static final Map<String, List<String>> INTENT_KEYWORDS = Map.of(
         IntentResult.LEARNING_PATH, List.of(
                 "学习路径", "学习路线", "怎么学", "学什么", "规划", "路线",
-                "学习计划", "从哪开始", "下一步学", "学习顺序"),
+                "学习计划", "从哪开始", "下一步学", "学习顺序",
+                "我想学", "想学习", "教我", "学习一下", "入门", "教程",
+                "零基础", "初学者", "新手"),
         IntentResult.RESOURCE_GENERATE, List.of(
                 "生成讲义", "出题", "练习题", "生成题目", "生成资源",
                 "知识点讲解", "给我讲", "详细讲解", "生成代码", "示例代码"),
@@ -67,9 +71,22 @@ public class OrchestratorService {
     /** 关键词匹配降级 */
     private IntentResult keywordMatch(String message) {
         String lower = message.toLowerCase().trim();
-        for (var entry : INTENT_KEYWORDS.entrySet()) {
-            String intent = entry.getKey();
-            for (String keyword : entry.getValue()) {
+        
+        // 优先级顺序：learning_path > resource > media > qa > greeting > help
+        // 确保当消息同时包含问候和学习意图时，优先返回学习意图
+        String[] priorityOrder = {
+            IntentResult.LEARNING_PATH,
+            IntentResult.RESOURCE_GENERATE,
+            IntentResult.MEDIA_GENERATE,
+            IntentResult.QA_QUESTION,
+            IntentResult.GREETING,
+            IntentResult.HELP
+        };
+        
+        for (String intent : priorityOrder) {
+            List<String> keywords = INTENT_KEYWORDS.get(intent);
+            if (keywords == null) continue;
+            for (String keyword : keywords) {
                 if (lower.contains(keyword.toLowerCase())) {
                     double confidence = 0.6 + (keyword.length() / (double) Math.max(lower.length(), 1)) * 0.3;
                     confidence = Math.min(confidence, 0.95);

@@ -81,16 +81,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       const messages = await chatApi.getMessages(sessionId, 50)
       const reversed = [...messages].reverse()
-      reversed.forEach((msg) => {
-        get().addMessage({
-          id: msg.id,
-          role: msg.role as 'user' | 'assistant' | 'system',
-          content: msg.content,
-          agentName: msg.agentName,
-          createdAt: new Date(msg.createdAt),
-          streaming: false,
-        })
-      })
+      // 一次性批量设置消息，避免逐条添加导致的重复key问题
+      const formattedMessages: ChatMessage[] = reversed.map((msg) => ({
+        id: String(msg.id),
+        role: msg.role as 'user' | 'assistant' | 'system',
+        content: msg.content,
+        agentName: msg.agentName,
+        createdAt: new Date(msg.createdAt),
+        streaming: false,
+      }))
+      set({ messages: formattedMessages })
     } catch (err) {
       console.error('Failed to load messages:', err)
     } finally {

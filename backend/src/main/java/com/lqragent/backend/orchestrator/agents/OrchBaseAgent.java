@@ -1,14 +1,18 @@
 package com.lqragent.backend.orchestrator.agents;
 
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.context.ApplicationContext;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lqragent.backend.agents.base.AgentMemory;
 import com.lqragent.backend.agents.base.BaseAgent;
 import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationContext;
 
-import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Orchestrator 版本的 BaseAgent
@@ -20,9 +24,12 @@ public abstract class OrchBaseAgent extends com.lqragent.backend.orchestrator.ag
     protected final ApplicationContext applicationContext;
     protected final ObjectMapper mapper = new ObjectMapper();
     
-    protected OrchBaseAgent(String agentId, RedisStreamsService streams, ApplicationContext applicationContext) {
+    protected final AgentMemory agentMemory;
+    
+    protected OrchBaseAgent(String agentId, RedisStreamsService streams, ApplicationContext applicationContext, AgentMemory agentMemory) {
         super(agentId, streams);
         this.applicationContext = applicationContext;
+        this.agentMemory = agentMemory;
     }
     
     /**
@@ -48,29 +55,41 @@ public abstract class OrchBaseAgent extends com.lqragent.backend.orchestrator.ag
                     request.getContent()
             );
             
-            // 调用 Agent 的 process 方法（LLM 推理循环）
+            // 获取对话历史（如果有 userId）
+            List<Map<String, Object>> history = List.of();
+            Object userIdObj = request.getContent().get("userId");
+            if (userIdObj != null) {
+                try {
+                    Long userId = Long.parseLong(userIdObj.toString());
+                    List<AgentMemory.MemoryEntry> recentHistory = agentMemory.getRecentHistory(userId, 10);
+                    if (!recentHistory.isEmpty()) {
+                        history = recentHistory.stream()
+                                .map(entry -> {
+                                    Map<String, Object> msg = new java.util.LinkedHashMap<>();
+                                    msg.put("role", entry.getRole());
+                                    msg.put("content", entry.getContent());
+                                    return msg;
+                                })
+                                .toList();
+                        log.info("[{}] loaded {} history messages for userId={}", agentId, history.size(), userId);
+                    }
+                } catch (Exception e) {
+                    log.warn("[{}] failed to load history: {}", agentId, e.getMessage());
+                }
+            }
+            
+            // 调用 Agent 的 process 方法（LLM 推理循环，带对话历史）
             sendProgress(taskId, "正在进行 LLM 推理...");
-            BaseAgent.AgentResponse response = agent.process(agentRequest);
+            BaseAgent.AgentResponse response = agent.process(agentRequest, history);
             
             if (response.success()) {
-                sendProgress(taskId, agentId + " LLM 推理完成");
+                sendProgress(taskId, agentId + " 完成");
                 
-                // LLM 推理完成后，调用真实 Service 获取结构化数据
-                Map<String, Object> serviceResult = callService(request, action);
-                
-                if (serviceResult != null && !serviceResult.isEmpty()) {
-                    sendProgress(taskId, agentId + " 完成");
-                    Map<String, Object> finalResult = new java.util.HashMap<>(serviceResult);
-                    finalResult.put("llm_analysis", response.content());
-                    return AgentMessage.inform(taskId, agentId, AgentIds.ORCHESTRATOR, finalResult);
-                } else {
-                    // Service 调用失败，返回 LLM 分析结果
-                    sendProgress(taskId, agentId + " 完成（仅 LLM 分析）");
-                    Map<String, Object> resultData = new java.util.HashMap<>();
-                    resultData.put("result", response.content());
-                    resultData.put("executions", response.executions());
-                    return AgentMessage.inform(taskId, agentId, AgentIds.ORCHESTRATOR, resultData);
-                }
+                // LLM 推理循环的结果就是最终结果
+                Map<String, Object> resultData = new java.util.HashMap<>();
+                resultData.put("result", response.content());
+                resultData.put("executions", response.executions());
+                return AgentMessage.inform(taskId, agentId, AgentIds.ORCHESTRATOR, resultData);
             } else {
                 sendProgress(taskId, agentId + " 失败: " + response.error());
                 return AgentMessage.error(taskId, agentId, response.error());

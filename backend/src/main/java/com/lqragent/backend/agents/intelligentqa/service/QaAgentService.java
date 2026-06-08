@@ -14,9 +14,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * P0 默认答疑通道：用户消息直接转发 ai-server 进行流式对话。
- * P1 之后由 Orchestrator 接管意图路由，本 Service 仅处理闲聊/答疑意图。
+ * @deprecated 已废弃 — QA 功能已迁移到 {@link com.lqragent.backend.agents.serve.qa.QaAgent}（ReAct 模式）。
+ * 保留此类仅作参考，不再被 ChatWebSocketHandler 调用。
  */
+@Deprecated
 @Slf4j
 @Service
 @RequiredArgsConstructor

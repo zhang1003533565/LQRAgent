@@ -1,21 +1,24 @@
 package com.lqragent.backend.chat.proxy;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.lqragent.backend.systemconfig.AppRuntimeConfig;
-import com.lqragent.backend.systemconfig.ConfigKeys;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
-
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
-import java.util.Map;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import org.springframework.stereotype.Component;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lqragent.backend.systemconfig.AppRuntimeConfig;
+import com.lqragent.backend.systemconfig.ConfigKeys;
+
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Component
@@ -23,10 +26,13 @@ public class AiServerWsProxy {
 
     private final AppRuntimeConfig runtimeConfig;
     private final ObjectMapper objectMapper;
+    /** 复用的 HttpClient 单例，避免每次调用都创建新连接 */
+    private final HttpClient sharedHttpClient;
 
     public AiServerWsProxy(AppRuntimeConfig runtimeConfig) {
         this.runtimeConfig = runtimeConfig;
         this.objectMapper = new ObjectMapper();
+        this.sharedHttpClient = HttpClient.newHttpClient();
     }
 
     public void streamChat(String sessionId, String userMessage, Long userId, StreamCallback callback) {
@@ -52,15 +58,16 @@ public class AiServerWsProxy {
 
     public void streamChat(String sessionId, String userMessage, List<String> knowledgeBases, StreamCallback callback) {
         String wsUrl = getChatWsUrl();
-        log.info("[AiServerWsProxy] connecting to ai-server WS: {}", wsUrl);
+        int connectTimeoutSec = runtimeConfig.getWsConnectTimeoutSec();
+        int responseTimeoutSec = runtimeConfig.getWsResponseTimeoutSec();
+        log.info("[AiServerWsProxy] connecting to ai-server WS: {} (connect={}s, response={}s)", wsUrl, connectTimeoutSec, responseTimeoutSec);
 
         try {
-            HttpClient httpClient = HttpClient.newHttpClient();
             CountDownLatch doneLatch = new CountDownLatch(1);
             StringBuilder fullResponse = new StringBuilder();
-            String[] aiServerSessionId = {null};
+            AtomicReference<String> aiServerSessionId = new AtomicReference<>();
 
-            WebSocket ws = httpClient.newWebSocketBuilder()
+            WebSocket ws = sharedHttpClient.newWebSocketBuilder()
                     .buildAsync(URI.create(wsUrl), new WebSocket.Listener() {
                         @Override
                         public void onOpen(WebSocket webSocket) {
@@ -169,11 +176,11 @@ public class AiServerWsProxy {
                                             fullResponse.append(result);
                                             callback.onChunk(result);
                                         }
-                                        callback.onDone(aiServerSessionId[0]);
+                                        callback.onDone(aiServerSessionId.get());
                                         doneLatch.countDown();
                                     }
                                     case "done" -> {
-                                        callback.onDone(aiServerSessionId[0]);
+                                        callback.onDone(aiServerSessionId.get());
                                         doneLatch.countDown();
                                     }
                                     case "error" -> {
@@ -185,7 +192,7 @@ public class AiServerWsProxy {
                                     }
                                     case "session" -> {
                                         if (node.has("session_id")) {
-                                            aiServerSessionId[0] = node.get("session_id").asText();
+                                            aiServerSessionId.set(node.get("session_id").asText());
                                         }
                                     }
                                     default -> log.debug("[AiServerWsProxy] skipping event type: {}", type);
@@ -211,7 +218,7 @@ public class AiServerWsProxy {
                             log.info("[AiServerWsProxy] ai-server WS closed: code={}, reason={}", statusCode, reason);
                             if (doneLatch.getCount() > 0) {
                                 if (fullResponse.length() > 0) {
-                                    callback.onDone(aiServerSessionId[0]);
+                                    callback.onDone(aiServerSessionId.get());
                                 } else {
                                     callback.onError("AI 服务连接已关闭");
                                 }
@@ -220,13 +227,13 @@ public class AiServerWsProxy {
                             return WebSocket.Listener.super.onClose(webSocket, statusCode, reason);
                         }
                     })
-                    .get(10, TimeUnit.SECONDS);
+                    .get(connectTimeoutSec, TimeUnit.SECONDS);
 
-            boolean completed = doneLatch.await(120, TimeUnit.SECONDS);
+            boolean completed = doneLatch.await(responseTimeoutSec, TimeUnit.SECONDS);
             if (!completed) {
-                log.warn("[AiServerWsProxy] turn timed out after 120s, response length={}", fullResponse.length());
+                log.warn("[AiServerWsProxy] turn timed out after {}s, response length={}", responseTimeoutSec, fullResponse.length());
                 if (fullResponse.length() > 0) {
-                    callback.onDone(aiServerSessionId[0]);
+                    callback.onDone(aiServerSessionId.get());
                 } else {
                     callback.onError("AI 服务响应超时，请稍后重试");
                 }
@@ -255,15 +262,16 @@ public class AiServerWsProxy {
      */
     public String callCapability(String capability, Map<String, Object> config, List<String> knowledgeBases) {
         String wsUrl = runtimeConfig.getAiServerWsUrl();
-        log.info("[AiServerWsProxy] callCapability: capability={}, wsUrl={}", capability, wsUrl);
+        int connectTimeoutSec = runtimeConfig.getWsConnectTimeoutSec();
+        int responseTimeoutSec = runtimeConfig.getWsResponseTimeoutSec();
+        log.info("[AiServerWsProxy] callCapability: capability={}, wsUrl={} (connect={}s, response={}s)", capability, wsUrl, connectTimeoutSec, responseTimeoutSec);
 
         try {
-            HttpClient httpClient = HttpClient.newHttpClient();
             CountDownLatch doneLatch = new CountDownLatch(1);
             StringBuilder fullResponse = new StringBuilder();
-            String[] errorMsg = {null};
+            AtomicReference<String> errorMsg = new AtomicReference<>();
 
-            WebSocket ws = httpClient.newWebSocketBuilder()
+            WebSocket ws = sharedHttpClient.newWebSocketBuilder()
                     .buildAsync(URI.create(wsUrl), new WebSocket.Listener() {
                         @Override
                         public void onOpen(WebSocket webSocket) {
@@ -316,7 +324,7 @@ public class AiServerWsProxy {
                                     }
                                     case "done" -> doneLatch.countDown();
                                     case "error" -> {
-                                        errorMsg[0] = node.has("content") ? node.get("content").asText() : "Unknown error";
+                                        errorMsg.set(node.has("content") ? node.get("content").asText() : "Unknown error");
                                         doneLatch.countDown();
                                     }
                                     default -> { /* skip */ }
@@ -330,7 +338,7 @@ public class AiServerWsProxy {
                         @Override
                         public void onError(WebSocket webSocket, Throwable error) {
                             log.error("[AiServerWsProxy] WS error: {}", error.getMessage());
-                            errorMsg[0] = "WS error: " + error.getMessage();
+                            errorMsg.set("WS error: " + error.getMessage());
                             doneLatch.countDown();
                             WebSocket.Listener.super.onError(webSocket, error);
                         }
@@ -341,24 +349,24 @@ public class AiServerWsProxy {
                                 if (fullResponse.length() > 0) {
                                     doneLatch.countDown();
                                 } else {
-                                    errorMsg[0] = "Connection closed unexpectedly";
+                                    errorMsg.set("Connection closed unexpectedly");
                                     doneLatch.countDown();
                                 }
                             }
                             return WebSocket.Listener.super.onClose(webSocket, statusCode, reason);
                         }
                     })
-                    .get(10, TimeUnit.SECONDS);
+                    .get(connectTimeoutSec, TimeUnit.SECONDS);
 
-            boolean completed = doneLatch.await(120, TimeUnit.SECONDS);
+            boolean completed = doneLatch.await(responseTimeoutSec, TimeUnit.SECONDS);
             ws.sendClose(WebSocket.NORMAL_CLOSURE, "");
 
             if (!completed) {
                 log.warn("[AiServerWsProxy] capability call timed out: capability={}", capability);
                 return null;
             }
-            if (errorMsg[0] != null) {
-                log.warn("[AiServerWsProxy] capability call failed: capability={}, error={}", capability, errorMsg[0]);
+            if (errorMsg.get() != null) {
+                log.warn("[AiServerWsProxy] capability call failed: capability={}, error={}", capability, errorMsg.get());
                 return null;
             }
             String result = fullResponse.toString();
