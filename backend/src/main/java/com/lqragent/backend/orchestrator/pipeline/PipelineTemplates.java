@@ -1,13 +1,15 @@
 package com.lqragent.backend.orchestrator.pipeline;
 
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.stereotype.Component;
+
 import com.lqragent.backend.orchestrator.AgentIds;
+
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
-
-import java.util.List;
-import java.util.Map;
 
 /**
  * 内置 Pipeline 模板
@@ -25,7 +27,15 @@ public class PipelineTemplates {
         engine.registerTemplate(questionAnswer());
         engine.registerTemplate(mediaGeneration());
         engine.registerTemplate(contentAnalysis());
-        log.info("[PipelineTemplates] registered {} templates", 4);
+        // 新增：单步 Agent Pipeline 模板
+        engine.registerTemplate(resource());
+        engine.registerTemplate(diagram());
+        engine.registerTemplate(summary());
+        engine.registerTemplate(profile());
+        engine.registerTemplate(recommendation());
+        engine.registerTemplate(assessment());
+        engine.registerTemplate(intervention());
+        log.info("[PipelineTemplates] registered {} templates", 11);
     }
 
     /**
@@ -173,6 +183,127 @@ public class PipelineTemplates {
                                 .dependsOn(List.of("analyze"))
                                 .resultMapping(Map.of("analyze", "content"))
                                 .optional(true)
+                                .build()
+                ))
+                .build();
+    }
+
+    // ========== 新增：单步 Agent Pipeline 模板 ==========
+
+    /** 资源生成 */
+    public static PipelineConfig resource() {
+        return PipelineConfig.builder()
+                .pipelineId("resource")
+                .name("资源生成")
+                .description("生成学习资源（讲义、练习题、代码示例等）")
+                .steps(List.of(
+                        PipelineStep.builder()
+                                .stepId("resource")
+                                .agentId(AgentIds.RESOURCE)
+                                .action("generate_lesson")
+                                .timeoutMs(60000)
+                                .build()
+                ))
+                .build();
+    }
+
+    /** 图表生成 */
+    public static PipelineConfig diagram() {
+        return PipelineConfig.builder()
+                .pipelineId("diagram")
+                .name("图表生成")
+                .description("生成图表、思维导图、流程图等")
+                .steps(List.of(
+                        PipelineStep.builder()
+                                .stepId("diagram")
+                                .agentId(AgentIds.DIAGRAM)
+                                .action("generate_diagram")
+                                .timeoutMs(60000)
+                                .build()
+                ))
+                .build();
+    }
+
+    /** 总结生成 */
+    public static PipelineConfig summary() {
+        return PipelineConfig.builder()
+                .pipelineId("summary")
+                .name("总结生成")
+                .description("总结知识点、生成复习摘要")
+                .steps(List.of(
+                        PipelineStep.builder()
+                                .stepId("summary")
+                                .agentId(AgentIds.SUMMARY)
+                                .action("generate_summary")
+                                .timeoutMs(60000)
+                                .build()
+                ))
+                .build();
+    }
+
+    /** 用户画像 */
+    public static PipelineConfig profile() {
+        return PipelineConfig.builder()
+                .pipelineId("profile")
+                .name("用户画像")
+                .description("获取用户学习画像、知识掌握度")
+                .steps(List.of(
+                        PipelineStep.builder()
+                                .stepId("profile")
+                                .agentId(AgentIds.PROFILE)
+                                .action("get_profile")
+                                .timeoutMs(30000)
+                                .build()
+                ))
+                .build();
+    }
+
+    /** 个性化推荐 */
+    public static PipelineConfig recommendation() {
+        return PipelineConfig.builder()
+                .pipelineId("recommendation")
+                .name("个性化推荐")
+                .description("推荐学习资源、练习题")
+                .steps(List.of(
+                        PipelineStep.builder()
+                                .stepId("recommendation")
+                                .agentId(AgentIds.RECOMMENDATION)
+                                .action("recommend")
+                                .timeoutMs(60000)
+                                .build()
+                ))
+                .build();
+    }
+
+    /** 学习评估 */
+    public static PipelineConfig assessment() {
+        return PipelineConfig.builder()
+                .pipelineId("assessment")
+                .name("学习评估")
+                .description("评估答案质量、批改作业")
+                .steps(List.of(
+                        PipelineStep.builder()
+                                .stepId("assessment")
+                                .agentId(AgentIds.ASSESSMENT)
+                                .action("grade")
+                                .timeoutMs(60000)
+                                .build()
+                ))
+                .build();
+    }
+
+    /** 学习干预 */
+    public static PipelineConfig intervention() {
+        return PipelineConfig.builder()
+                .pipelineId("intervention")
+                .name("学习干预")
+                .description("学习状态评估与干预建议")
+                .steps(List.of(
+                        PipelineStep.builder()
+                                .stepId("intervention")
+                                .agentId(AgentIds.INTERVENTION)
+                                .action("assess_and_intervene")
+                                .timeoutMs(60000)
                                 .build()
                 ))
                 .build();

@@ -479,3 +479,23 @@ SET @sql_add_quiz_record_question_id := IF(
 PREPARE stmt_add_quiz_record_question_id FROM @sql_add_quiz_record_question_id;
 EXECUTE stmt_add_quiz_record_question_id;
 DEALLOCATE PREPARE stmt_add_quiz_record_question_id;
+
+-- agent_prompt: prompt_content/default_content 需支持长文本（从旧 VARCHAR 升级为 LONGTEXT）
+SET @fix_prompt_columns := (
+    SELECT COUNT(*) = 1 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'agent_prompt'
+) AND (
+    SELECT DATA_TYPE != 'longtext' FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'agent_prompt'
+      AND column_name = 'prompt_content'
+    LIMIT 1
+);
+SET @sql_fix_prompt_columns := IF(
+    @fix_prompt_columns,
+    'ALTER TABLE `agent_prompt` MODIFY COLUMN `prompt_content` LONGTEXT NOT NULL COMMENT ''提示词内容（Markdown 格式）'', MODIFY COLUMN `default_content` LONGTEXT NULL COMMENT ''默认提示词（从文件加载，用于重置）''',
+    'SELECT ''skip: agent_prompt columns already longtext'''
+);
+PREPARE stmt_fix_prompt_columns FROM @sql_fix_prompt_columns;
+EXECUTE stmt_fix_prompt_columns;
+DEALLOCATE PREPARE stmt_fix_prompt_columns;

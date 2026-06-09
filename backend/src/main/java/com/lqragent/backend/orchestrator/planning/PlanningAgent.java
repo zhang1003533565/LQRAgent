@@ -12,8 +12,10 @@ import org.springframework.stereotype.Component;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
 import com.lqragent.backend.orchestrator.pipeline.PipelineConfig;
+import com.lqragent.backend.orchestrator.pipeline.PipelineEngine;
 import com.lqragent.backend.orchestrator.pipeline.PipelineStep;
 
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +37,7 @@ public class PlanningAgent {
 
     private final LlmClient llmClient;
     private final CapabilityRegistry capabilityRegistry;
+    private final PipelineEngine pipelineEngine;
     private final ObjectMapper mapper = new ObjectMapper();
 
     /** Function Calling 工具定义：让 LLM 自动选择意图 */
@@ -144,9 +147,10 @@ public class PlanningAgent {
     /** 系统提示词（从文件加载） */
     private final String systemPrompt;
 
-    public PlanningAgent(LlmClient llmClient, CapabilityRegistry capabilityRegistry) {
+    public PlanningAgent(LlmClient llmClient, CapabilityRegistry capabilityRegistry, PipelineEngine pipelineEngine) {
         this.llmClient = llmClient;
         this.capabilityRegistry = capabilityRegistry;
+        this.pipelineEngine = pipelineEngine;
         this.systemPrompt = loadPrompt("agents/planning/prompts/system.md");
     }
 
@@ -207,14 +211,16 @@ public class PlanningAgent {
             return switch (toolName) {
                 case "route_greeting" -> PlanResult.simple(PlanIntent.GREETING);
                 case "route_help" -> PlanResult.simple(PlanIntent.HELP);
-                case "route_learning_path" -> PlanResult.simple(PlanIntent.LEARNING_PATH);
-                case "route_resource_generate" -> PlanResult.simple(PlanIntent.RESOURCE);
+                // === 业务意图：返回 PIPELINE，调用真正的 Agent ===
+                case "route_learning_path" -> pipelineFor("learning_path", args, AgentIds.LEARNING_PATH, "generate_path");
+                case "route_resource_generate" -> pipelineFor("resource", args, AgentIds.RESOURCE, "generate_lesson");
+                case "route_diagram" -> pipelineFor("diagram", args, AgentIds.DIAGRAM, "generate_diagram");
+                case "route_profile" -> pipelineFor("profile", args, AgentIds.PROFILE, "get_profile");
+                case "route_recommendation" -> pipelineFor("recommendation", args, AgentIds.RECOMMENDATION, "recommend");
+                case "route_summary" -> pipelineFor("summary", args, AgentIds.SUMMARY, "generate_summary");
+                case "route_assessment" -> pipelineFor("assessment", args, AgentIds.ASSESSMENT, "grade");
+                // QA 保留 SIMPLE（走 QaAgent 单独处理，支持流式）
                 case "route_qa" -> PlanResult.simple(PlanIntent.QA);
-                case "route_diagram" -> PlanResult.simple(PlanIntent.DIAGRAM);
-                case "route_profile" -> PlanResult.simple(PlanIntent.PROFILE);
-                case "route_recommendation" -> PlanResult.simple(PlanIntent.RECOMMENDATION);
-                case "route_summary" -> PlanResult.simple(PlanIntent.SUMMARY);
-                case "route_assessment" -> PlanResult.simple(PlanIntent.ASSESSMENT);
                 default -> {
                     log.warn("[PlanningAgent] unknown tool: {}, falling back to qa", toolName);
                     yield PlanResult.simple(PlanIntent.QA);
@@ -224,6 +230,40 @@ public class PlanningAgent {
             log.error("[PlanningAgent] failed to parse tool args: {}", e.getMessage());
             return PlanResult.simple(PlanIntent.QA);
         }
+    }
+
+    /**
+     * 构建单步 Pipeline（通过 PipelineEngine 调用 Agent）
+     * 优先使用已注册的模板；否则创建单步 Pipeline
+     */
+    private PlanResult pipelineFor(String pipelineId, Map<String, Object> args, String agentId, String action) {
+        // 优先使用已注册的模板
+        PipelineConfig template = pipelineEngine.getTemplate(pipelineId);
+        if (template != null) {
+            log.info("[PlanningAgent] using registered template: {}", pipelineId);
+            return PlanResult.pipeline(template, template.getSteps());
+        }
+
+        // 回退：创建单步 Pipeline
+        log.info("[PlanningAgent] creating single-step pipeline for: {} -> {}", pipelineId, agentId);
+        PipelineStep step = PipelineStep.builder()
+                .stepId(pipelineId)
+                .agentId(agentId)
+                .action(action)
+                .params(new HashMap<>(args))
+                .timeoutMs(60000)
+                .maxRetries(1)
+                .build();
+
+        PipelineConfig config = PipelineConfig.builder()
+                .pipelineId(pipelineId)
+                .name(pipelineId)
+                .description("Single-step: " + agentId)
+                .steps(List.of(step))
+                .totalTimeoutMs(120000)
+                .build();
+
+        return PlanResult.pipeline(config, List.of(step));
     }
 
     /**

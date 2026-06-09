@@ -179,6 +179,7 @@ public class PromptService {
     /**
      * 获取所有提示词
      */
+    @Transactional
     public List<AgentPrompt> getAllPrompts() {
         List<AgentPrompt> prompts = promptRepository.findAll();
         
@@ -191,13 +192,21 @@ public class PromptService {
             if (!exists) {
                 String defaultContent = loadDefaultPrompt(agentId);
                 if (defaultContent != null) {
-                    AgentPrompt newPrompt = AgentPrompt.builder()
-                        .agentId(agentId)
-                        .agentName(AGENT_NAMES.getOrDefault(agentId, agentId))
-                        .promptContent(defaultContent)
-                        .defaultContent(defaultContent)
-                        .build();
-                    prompts.add(promptRepository.save(newPrompt));
+                    try {
+                        AgentPrompt newPrompt = AgentPrompt.builder()
+                            .agentId(agentId)
+                            .agentName(AGENT_NAMES.getOrDefault(agentId, agentId))
+                            .promptContent(defaultContent)
+                            .defaultContent(defaultContent)
+                            .build();
+                        AgentPrompt saved = promptRepository.save(newPrompt);
+                        prompts.add(saved);
+                        promptCache.put(agentId, defaultContent);
+                    } catch (Exception e) {
+                        // 并发创建冲突，从数据库重新查询
+                        log.warn("[PromptService] concurrent create conflict in getAllPrompts for: {}", agentId);
+                        promptRepository.findByAgentId(agentId).ifPresent(prompts::add);
+                    }
                 }
             }
         }
@@ -209,6 +218,7 @@ public class PromptService {
      * 获取指定 Agent 的提示词详情
      * 如果数据库中没有记录，自动从文件加载并创建
      */
+    @Transactional
     public Optional<AgentPrompt> getPromptDetail(String agentId) {
         // 1. 尝试从数据库获取
         Optional<AgentPrompt> dbPrompt = promptRepository.findByAgentId(agentId);
@@ -219,16 +229,22 @@ public class PromptService {
         // 2. 如果数据库没有，尝试从文件加载并创建
         String defaultContent = loadDefaultPrompt(agentId);
         if (defaultContent != null) {
-            AgentPrompt newPrompt = AgentPrompt.builder()
-                .agentId(agentId)
-                .agentName(AGENT_NAMES.getOrDefault(agentId, agentId))
-                .promptContent(defaultContent)
-                .defaultContent(defaultContent)
-                .build();
-            AgentPrompt saved = promptRepository.save(newPrompt);
-            promptCache.put(agentId, defaultContent);
-            log.info("[PromptService] created prompt from file for agent: {}", agentId);
-            return Optional.of(saved);
+            try {
+                AgentPrompt newPrompt = AgentPrompt.builder()
+                    .agentId(agentId)
+                    .agentName(AGENT_NAMES.getOrDefault(agentId, agentId))
+                    .promptContent(defaultContent)
+                    .defaultContent(defaultContent)
+                    .build();
+                AgentPrompt saved = promptRepository.save(newPrompt);
+                promptCache.put(agentId, defaultContent);
+                log.info("[PromptService] created prompt from file for agent: {}", agentId);
+                return Optional.of(saved);
+            } catch (Exception e) {
+                // 并发创建导致的唯一约束冲突，重试查询
+                log.warn("[PromptService] concurrent create conflict for agent: {}, retrying query", agentId);
+                return promptRepository.findByAgentId(agentId);
+            }
         }
         
         return Optional.empty();

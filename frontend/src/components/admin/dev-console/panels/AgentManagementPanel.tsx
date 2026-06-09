@@ -364,12 +364,44 @@ function AgentDetail({ agent, stats, configMap, onSave, saving, promptData, prom
         }
         if (mediaType === 'video') {
           const duration = parseInt((payload.duration as string) || '5', 10)
-          const r = await http.post<{ data: { success: boolean; videoUrl: string; prompt: string; duration: number } }>(
-            '/media/test-video',
+          // 异步提交，不阻塞 HTTP 请求
+          const submitRes = await http.post<{ data: { taskId: string; status: string; prompt: string; duration: number } }>(
+            '/media/test-video/submit',
             { prompt, duration },
-            { timeout: 900000 }, // 视频生成最长等 15 分钟
           )
-          res = r.data.data
+          const taskId = submitRes.data.data.taskId
+          setTestResult(JSON.stringify({ taskId, status: 'queued', message: '视频任务已提交，正在轮询...' }, null, 2))
+          
+          // 轮询直到完成（最多 15 分钟，每 5 秒轮询一次）
+          for (let i = 0; i < 180; i++) {
+            await new Promise(r => setTimeout(r, 5000))
+            try {
+              const statusRes = await http.get<{ data: { taskId: string; status: string; videoUrl: string; error: string } }>(
+                `/media/test-video/${taskId}/status`,
+              )
+              const { status, videoUrl, error } = statusRes.data.data
+              if (status === 'completed') {
+                res = { success: true, videoUrl, taskId, status }
+                setTestResult(JSON.stringify(res, null, 2))
+                setTestLoading(false)
+                return
+              }
+              if (status === 'failed') {
+                res = { success: false, videoUrl, taskId, status, error }
+                setTestResult(JSON.stringify(res, null, 2))
+                setTestLoading(false)
+                return
+              }
+              // 更新轮询进度
+              if (i % 6 === 0) { // 每30秒更新一次状态显示
+                setTestResult(JSON.stringify({ taskId, status, pollCount: i + 1, message: `轮询中... (${((i + 1) * 5)}s)` }, null, 2))
+              }
+            } catch (pollErr) {
+              // 轮询失败不中断，继续重试
+              console.warn(`[VideoPoll] attempt ${i + 1} failed:`, pollErr)
+            }
+          }
+          res = { success: false, taskId, status: 'timeout', error: '轮询超时（15分钟）' }
         } else {
           const r = await http.post<{ data: { success: boolean; imageUrl: string; prompt: string } }>(
             '/media/test-image',

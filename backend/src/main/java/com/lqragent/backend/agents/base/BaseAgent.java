@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.prompt.service.PromptService;
 
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -47,6 +48,15 @@ public abstract class BaseAgent implements AgentInterface {
         this.toolRegistry = toolRegistry;
         this.agentRegistry = agentRegistry;
         this.promptService = promptService;
+    }
+    
+    /**
+     * Spring Bean 初始化后自动注册到 AgentRegistry
+     */
+    @PostConstruct
+    private void autoRegister() {
+        agentRegistry.register(this);
+        log.info("[{}] auto-registered in AgentRegistry", agentId);
     }
     
     @Override

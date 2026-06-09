@@ -4,6 +4,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -44,6 +47,31 @@ public class MediaGenerationService {
     private final AppRuntimeConfig runtimeConfig;
 
     private static final String MEDIA_DIR = "media/generated";
+
+    // ===== 异步视频任务管理 =====
+    private final ConcurrentHashMap<String, VideoTask> videoTasks = new ConcurrentHashMap<>();
+
+    /**
+     * 视频任务状态快照
+     */
+    public record VideoTask(
+            String taskId,
+            String status,   // queued | running | completed | failed
+            String videoUrl,
+            String prompt,
+            int duration,
+            String error
+    ) {
+        public VideoTask withStatus(String newStatus) {
+            return new VideoTask(taskId, newStatus, videoUrl, prompt, duration, error);
+        }
+        public VideoTask withVideoUrl(String url) {
+            return new VideoTask(taskId, status, url, prompt, duration, error);
+        }
+        public VideoTask withError(String err) {
+            return new VideoTask(taskId, status, videoUrl, prompt, duration, err);
+        }
+    }
 
     /**
      * 创建带超时配置的 RestClient。
@@ -491,6 +519,47 @@ public class MediaGenerationService {
     /** 兼容旧接口：默认 5 秒 */
     public String generateVideoByPrompt(String prompt) {
         return generateVideoByPrompt(prompt, 5);
+    }
+
+    // ===== 异步视频生成（不阻塞 HTTP 线程）=====
+
+    /**
+     * 提交异步视频任务，立即返回 taskId。
+     * 前端通过 GET /api/media/test-video/{taskId}/status 轮询状态。
+     */
+    public String submitVideoTask(String prompt, int durationSeconds) {
+        String taskId = UUID.randomUUID().toString();
+        videoTasks.put(taskId, new VideoTask(taskId, "queued", null, prompt, durationSeconds, null));
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                videoTasks.put(taskId, videoTasks.get(taskId).withStatus("running"));
+                log.info("[VideoTask] {} 开始生成视频: prompt={}, duration={}s", taskId, prompt, durationSeconds);
+
+                String videoUrl = generateVideoByPrompt(prompt, durationSeconds);
+
+                if (videoUrl != null && !videoUrl.isBlank()) {
+                    videoTasks.put(taskId, videoTasks.get(taskId).withStatus("completed").withVideoUrl(videoUrl));
+                    log.info("[VideoTask] {} 完成: url={}", taskId, videoUrl);
+                } else {
+                    videoTasks.put(taskId, videoTasks.get(taskId).withStatus("failed").withError("视频生成失败，API 返回空"));
+                    log.warn("[VideoTask] {} 失败: API 返回空", taskId);
+                }
+            } catch (Exception e) {
+                videoTasks.put(taskId, videoTasks.get(taskId).withStatus("failed").withError(e.getMessage()));
+                log.error("[VideoTask] {} 异常: {}", taskId, e.getMessage());
+            }
+        });
+
+        return taskId;
+    }
+
+    /**
+     * 查询视频任务状态
+     */
+    public VideoTask getVideoTask(String taskId) {
+        return videoTasks.getOrDefault(taskId,
+                new VideoTask(taskId, "not_found", null, null, 0, "任务不存在或已过期"));
     }
 
     public Path getMediaPath(Long resourceId) {

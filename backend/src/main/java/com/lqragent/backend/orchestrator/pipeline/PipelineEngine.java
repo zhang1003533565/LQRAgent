@@ -1,17 +1,30 @@
 package com.lqragent.backend.orchestrator.pipeline;
 
-import com.lqragent.backend.orchestrator.context.TaskContext;
-import com.lqragent.backend.orchestrator.context.TraceSpan;
-import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
-import com.lqragent.backend.orchestrator.message.AgentMessage;
-import com.lqragent.backend.orchestrator.message.Performative;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
 import org.springframework.stereotype.Service;
 
-import java.util.*;
-import java.util.concurrent.*;
-import java.util.stream.Collectors;
+import com.lqragent.backend.agents.base.AgentInterface;
+import com.lqragent.backend.agents.base.AgentRegistry;
+import com.lqragent.backend.agents.base.BaseAgent;
+import com.lqragent.backend.orchestrator.context.TaskContext;
+import com.lqragent.backend.orchestrator.context.TraceSpan;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * Pipeline 流水线引擎
@@ -22,7 +35,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PipelineEngine {
 
-    private final RedisStreamsService streams;
+    private final AgentRegistry agentRegistry;
     
     /** 内置模板注册表 */
     private final Map<String, PipelineConfig> templateRegistry = new ConcurrentHashMap<>();
@@ -100,7 +113,7 @@ public class PipelineEngine {
     }
 
     /**
-     * 执行单个步骤
+     * 执行单个步骤 — 通过 AgentRegistry 直接同步调用 Agent
      */
     private StepResult executeStep(PipelineStep step, TaskContext context, String traceId) {
         String spanId = "span-" + step.getStepId() + "-" + System.nanoTime();
@@ -115,44 +128,56 @@ public class PipelineEngine {
 
         while (retryCount <= step.getMaxRetries()) {
             try {
-                // 构建参数
-                Map<String, Object> payload = buildPayload(step, context);
-                payload.put("action", step.getAction());
-                payload.put("traceId", traceId);
-                payload.put("spanId", spanId);
+                // 通过 AgentRegistry 获取 Agent
+                AgentInterface agent = agentRegistry.getAgent(step.getAgentId())
+                        .orElseThrow(() -> new RuntimeException(
+                                "Agent not found in registry: " + step.getAgentId()));
 
-                // 发送任务到 Agent
-                AgentMessage msg = AgentMessage.request(
-                        context.getTaskId(),
-                        "pipeline_engine",
-                        step.getAgentId(),
+                // 构建请求参数
+                Map<String, Object> payload = buildPayload(step, context);
+
+                // 构建 AgentRequest 并同步调用
+                BaseAgent.AgentRequest request = new BaseAgent.AgentRequest(
+                        step.getAction(),
+                        context.getGoal(),
                         payload
                 );
-                streams.send("stream:agent:" + step.getAgentId(), msg);
 
-                // 等待结果（带超时）
-                Map<String, Object> result = waitForResult(
-                        context.getTaskId(), step.getAgentId(), step.getTimeoutMs());
+                BaseAgent.AgentResponse response = agent.process(request, context);
+
+                // 将 AgentResponse 转为 Map，存入上下文供后续步骤使用
+                Map<String, Object> result = new LinkedHashMap<>();
+                result.put("success", response.success());
+                result.put("content", response.content());
+                if (response.executions() != null && !response.executions().isEmpty()) {
+                    result.put("toolCalls", response.executions().size());
+                }
+                if (response.error() != null) {
+                    result.put("error", response.error());
+                }
+
+                // 存储步骤结果到上下文（供下游步骤的 resultMapping 使用）
+                context.setResult(step.getStepId(), result);
 
                 long duration = System.currentTimeMillis() - stepStart;
-                span.complete(truncate(String.valueOf(result), 200));
+                span.complete(truncate(
+                        response.success() ? response.content() : response.error(), 200));
 
-                StepResult stepResult = StepResult.success(
-                        step.getStepId(), step.getAgentId(), result, duration);
-                stepResult.setRetryCount(retryCount);
-                
-                graph_markCompleted(context, step.getStepId(), true);
-                return stepResult;
+                if (response.success()) {
+                    StepResult stepResult = StepResult.success(
+                            step.getStepId(), step.getAgentId(), result, duration);
+                    stepResult.setRetryCount(retryCount);
+                    graph_markCompleted(context, step.getStepId(), true);
+                    return stepResult;
+                } else {
+                    // Agent 返回了失败结果，作为异常处理以触发重试
+                    throw new RuntimeException("Agent returned failure: " + response.error());
+                }
 
-            } catch (TimeoutException e) {
-                retryCount++;
-                lastException = e;
-                log.warn("[Pipeline] step {} timeout, retry {}/{}", 
-                        step.getStepId(), retryCount, step.getMaxRetries());
             } catch (Exception e) {
                 retryCount++;
                 lastException = e;
-                log.warn("[Pipeline] step {} failed: {}, retry {}/{}", 
+                log.warn("[Pipeline] step {} failed: {}, retry {}/{}",
                         step.getStepId(), e.getMessage(), retryCount, step.getMaxRetries());
             }
         }
@@ -160,12 +185,12 @@ public class PipelineEngine {
         // 重试耗尽
         long duration = System.currentTimeMillis() - stepStart;
         span.fail(lastException != null ? lastException.getMessage() : "Max retries exceeded");
-        
+
         if (step.isOptional()) {
             log.warn("[Pipeline] optional step {} failed, continuing...", step.getStepId());
             return StepResult.skipped(step.getStepId(), step.getAgentId(), lastException);
         }
-        
+
         return StepResult.failure(step.getStepId(), step.getAgentId(),
                 lastException != null ? lastException.getMessage() : "Max retries exceeded",
                 duration);
@@ -233,38 +258,7 @@ public class PipelineEngine {
         return payload;
     }
 
-    /**
-     * 等待 Agent 结果
-     */
-    private Map<String, Object> waitForResult(String taskId, String agentId, long timeoutMs) 
-            throws TimeoutException {
-        long startTime = System.currentTimeMillis();
-        String stream = "stream:agent:events";
-        String group = "group:pipeline";
-        streams.createGroup(stream, group);
-
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            try {
-                var messages = streams.consumePending(stream, group, "pipeline:worker-1", 10);
-                for (AgentMessage msg : messages) {
-                    if (!taskId.equals(msg.getTaskId())) continue;
-                    if (msg.getPerformative() == Performative.INFORM) {
-                        return msg.getContent();
-                    }
-                    if (msg.getPerformative() == Performative.ERROR) {
-                        throw new RuntimeException(
-                                (String) msg.getContent().getOrDefault("error", "Unknown error"));
-                    }
-                }
-                Thread.sleep(500);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Interrupted while waiting for result", e);
-            }
-        }
-
-        throw new TimeoutException("Timeout waiting for agent: " + agentId);
-    }
+    // ===== waitForResult removed — Pipeline now calls Agents synchronously via AgentRegistry =====
 
     /**
      * 构建执行图（拓扑排序）

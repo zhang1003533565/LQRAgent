@@ -92,6 +92,40 @@ public class MediaController {
         ));
     }
 
+    @Operation(summary = "提交异步视频任务", description = "提交视频生成任务，立即返回 taskId；前端轮询状态接口获取结果")
+    @PostMapping("/test-video/submit")
+    public ApiResponse<java.util.Map<String, Object>> submitVideo(
+            @RequestBody java.util.Map<String, Object> body) {
+        String prompt = String.valueOf(body.getOrDefault("prompt", "教学演示视频"));
+        int duration = 5;
+        try {
+            Object d = body.get("duration");
+            if (d instanceof Number n) duration = n.intValue();
+            else if (d instanceof String s && !s.isBlank()) duration = Integer.parseInt(s);
+        } catch (NumberFormatException ignored) { /* use default */ }
+        String taskId = mediaGenerationService.submitVideoTask(prompt, duration);
+        return ApiResponse.ok(java.util.Map.of(
+                "taskId", taskId,
+                "status", "queued",
+                "prompt", prompt,
+                "duration", duration
+        ));
+    }
+
+    @Operation(summary = "查询异步视频任务状态", description = "根据 taskId 查询视频生成进度")
+    @GetMapping("/test-video/{taskId}/status")
+    public ApiResponse<java.util.Map<String, Object>> getVideoStatus(@PathVariable String taskId) {
+        var task = mediaGenerationService.getVideoTask(taskId);
+        return ApiResponse.ok(java.util.Map.of(
+                "taskId", task.taskId(),
+                "status", task.status(),
+                "videoUrl", task.videoUrl() != null ? task.videoUrl() : "",
+                "prompt", task.prompt() != null ? task.prompt() : "",
+                "duration", task.duration(),
+                "error", task.error() != null ? task.error() : ""
+        ));
+    }
+
     @Operation(summary = "获取媒体文件", description = "按资源ID获取生成的媒体文件")
     @GetMapping("/{id}")
     public ResponseEntity<?> getMedia(@PathVariable Long id) {
