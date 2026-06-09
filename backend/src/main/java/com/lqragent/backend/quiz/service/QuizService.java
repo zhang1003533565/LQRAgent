@@ -1,19 +1,25 @@
 package com.lqragent.backend.quiz.service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.lqragent.backend.agents.content.summary.lessongeneration.dto.ResourceGenerateRequest;
+import com.lqragent.backend.agents.content.summary.lessongeneration.entity.ResourceItem;
+import com.lqragent.backend.agents.content.summary.lessongeneration.repository.ResourceItemRepository;
 import com.lqragent.backend.agents.effectassessment.service.EffectAssessmentService;
 import com.lqragent.backend.agents.learn.difficulty.tools.AdjustDifficultyTool;
 import com.lqragent.backend.agents.learn.learningstyle.tools.DetectLearningStyleTool;
 import com.lqragent.backend.agents.learn.spacedrepetition.tools.GetReviewScheduleTool;
 import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
+import com.lqragent.backend.agents.resourcegeneration.service.ResourceGenerationService;
 import com.lqragent.backend.chat.entity.UserMemory.MemoryType;
 import com.lqragent.backend.chat.service.UserMemoryService;
 import com.lqragent.backend.common.exception.BusinessException;
@@ -29,6 +35,7 @@ import com.lqragent.backend.quiz.entity.StudyBehavior;
 import com.lqragent.backend.quiz.repository.QuestionBankRepository;
 import com.lqragent.backend.quiz.repository.QuizRecordRepository;
 import com.lqragent.backend.quiz.repository.StudyBehaviorRepository;
+import com.lqragent.backend.shared.knowledgegraph.service.KnowledgeGraphService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -49,6 +56,9 @@ public class QuizService {
     private final AdjustDifficultyTool adjustDifficultyTool;
     private final DetectLearningStyleTool detectLearningStyleTool;
     private final UserMemoryService userMemoryService;
+    private final ResourceGenerationService resourceGenerationService;
+    private final KnowledgeGraphService kgService;
+    private final ResourceItemRepository resourceItemRepository;
 
     @Transactional(readOnly = true)
     public QuestionBankPageDto listQuestions(int page, int size, String questionType, String knowledgePoint) {
@@ -73,6 +83,24 @@ public class QuizService {
             result = questionBankRepository.findByStatus(ENABLED_STATUS, pageable);
         }
 
+        // 题库为空时，尝试从 resource_item 表查找已生成的 QUIZ 资源
+        if (result.getTotalElements() == 0 && hasKnowledgePoint) {
+            var resourceItems = resourceItemRepository.findByKpIdAndResourceType(
+                    knowledgePoint.trim(), ResourceItem.TYPE_QUIZ);
+            if (!resourceItems.isEmpty()) {
+                List<QuestionBankListItemDto> items = resourceItems.stream()
+                        .map(this::resourceToListItemDto)
+                        .toList();
+                return QuestionBankPageDto.builder()
+                        .items(items)
+                        .page(safePage)
+                        .size(safeSize)
+                        .total((long) items.size())
+                        .totalPages(1)
+                        .build();
+            }
+        }
+
         List<QuestionBankListItemDto> items = result.getContent().stream()
                 .map(this::toListItemDto)
                 .toList();
@@ -88,7 +116,17 @@ public class QuizService {
 
     @Transactional(readOnly = true)
     public QuestionBankDetailDto getQuestionDetail(Long questionId) {
-        return toDetailDto(requireEnabledQuestion(questionId));
+        // 先查 question_bank 表
+        try {
+            return toDetailDto(requireEnabledQuestion(questionId));
+        } catch (BusinessException e) {
+            // 题库没有，尝试从 resource_item 表查找
+            var resourceItem = resourceItemRepository.findById(questionId).orElse(null);
+            if (resourceItem != null && ResourceItem.TYPE_QUIZ.equals(resourceItem.getResourceType())) {
+                return resourceToDetailDto(resourceItem);
+            }
+            throw e;
+        }
     }
 
     @Transactional(readOnly = true)
@@ -252,6 +290,36 @@ public class QuizService {
                 .knowledgePoint(question.getKnowledgePoint())
                 .status(question.getStatus())
                 .analysis(question.getAnalysis())
+                .build();
+    }
+
+    /** 从 ResourceItem（LLM 动态生成）转换为列表项 DTO */
+    private QuestionBankListItemDto resourceToListItemDto(ResourceItem item) {
+        return QuestionBankListItemDto.builder()
+                .id(item.getId())
+                .title(item.getTitle())
+                .questionType("mixed")
+                .difficulty(2)
+                .knowledgePoint(item.getKpId())
+                .status(1)
+                .build();
+    }
+
+    /** 从 ResourceItem（LLM 动态生成）转换为详情 DTO */
+    private QuestionBankDetailDto resourceToDetailDto(ResourceItem item) {
+        return QuestionBankDetailDto.builder()
+                .id(item.getId())
+                .title(item.getTitle())
+                .codeContent(null)
+                .questionType("mixed")
+                .optionA(null)
+                .optionB(null)
+                .optionC(null)
+                .optionD(null)
+                .difficulty(2)
+                .knowledgePoint(item.getKpId())
+                .status(1)
+                .analysis(item.getContent())  // 完整 Markdown 内容放在解析字段
                 .build();
     }
 }

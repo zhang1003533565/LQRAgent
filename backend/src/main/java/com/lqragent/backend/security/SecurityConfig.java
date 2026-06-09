@@ -65,6 +65,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/**").permitAll()
                 // 媒体文件（测试控制台需要免认证测试图片/视频生成）
                 .requestMatchers("/api/media/**").permitAll()
+                // 题库（前端学生端答题）
+                .requestMatchers("/api/quiz/**").permitAll()
                 // 其余接口需要认证
                 .anyRequest().authenticated()
             )

@@ -172,6 +172,29 @@ CREATE TABLE IF NOT EXISTS `question_bank` (
     KEY `idx_status` (`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='题库表';
 
+-- 7.1 题库种子数据（幂等：IGNORE 跳过已存在的记录）
+INSERT IGNORE INTO `question_bank` (`id`, `title`, `question_type`, `option_a`, `option_b`, `option_c`, `option_d`, `correct_answer`, `analysis`, `difficulty`, `knowledge_point`) VALUES
+(1,  'Python 中以下哪个函数用于从用户获取输入？', 'single', 'print()', 'input()', 'format()', 'len()', 'B', 'input() 是 Python 内置函数，用于接收用户键盘输入，返回字符串类型。', 1, 'kp_input_output'),
+(2,  '以下代码的输出是什么？\nprint(type(3.14))', 'single', '<class ''int''>', '<class ''float''>', '<class ''str''>', '<class ''bool''>', 'B', '3.14 是一个浮点数字面量，type() 返回 <class ''float''>。', 1, 'kp_variables'),
+(3,  'Python 中字符串拼接可以使用哪个运算符？', 'single', '&', '&&', '+', '|', 'C', 'Python 中用 + 拼接字符串，如 "Hello " + "World"。& 是位运算，&& 是其他语言的逻辑与。', 1, 'kp_string'),
+(4,  '以下代码的输出是什么？\na = 10\nb = 3\nprint(a % b)', 'single', '3', '3.33', '1', '0', 'C', '% 是取模运算符，10 除以 3 余数为 1。', 1, 'kp_operators'),
+(5,  '以下关于 Python 列表的描述，哪个是正确的？', 'single', '列表元素类型必须相同', '列表是不可变的', '列表用方括号 [] 定义', '列表没有索引', 'C', '列表用 [] 定义，可以包含不同类型元素，可变，支持索引访问。', 1, 'kp_list'),
+(6,  '以下代码的输出是什么？\nx = 5\nif x > 3:\n    print("A")\nelse:\n    print("B")', 'single', 'A', 'B', 'AB', '无输出', 'A', 'x=5>3 条件成立，执行 if 分支输出 "A"。', 2, 'kp_if'),
+(7,  '以下代码输出多少个数字？\nfor i in range(3):\n    print(i)', 'single', '2', '3', '4', '0', 'B', 'range(3) 生成 0, 1, 2 三个数，循环执行 3 次。', 2, 'kp_for'),
+(8,  '字典中访问值使用什么？', 'single', '索引（数字）', '键（key）', '下标', '指针', 'B', '字典是键值对结构，通过 dict[key] 访问对应的值。', 2, 'kp_dict'),
+(9,  'while 循环中，哪个关键字可以立即终止循环？', 'single', 'continue', 'pass', 'break', 'return', 'C', 'break 立即跳出当前循环；continue 跳过本次迭代进入下一次；pass 是空语句。', 2, 'kp_while'),
+(10, 'Python 中列表和元组的主要区别是？', 'judge', NULL, NULL, NULL, NULL, '列表可变，元组不可变', '列表用 [] 定义，支持增删改；元组用 () 定义，创建后不能修改。', 2, 'kp_tuple'),
+(11, '函数定义使用哪个关键字？', 'fill', NULL, NULL, NULL, NULL, 'def', 'Python 使用 def 关键字定义函数，如 def foo():。', 2, 'kp_list'),
+(12, 'print(2 ** 3) 的输出是？', 'fill', NULL, NULL, NULL, NULL, '8', '** 是幂运算，2**3 = 2*2*2 = 8。', 1, 'kp_operators'),
+(13, 'break 用于跳过本次循环进入下一次迭代。', 'judge', NULL, NULL, NULL, NULL, '错误', 'break 是终止整个循环，continue 才是跳过本次迭代。', 2, 'kp_break_continue'),
+(14, '在 Python 中，集合（set）中的元素可以重复。', 'judge', NULL, NULL, NULL, NULL, '错误', '集合中的元素是唯一的，不允许重复。', 2, 'kp_set'),
+(15, '下面代码的输出是什么？\ns = "Hello"\nprint(s[1])', 'single', 'H', 'e', 'l', 'o', 'B', 'Python 字符串索引从 0 开始，s[0]="H"，s[1]="e"。', 2, 'kp_string'),
+(16, '以下哪个是正确的注释语法？', 'single', '// 注释', '<!-- 注释 -->', '# 注释', '/* 注释 */', 'C', 'Python 单行注释使用 #，多行注释使用三引号 '''''' 或 """"""。', 1, 'kp_intro'),
+(17, 'if 语句中，条件表达式后面的符号是？', 'fill', NULL, NULL, NULL, NULL, ':', 'Python if 语句格式：if 条件:（条件后必须跟冒号）。', 2, 'kp_if'),
+(18, '以下代码会输出多少次 Hello？\ni = 0\nwhile i < 2:\n    print("Hello")\n    i += 1', 'single', '0', '1', '2', '3', 'C', 'i 从 0 开始，i=0 打印一次，i=1 打印一次，i=2 时条件不满足退出。', 2, 'kp_while'),
+(19, 'range(1, 5) 生成的数字序列是？', 'single', '1,2,3,4,5', '1,2,3,4', '0,1,2,3,4', '1,2,3,4,5,6', 'B', 'range(start, stop) 含 start 不含 stop，即 [1, 5) 区间。', 2, 'kp_for'),
+(20, '以下哪个方法可以向列表末尾添加元素？', 'single', 'insert()', 'add()', 'append()', 'push()', 'C', 'list.append(item) 在末尾添加元素；list.insert(idx, item) 在指定位置插入。Python 列表没有 add() 或 push() 方法。', 2, 'kp_list');
+
 -- 8. 学习行为日志
 CREATE TABLE IF NOT EXISTS `study_behavior` (
     `id`           BIGINT      NOT NULL AUTO_INCREMENT COMMENT '主键ID',
