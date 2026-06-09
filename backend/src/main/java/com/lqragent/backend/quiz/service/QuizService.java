@@ -1,17 +1,14 @@
 package com.lqragent.backend.quiz.service;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.lqragent.backend.agents.content.summary.lessongeneration.dto.ResourceGenerateRequest;
 import com.lqragent.backend.agents.content.summary.lessongeneration.entity.ResourceItem;
 import com.lqragent.backend.agents.content.summary.lessongeneration.repository.ResourceItemRepository;
 import com.lqragent.backend.agents.effectassessment.service.EffectAssessmentService;
