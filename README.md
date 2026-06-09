@@ -172,7 +172,7 @@ taskkill /PID <进程ID> /F
 | 数据库表结构 | ✅ | 14 张业务表，启动时自动执行 DDL |
 | ai-server 自动拉起 | ✅ | 后端启动时自动 pip install + 启动进程 |
 | 学生工作台 UI 框架 | ✅ | 页面、路由、组件壳子、类型定义就绪 |
-| **意图识别（Function Calling）** | ✅ | LLM 自动选择工具，支持 6 种意图 |
+| **意图识别（Function Calling）** | ✅ | LLM 自动选择工具，支持 8 种意图（问候/帮助/学习路径/资源/问答/图表/总结/评估） |
 | **ReAct QA Agent** | ✅ | 真正的 ReAct 循环，支持 RAG 搜索 |
 
 ### 多 Agent 组件
@@ -180,7 +180,7 @@ taskkill /PID <进程ID> /F
 | 分类 | Agent | 状态 | 说明 |
 |------|-------|------|------|
 | **调度层** | Orchestrator | ✅ | Function Calling 意图识别 + Pipeline 调度 |
-| | PlanningAgent | ✅ | LLM 任务拆解 |
+| | PlanningAgent | ✅ | LLM 任务拆解，支持 8 种意图路由 |
 | **用户层** | ProfileAgent | ✅ | 用户画像分析 |
 | | LearningStyleAgent | ✅ | 学习风格检测 |
 | **学习层** | KnowledgeStateAgent | ✅ | 知识掌握度追踪 |
@@ -191,24 +191,24 @@ taskkill /PID <进程ID> /F
 | | LessonAgent | ✅ | 讲义生成 |
 | | DiagramAgent | ✅ | 图表生成 |
 | | SummaryAgent | ✅ | 总结生成 |
+| | PromptGeneration | ✅ | 提示词生成（自动判断图片/视频） |
+| | MediaGeneration | ✅ | AI 图片/视频生成（Agnes AI） |
+| | ContentAnalysisAgent | ✅ | 内容分析（LLM + 知识库） |
 | **服务层** | RecommendationAgent | ✅ | 学习推荐 |
 | | AssessmentAgent | ✅ | 评估批改 |
 | | InterventionAgent | ✅ | 学习干预 |
+| | QualityAgent | ✅ | 内容质量评估 |
 | **基础层** | LearningPathService | ✅ | 学习路径规划 |
 
 ### 待开发功能
 
 | 模块 | 优先级 | 说明 |
 |------|--------|------|
-| 流式对话（WebSocket） | P0 | 实时流式输出 |
 | 学习路径 / 知识图谱可视化 | P1 | 图谱可视化展示 |
 | 资源生成优化 | P1 | 讲义/题目/示意图增强 |
-| 多模态（生图 / 生视频） | P2 | 示意图/短视频生成 |
 | 上传进知识库 | P3 | 文档上传 + 向量化 |
 
-详细开发计划见 [docs/项目精简开发指南.md](./docs/项目精简开发指南.md)。
-
-**统计：** 已实现 16 个 Agent 组件，覆盖用户画像、学习路径、智能问答、资源生成、效果评估等核心功能。
+**统计：** 已实现 20 个 Agent 组件，覆盖用户画像、学习路径、智能问答、资源生成、媒体生成、效果评估等核心功能。
 
 ---
 
@@ -224,9 +224,7 @@ taskkill /PID <进程ID> /F
 
 | 文档 | 说明 |
 |------|------|
-| [docs/后端架构与开发规划.md](./docs/后端架构与开发规划.md) | 后端架构、Agent设计、API清单、开发规划 |
-| [docs/前端架构与开发规划.md](./docs/前端架构与开发规划.md) | 前端架构、功能模块状态、开发规划 |
-| [docs/向量化RAG完善方案.md](./docs/向量化RAG完善方案.md) | 向量化/RAG 链路修复方案（6步） |
+| [docs/开发文档总结.md](./docs/开发文档总结.md) | 项目架构、Agent 设计、技术决策汇总 |
 
 **接口文档**：启动后端后访问 **http://localhost:8080/swagger-ui.html**，所有接口在线可查可测。
 

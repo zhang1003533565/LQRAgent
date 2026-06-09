@@ -477,17 +477,17 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     response = "学习风格分析服务暂时不可用：" + e.getMessage();
                 }
             } else if ("effect".equals(route)) {
-                // 学习效果
-                response = "以下是您的学习效果评估：\n\n" +
-                    "**整体进度：** 65%\n" +
-                    "**学习时长：** 累计 12 小时\n" +
-                    "**掌握知识点：** 8/15 个\n\n" +
-                    "**优势：**\n" +
-                    "- 基础语法掌握扎实\n" +
-                    "- 学习积极性高\n\n" +
-                    "**待提升：**\n" +
-                    "- 高级特性需要加强\n" +
-                    "- 实践项目经验不足";
+                // 学习效果评估 - 调用薄弱点分析工具获取真实数据
+                try {
+                    var weaknessResult = analyzeWeaknessTool.execute(Map.of("userId", userInfo.userId()));
+                    if (weaknessResult.success()) {
+                        response = formatToolResponse("knowledge_state", weaknessResult.content());
+                    } else {
+                        response = "学习效果分析失败，请稍后再试";
+                    }
+                } catch (Exception e) {
+                    response = "学习效果评估服务暂时不可用：" + e.getMessage();
+                }
             } else if ("intervention".equals(route)) {
                 // 调用学习干预工具
                 try {

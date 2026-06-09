@@ -17,6 +17,7 @@ import com.lqragent.backend.agents.learnerprofile.entity.LearnerProfile;
 import com.lqragent.backend.agents.learnerprofile.repository.LearnerProfileRepository;
 import com.lqragent.backend.chat.entity.ChatMessage;
 import com.lqragent.backend.chat.handler.WebSocketSessionManager;
+import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import com.lqragent.backend.chat.repository.ChatMessageRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -39,6 +40,7 @@ public class LearnerProfileService {
     private final ProfileExtractor profileExtractor;
     private final ProfileMergeService profileMergeService;
     private final ChatMessageRepository chatMessageRepository;
+    private final AiServerWsProxy aiServerWsProxy;
 
     /** 获取或创建画像 */
     @Transactional
@@ -201,7 +203,7 @@ public class LearnerProfileService {
         fireProfilePatch(userId, saved);
     }
 
-    /** 推 profile_patch 事件到前端 */
+    /** 推 profile_patch 事件到前端，并同步画像到 ai-server 记忆系统 */
     private void fireProfilePatch(Long userId, LearnerProfile profile) {
         try {
             var payload = JSON.valueToTree(toDto(profile));
@@ -209,6 +211,37 @@ public class LearnerProfileService {
         } catch (Exception e) {
             log.warn("[LearnerProfile] WS推送失败: userId={}", userId, e);
         }
+
+        // 异步同步画像到 ai-server MemoryService（不阻塞主流程）
+        syncProfileToAiServerAsync(userId, profile);
+    }
+
+    /**
+     * 将画像关键信息同步到 ai-server 的 MemoryService（PROFILE.md）。
+     * 使用 CompletableFuture 异步执行，不阻塞画像更新流程。
+     */
+    private void syncProfileToAiServerAsync(Long userId, LearnerProfile profile) {
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                StringBuilder sb = new StringBuilder();
+                sb.append("## 学生画像 - userId: ").append(userId).append("\n\n");
+                sb.append("- 知识水平: ").append(nullToEmpty(profile.getKnowledgeLevel())).append("\n");
+                sb.append("- 学习目标: ").append(nullToEmpty(profile.getLearningGoal())).append("\n");
+                sb.append("- 认知风格: ").append(nullToEmpty(profile.getCognitiveStyle())).append("\n");
+                sb.append("- 学习节奏: ").append(nullToEmpty(profile.getLearningPace())).append("\n");
+                sb.append("- 兴趣方向: ").append(nullToEmpty(profile.getInterestDirection())).append("\n");
+                sb.append("- 偏好资源: ").append(nullToEmpty(profile.getPreferredResourceType())).append("\n");
+                sb.append("- 常见错误: ").append(nullToEmpty(profile.getCommonErrors())).append("\n");
+                sb.append("- 知识点掌握: ").append(nullToEmpty(profile.getTopicMastery())).append("\n");
+                aiServerWsProxy.syncMemory("profile", sb.toString());
+            } catch (Exception e) {
+                log.warn("[LearnerProfile] 画像同步到 ai-server 失败: userId={}, error={}", userId, e.getMessage());
+            }
+        });
+    }
+
+    private String nullToEmpty(String value) {
+        return value != null ? value : "";
     }
 
     private ProfileSummaryDto toDto(LearnerProfile p) {

@@ -122,6 +122,20 @@ public class PlanningAgent {
                 "name", "route_recommendation",
                 "description", "用户请求推荐学习资源、练习题、学习内容"
             )
+        ),
+        Map.of(
+            "type", "function",
+            "function", Map.of(
+                "name", "route_summary",
+                "description", "用户请求总结知识点、生成复习摘要、提炼核心要点、生成学习笔记"
+            )
+        ),
+        Map.of(
+            "type", "function",
+            "function", Map.of(
+                "name", "route_assessment",
+                "description", "用户请求评估答案质量、批改作业、评分、检查答案正确性"
+            )
         )
     );
     
@@ -199,6 +213,8 @@ public class PlanningAgent {
                 case "route_diagram" -> PlanResult.simple(PlanIntent.DIAGRAM);
                 case "route_profile" -> PlanResult.simple(PlanIntent.PROFILE);
                 case "route_recommendation" -> PlanResult.simple(PlanIntent.RECOMMENDATION);
+                case "route_summary" -> PlanResult.simple(PlanIntent.SUMMARY);
+                case "route_assessment" -> PlanResult.simple(PlanIntent.ASSESSMENT);
                 default -> {
                     log.warn("[PlanningAgent] unknown tool: {}, falling back to qa", toolName);
                     yield PlanResult.simple(PlanIntent.QA);

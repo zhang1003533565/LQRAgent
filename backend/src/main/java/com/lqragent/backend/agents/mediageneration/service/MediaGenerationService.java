@@ -62,9 +62,9 @@ public class MediaGenerationService {
         return createMediaRestClient(10_000, 60_000);
     }
 
-    /** 视频 RestClient：10s 连接超时 + 120s 读取超时 */
+    /** 视频 RestClient：15s 连接超时 + 300s 读取超时 */
     private static RestClient videoClient() {
-        return createMediaRestClient(10_000, 120_000);
+        return createMediaRestClient(15_000, 300_000);
     }
 
     @Transactional
@@ -308,6 +308,7 @@ public class MediaGenerationService {
      * 调用 Agnes AI 视频生成（异步任务模式）。
      * POST /v1/videos → 提交任务
      * GET  /v1/videos/{taskId} → 轮询结果
+     * 官方文档：https://agnes-ai.com/doc
      * @param durationSeconds 目标时长（秒），5/10/18，默认 5
      */
     private String callAgnesVideo(String prompt, String apiKey, String host, String model, int durationSeconds) {
@@ -320,14 +321,17 @@ public class MediaGenerationService {
             RestClient client = videoClient();
 
             // 根据目标时长计算 num_frames（需满足 8n+1，上限 441，固定 frame_rate=24）
-            // Agnes 官方文档推荐：5s→121, 10s→241, 18s→441
-            int rawFrames = durationSeconds * 24;
-            int numFrames = Math.min(441, ((rawFrames + 3) / 8) * 8 + 1);
-            if (numFrames < 1) numFrames = 1;
+            // 官方文档推荐值：5s→121, 10s→241, 18s→441
+            int numFrames;
+            switch (durationSeconds) {
+                case 18 -> numFrames = 441;
+                case 10 -> numFrames = 241;
+                default -> numFrames = 121; // 5s default
+            }
 
-            log.info("[MediaGeneration] Agnes Video 目标时长={}s, num_frames={}, frame_rate=24", durationSeconds, numFrames);
+            log.info("[MediaGeneration] Agnes Video 时长={}s, num_frames={}, frame_rate=24, model={}", durationSeconds, numFrames, model);
 
-            // Step 1: 提交生成任务
+            // Step 1: 提交生成任务（官方文档：POST /v1/videos）
             String submitResp = client.post()
                     .uri(base + "/videos")
                     .header("Authorization", "Bearer " + apiKey)
@@ -343,17 +347,31 @@ public class MediaGenerationService {
                     .retrieve()
                     .body(String.class);
 
+            log.debug("[MediaGeneration] Agnes Video 提交响应: {}", submitResp);
+
             var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             var root = mapper.readTree(submitResp);
+            // 官方文档：提交成功返回 { "id": "task_id" }
             String taskId = root.path("id").asText("");
             if (taskId.isBlank()) {
-                log.warn("[MediaGeneration] Agnes Video 任务提交失败: {}", submitResp);
+                // 尝试 task_id 作为备选字段名
+                taskId = root.path("task_id").asText("");
+            }
+            if (taskId.isBlank()) {
+                // 检查是否有错误信息
+                String error = root.path("error").path("message").asText("");
+                if (!error.isBlank()) {
+                    log.error("[MediaGeneration] Agnes Video 提交失败: error={}, 完整响应: {}", error, submitResp);
+                } else {
+                    log.warn("[MediaGeneration] Agnes Video 任务提交响应中无 id 字段: {}", submitResp);
+                }
                 return "";
             }
             log.info("[MediaGeneration] Agnes Video 任务已提交: taskId={}", taskId);
 
-            // Step 2: 轮询等待结果（最多 10 分钟）
-            int maxAttempts = 120;
+            // Step 2: 轮询等待结果（官方文档：GET /v1/videos/{taskId}，最多 15 分钟）
+            // 推荐轮询间隔 5 秒，最大尝试 180 次
+            int maxAttempts = 180;
             int intervalSec = 5;
             for (int i = 0; i < maxAttempts; i++) {
                 Thread.sleep(intervalSec * 1000L);
@@ -372,16 +390,22 @@ public class MediaGenerationService {
                 var pollRoot = mapper.readTree(pollResp);
                 String status = pollRoot.path("status").asText("pending");
 
-                // 首次轮询和每10次打印完整响应用于调试
+                // 每 10 次轮询打印完整响应用于诊断排队情况
                 if (i == 0 || (i + 1) % 10 == 0) {
-                    log.info("[MediaGeneration] Agnes Video 轮询 #{}/{}: status={}, rawKeys={}",
-                            i + 1, maxAttempts, status, pollRoot.fieldNames());
+                    log.info("[MediaGeneration] Agnes Video 轮询 #{}/{}: status={}, 完整响应: {}", i + 1, maxAttempts, status, pollResp);
+                }
+                // 排队超过 2 分钟仍未开始处理，打印警告
+                if (i >= 24 && "queued".equalsIgnoreCase(status)) {
+                    log.warn("[MediaGeneration] Agnes Video 已排队 {} 秒仍未开始处理，当前队列可能较长，请稍后重试", (i + 1) * intervalSec);
                 }
 
+                // 官方文档：completed 表示生成成功，返回 video_url
                 if ("completed".equalsIgnoreCase(status) || "succeeded".equalsIgnoreCase(status)) {
-                    // Agnes 实际返回的字段名是 remixed_from_video_id，不是 video_url
-                    // 按优先级依次尝试：video_url → remixed_from_video_id → data.video_url → output.video_url
+                    // 按优先级提取视频 URL：video_url > output.video_url > remixed_from_video_id > url
                     String videoUrl = pollRoot.path("video_url").asText("");
+                    if (videoUrl.isBlank()) {
+                        videoUrl = pollRoot.path("output").path("video_url").asText("");
+                    }
                     if (videoUrl.isBlank()) {
                         videoUrl = pollRoot.path("remixed_from_video_id").asText("");
                     }
@@ -389,23 +413,8 @@ public class MediaGenerationService {
                         videoUrl = pollRoot.path("url").asText("");
                     }
                     if (videoUrl.isBlank()) {
-                        var data = pollRoot.path("data");
-                        if (data.isObject()) {
-                            videoUrl = data.path("video_url").asText("");
-                            if (videoUrl.isBlank()) videoUrl = data.path("remixed_from_video_id").asText("");
-                            if (videoUrl.isBlank()) videoUrl = data.path("url").asText("");
-                        }
-                    }
-                    if (videoUrl.isBlank()) {
-                        var output = pollRoot.path("output");
-                        if (output.isObject()) {
-                            videoUrl = output.path("video_url").asText("");
-                            if (videoUrl.isBlank()) videoUrl = output.path("remixed_from_video_id").asText("");
-                            if (videoUrl.isBlank()) videoUrl = output.path("url").asText("");
-                        }
-                    }
-                    if (videoUrl.isBlank()) {
                         log.warn("[MediaGeneration] Agnes Video 状态已完成但未找到 video_url, 完整响应: {}", pollResp);
+                        return "";
                     }
                     log.info("[MediaGeneration] Agnes Video 生成完成: url={}", videoUrl);
                     return videoUrl;

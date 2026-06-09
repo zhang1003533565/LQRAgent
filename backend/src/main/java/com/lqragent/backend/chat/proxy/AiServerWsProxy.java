@@ -2,6 +2,8 @@ package com.lqragent.backend.chat.proxy;
 
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.net.http.WebSocket;
 import java.util.List;
 import java.util.Map;
@@ -450,6 +452,34 @@ public class AiServerWsProxy {
                 "input", input != null ? input : ""
         );
         return callCapability("llm_generate", config);
+    }
+
+    /**
+     * 将画像/学习状态同步到 ai-server 的 MemoryService（写入 PROFILE.md / SUMMARY.md）。
+     * 通过 HTTP PUT /api/v1/memory 实现。
+     */
+    public void syncMemory(String file, String content) {
+        try {
+            String baseUrl = runtimeConfig.getAiServerBaseUrl();
+            String url = baseUrl + "/api/v1/memory";
+            String body = objectMapper.writeValueAsString(Map.of("file", file, "content", content != null ? content : ""));
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("Content-Type", "application/json")
+                    .PUT(HttpRequest.BodyPublishers.ofString(body))
+                    .timeout(java.time.Duration.ofSeconds(10))
+                    .build();
+
+            HttpResponse<String> response = sharedHttpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                log.info("[AiServerWsProxy] 记忆同步成功: file={}", file);
+            } else {
+                log.warn("[AiServerWsProxy] 记忆同步失败: file={}, status={}", file, response.statusCode());
+            }
+        } catch (Exception e) {
+            log.warn("[AiServerWsProxy] 记忆同步异常: file={}, error={}", file, e.getMessage());
+        }
     }
 
     public interface StreamCallback {

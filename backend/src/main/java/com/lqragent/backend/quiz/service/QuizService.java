@@ -1,7 +1,21 @@
 package com.lqragent.backend.quiz.service;
 
-import com.lqragent.backend.agents.learn.stateassessment.service.EffectAssessmentService;
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.lqragent.backend.agents.effectassessment.service.EffectAssessmentService;
+import com.lqragent.backend.agents.learn.difficulty.tools.AdjustDifficultyTool;
+import com.lqragent.backend.agents.learn.learningstyle.tools.DetectLearningStyleTool;
+import com.lqragent.backend.agents.learn.spacedrepetition.tools.GetReviewScheduleTool;
 import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
+import com.lqragent.backend.chat.entity.UserMemory.MemoryType;
+import com.lqragent.backend.chat.service.UserMemoryService;
 import com.lqragent.backend.common.exception.BusinessException;
 import com.lqragent.backend.quiz.dto.NextQuestionDto;
 import com.lqragent.backend.quiz.dto.QuestionBankDetailDto;
@@ -15,15 +29,9 @@ import com.lqragent.backend.quiz.entity.StudyBehavior;
 import com.lqragent.backend.quiz.repository.QuestionBankRepository;
 import com.lqragent.backend.quiz.repository.QuizRecordRepository;
 import com.lqragent.backend.quiz.repository.StudyBehaviorRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 @Slf4j
 @Service
@@ -37,6 +45,10 @@ public class QuizService {
     private final StudyBehaviorRepository behaviorRepo;
     private final LearnerProfileService profileService;
     private final EffectAssessmentService effectAssessmentService;
+    private final GetReviewScheduleTool getReviewScheduleTool;
+    private final AdjustDifficultyTool adjustDifficultyTool;
+    private final DetectLearningStyleTool detectLearningStyleTool;
+    private final UserMemoryService userMemoryService;
 
     @Transactional(readOnly = true)
     public QuestionBankPageDto listQuestions(int page, int size, String questionType, String knowledgePoint) {
@@ -127,6 +139,9 @@ public class QuizService {
             effectAssessmentService.analyzeWeaknessAsync(userId);
         }
 
+        // 异步触发学习科学层分析（不阻塞答题响应）
+        triggerLearningScienceAsync(userId);
+
         return QuizResultDto.builder()
                 .id(record.getId())
                 .questionId(question.getId())
@@ -137,6 +152,56 @@ public class QuizService {
                 .correctAnswer(question.getCorrectAnswer())
                 .analysis(question.getAnalysis())
                 .build();
+    }
+
+    /**
+     * 异步触发学习科学层分析（间隔复习、难度推荐、学习风格），不阻塞答题响应。
+     * 复习计划会写入用户记忆，供后续对话上下文使用。
+     */
+    private void triggerLearningScienceAsync(Long userId) {
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            // 1. 间隔复习计划
+            try {
+                var reviewResult = getReviewScheduleTool.execute(Map.of("userId", userId));
+                if (reviewResult.success()) {
+                    log.info("[Quiz] 学习科学层 - 间隔复习计划已生成: userId={}", userId);
+                    // 将复习计划保存到用户记忆
+                    try {
+                        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                        var node = mapper.readTree(reviewResult.content());
+                        String summary = node.path("summary").asText("");
+                        if (!summary.isBlank() && !summary.contains("不需要")) {
+                            userMemoryService.addMemory(userId, MemoryType.LEARNING_PROGRESS,
+                                    "[自动] 复习提醒: " + summary, "spaced_repetition");
+                        }
+                    } catch (Exception e) {
+                        log.warn("[Quiz] 保存复习计划记忆失败: {}", e.getMessage());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[Quiz] 间隔复习计划失败: {}", e.getMessage());
+            }
+
+            // 2. 难度推荐
+            try {
+                var diffResult = adjustDifficultyTool.execute(Map.of("userId", userId));
+                if (diffResult.success()) {
+                    log.info("[Quiz] 学习科学层 - 难度推荐已生成: userId={}", userId);
+                }
+            } catch (Exception e) {
+                log.warn("[Quiz] 难度推荐失败: {}", e.getMessage());
+            }
+
+            // 3. 学习风格分析
+            try {
+                var styleResult = detectLearningStyleTool.execute(Map.of("userId", userId));
+                if (styleResult.success()) {
+                    log.info("[Quiz] 学习科学层 - 学习风格分析完成: userId={}", userId);
+                }
+            } catch (Exception e) {
+                log.warn("[Quiz] 学习风格分析失败: {}", e.getMessage());
+            }
+        });
     }
 
     private QuestionBank requireEnabledQuestion(Long questionId) {

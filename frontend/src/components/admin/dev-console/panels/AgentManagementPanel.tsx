@@ -34,7 +34,7 @@ interface AgentDef {
   description: string
   aiSource: string
   features: AgentFeature[]
-  testFields: { key: string; label: string; placeholder: string; type?: 'text' | 'textarea' | 'select'; options?: { label: string; value: string }[]; defaultValue?: string }[]
+  testFields: { key: string; label: string; placeholder: string; type?: 'text' | 'textarea' | 'select'; options?: { label: string; value: string }[]; defaultValue?: string; showWhen?: (values: Record<string, string>) => boolean }[]
   /** 对应的 PromptService agentId */
   promptAgentId?: string
 }
@@ -211,6 +211,7 @@ const AGENTS: AgentDef[] = [
           { label: 'video — AI 视频', value: 'video' },
         ] },
       { key: 'duration', label: '视频时长', placeholder: '选择视频时长', type: 'select', defaultValue: '5',
+        showWhen: (values) => values.mediaType === 'video',
         options: [
           { label: '~5 秒 (121 frames)', value: '5' },
           { label: '~10 秒 (241 frames)', value: '10' },
@@ -287,6 +288,18 @@ const LLM_MODELS = [
   { label: 'Agnes 1.5 Flash', value: 'agnes-1.5-flash' },
 ]
 
+const IMAGE_MODELS = [
+  { label: 'Agnes Image 2.1 Flash（默认）', value: 'agnes-image-2.1-flash' },
+  { label: 'Agnes Image 2.0 Flash', value: 'agnes-image-2.0-flash' },
+  { label: 'Kolors（可图）', value: 'Kwai-Kolors/Kolors' },
+  { label: 'Stable Diffusion XL', value: 'stabilityai/stable-diffusion-xl-base-1.0' },
+  { label: 'DALL·E 3', value: 'dall-e-3' },
+]
+
+const VIDEO_MODELS = [
+  { label: 'Agnes Video V2.0（默认）', value: 'agnes-video-v2.0' },
+]
+
 // ==================== 组件 ====================
 
 function StatusBadge({ status }: { status: 'done' | 'wip' | 'todo' }) {
@@ -354,7 +367,7 @@ function AgentDetail({ agent, stats, configMap, onSave, saving, promptData, prom
           const r = await http.post<{ data: { success: boolean; videoUrl: string; prompt: string; duration: number } }>(
             '/media/test-video',
             { prompt, duration },
-            { timeout: 600000 }, // 视频生成最长等 10 分钟
+            { timeout: 900000 }, // 视频生成最长等 15 分钟
           )
           res = r.data.data
         } else {
@@ -417,17 +430,44 @@ function AgentDetail({ agent, stats, configMap, onSave, saving, promptData, prom
       {/* 模型选择 */}
       <div className="rounded-lg border border-console-border p-4">
         <h4 className="mb-3 text-xs font-medium uppercase tracking-wider text-console-muted">模型配置</h4>
-        <div className="flex items-center justify-between text-sm text-console-text">
-          <span>模型</span>
-          <select
-            value={currentModel}
-            disabled={saving}
-            onChange={e => onSave(modelKey, e.target.value)}
-            className="rounded border border-console-border bg-console-card px-2 py-1 text-xs text-console-text"
-          >
-            {LLM_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </select>
-        </div>
+        {agent.id === 'mediagen' ? (
+          <>
+            <div className="mb-3 flex items-center justify-between text-sm text-console-text">
+              <span>生图模型</span>
+              <select
+                value={configMap.get('agent.mediagen.model') ?? 'agnes-image-2.1-flash'}
+                disabled={saving}
+                onChange={e => onSave('agent.mediagen.model', e.target.value)}
+                className="rounded border border-console-border bg-console-card px-2 py-1 text-xs text-console-text"
+              >
+                {IMAGE_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center justify-between text-sm text-console-text">
+              <span>视频模型</span>
+              <select
+                value={configMap.get('agent.mediagen.video_model') ?? 'agnes-video-v2.0'}
+                disabled={saving}
+                onChange={e => onSave('agent.mediagen.video_model', e.target.value)}
+                className="rounded border border-console-border bg-console-card px-2 py-1 text-xs text-console-text"
+              >
+                {VIDEO_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center justify-between text-sm text-console-text">
+            <span>模型</span>
+            <select
+              value={currentModel}
+              disabled={saving}
+              onChange={e => onSave(modelKey, e.target.value)}
+              className="rounded border border-console-border bg-console-card px-2 py-1 text-xs text-console-text"
+            >
+              {LLM_MODELS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* 提示词管理 */}
@@ -515,7 +555,7 @@ function AgentDetail({ agent, stats, configMap, onSave, saving, promptData, prom
       <div className="rounded-lg border border-console-border p-4">
         <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-console-muted">发送测试</h4>
         <div className="mb-3 space-y-2">
-          {agent.testFields.map(field => (
+          {agent.testFields.filter(f => !f.showWhen || f.showWhen(testValues)).map(field => (
             <div key={field.key}>
               <label className="mb-1 block text-xs text-console-muted">{field.label}</label>
               {field.type === 'textarea' ? (

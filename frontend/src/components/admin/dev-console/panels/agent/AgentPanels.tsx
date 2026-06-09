@@ -84,6 +84,22 @@ const IMAGE_PROVIDERS_MAP: Record<string, {
   },
 }
 
+/** 视频生成供应商 → 模型列表 */
+const VIDEO_PROVIDERS_MAP: Record<string, {
+  label: string; models: { label: string; value: string }[]
+}> = {
+  mock: {
+    label: 'Mock（占位符）',
+    models: [{ label: '占位符', value: 'mock' }],
+  },
+  agnes: {
+    label: 'Agnes AI（免费）',
+    models: [
+      { label: 'Agnes Video V2.0', value: 'agnes-video-v2.0' },
+    ],
+  },
+}
+
 const LLM_MODELS = LLM_PROVIDERS_MAP.openai.models
   .concat(LLM_PROVIDERS_MAP.deepseek.models)
   .concat(LLM_PROVIDERS_MAP.dashscope.models)
@@ -100,6 +116,10 @@ interface AgentConfigItem {
   options?: { label: string; value: string }[]
   defaultValue: string
   /** model 类型时显示为模型选择器，options 是可选模型列表 */
+  /** 关联的 provider configKey，用于根据 provider 动态切换模型列表 */
+  providerConfigKey?: string
+  /** provider → options 映射，providerConfigKey 的值作为 key */
+  providerOptions?: Record<string, { label: string; value: string }[]>
 }
 
 interface AgentDef {
@@ -252,6 +272,10 @@ const AGENT_DEFS: Record<string, AgentDef> = {
       { configKey: 'agent.mediagen.image_provider', label: '生图提供商', type: 'select', defaultValue: 'agnes',
         options: Object.entries(IMAGE_PROVIDERS_MAP).map(([k, v]) => ({ label: v.label, value: k })) },
       { configKey: 'agent.mediagen.model', label: '生图模型', type: 'select', defaultValue: 'agnes-image-2.1-flash',
+        providerConfigKey: 'agent.mediagen.image_provider',
+        providerOptions: Object.fromEntries(
+          Object.entries(IMAGE_PROVIDERS_MAP).map(([k, v]) => [k, v.models])
+        ),
         options: IMAGE_PROVIDERS_MAP.agnes.models },
       { configKey: 'agent.mediagen.host', label: 'API 地址', type: 'select', defaultValue: 'https://apihub.agnes-ai.com/v1',
         options: [
@@ -261,14 +285,13 @@ const AGENT_DEFS: Record<string, AgentDef> = {
         ] },
       { configKey: 'agent.mediagen.api_key', label: 'API Key', type: 'toggle', defaultValue: 'true' },
       { configKey: 'agent.mediagen.video_provider', label: '视频提供商', type: 'select', defaultValue: 'agnes',
-        options: [
-          { label: 'Mock（占位符）', value: 'mock' },
-          { label: 'Agnes AI', value: 'agnes' },
-        ] },
+        options: Object.entries(VIDEO_PROVIDERS_MAP).map(([k, v]) => ({ label: v.label, value: k })) },
       { configKey: 'agent.mediagen.video_model', label: '视频模型', type: 'select', defaultValue: 'agnes-video-v2.0',
-        options: [
-          { label: 'Agnes Video V2.0', value: 'agnes-video-v2.0' },
-        ] },
+        providerConfigKey: 'agent.mediagen.video_provider',
+        providerOptions: Object.fromEntries(
+          Object.entries(VIDEO_PROVIDERS_MAP).map(([k, v]) => [k, v.models])
+        ),
+        options: VIDEO_PROVIDERS_MAP.agnes.models },
       { configKey: 'agent.mediagen.video_host', label: '视频 API 地址', type: 'select', defaultValue: 'https://apihub.agnes-ai.com/v1',
         options: [
           { label: 'Agnes AI', value: 'https://apihub.agnes-ai.com/v1' },
@@ -465,6 +488,14 @@ function AgentDetailView({
         <div className="space-y-3">
           {def.configItems.map((cfg) => {
             const currentVal = configMap.get(cfg.configKey) ?? cfg.defaultValue
+            // 动态选项：根据关联的 provider 值切换模型列表
+            const effectiveOptions = (() => {
+              if (cfg.providerConfigKey && cfg.providerOptions) {
+                const provider = configMap.get(cfg.providerConfigKey) ?? 'agnes'
+                return cfg.providerOptions[provider] ?? cfg.options
+              }
+              return cfg.options
+            })()
             return (
               <div key={cfg.configKey} className="flex items-center justify-between text-sm text-console-text">
                 <span>{cfg.label}</span>
@@ -490,7 +521,7 @@ function AgentDetailView({
                       onChange={(e) => onSave(cfg.configKey, e.target.value)}
                       className="rounded border border-console-border bg-console-card px-2 py-1 text-xs text-console-text"
                     >
-                      {cfg.options?.map((opt) => (
+                      {effectiveOptions?.map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
                     </select>
@@ -502,7 +533,7 @@ function AgentDetailView({
                     onChange={(e) => onSave(cfg.configKey, e.target.value)}
                     className="rounded border border-console-border bg-console-card px-2 py-1 text-xs text-console-text"
                   >
-                    {cfg.options?.map((opt) => (
+                    {effectiveOptions?.map((opt) => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
                   </select>

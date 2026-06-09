@@ -63,6 +63,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/chat/**").permitAll()
                 // 管理员控制台 API
                 .requestMatchers("/api/admin/**").permitAll()
+                // 媒体文件（测试控制台需要免认证测试图片/视频生成）
+                .requestMatchers("/api/media/**").permitAll()
                 // 其余接口需要认证
                 .anyRequest().authenticated()
             )
