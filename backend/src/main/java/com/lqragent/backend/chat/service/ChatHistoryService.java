@@ -1,19 +1,21 @@
 package com.lqragent.backend.chat.service;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.lqragent.backend.chat.entity.ChatMessage;
 import com.lqragent.backend.chat.entity.ChatSession;
 import com.lqragent.backend.chat.entity.ChatSession.SessionStatus;
 import com.lqragent.backend.chat.repository.ChatMessageRepository;
 import com.lqragent.backend.chat.repository.ChatSessionRepository;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.List;
 
 /**
  * 聊天历史服务

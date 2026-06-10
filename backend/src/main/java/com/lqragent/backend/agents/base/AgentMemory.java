@@ -1,15 +1,19 @@
 package com.lqragent.backend.agents.base;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Component;
+
 import com.lqragent.backend.chat.entity.ChatMessage;
 import com.lqragent.backend.chat.service.ChatHistoryService;
 import com.lqragent.backend.chat.service.UserMemoryService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
-
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 /**
  * Agent 上下文记忆
