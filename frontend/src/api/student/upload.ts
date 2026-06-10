@@ -42,3 +42,9 @@ export async function listUploadTasks(): Promise<UploadTask[]> {
 export async function deleteUploadTask(taskId: number): Promise<void> {
   await http.delete(`/upload/tasks/${taskId}`)
 }
+
+/** 获取文件下载链接 */
+export async function getFileUrl(fileId: number): Promise<{ url: string; fileName: string }> {
+  const res = await http.get<{ data: { url: string; fileName: string } }>(`/upload/file/${fileId}`)
+  return res.data.data
+}

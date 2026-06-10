@@ -40,6 +40,12 @@ public class PipelineEngine {
     /** 内置模板注册表 */
     private final Map<String, PipelineConfig> templateRegistry = new ConcurrentHashMap<>();
 
+    /** 步骤完成回调（用于异步模式下向前端推送进度） */
+    @FunctionalInterface
+    public interface StepCallback {
+        void onStepComplete(String stepId, String agentId, boolean success, Map<String, Object> data);
+    }
+
     /**
      * 注册模板
      */
@@ -108,6 +114,64 @@ public class PipelineEngine {
         } catch (Exception e) {
             long totalDuration = System.currentTimeMillis() - startTime;
             log.error("[Pipeline] execution failed: {}", e.getMessage());
+            return PipelineResult.failure(e.getMessage(), totalDuration);
+        }
+    }
+
+    /**
+     * 执行 Pipeline（带步骤回调，用于异步模式）
+     */
+    public PipelineResult execute(PipelineConfig config, TaskContext context, StepCallback callback) {
+        long startTime = System.currentTimeMillis();
+        String traceId = context.getTaskId();
+        
+        log.info("[Pipeline] start(async): {}, steps={}", 
+                config.getName(), config.getSteps().size());
+
+        try {
+            ExecutionGraph graph = buildGraph(config);
+            List<StepResult> allResults = new CopyOnWriteArrayList<>();
+
+            while (graph.hasReadySteps()) {
+                List<PipelineStep> readySteps = graph.getReadySteps();
+
+                for (PipelineStep step : readySteps) {
+                    StepResult result = executeStep(step, context, traceId);
+                    allResults.add(result);
+                    graph.markCompleted(step.getStepId(), result.isSuccess());
+                    
+                    // 步骤完成回调
+                    if (callback != null) {
+                        try {
+                            callback.onStepComplete(
+                                    result.getStepId(), result.getAgentId(),
+                                    result.isSuccess(), result.getData());
+                        } catch (Exception cbEx) {
+                            log.warn("[Pipeline] step callback error: {}", cbEx.getMessage());
+                        }
+                    }
+                }
+            }
+
+            boolean allSuccess = allResults.stream().allMatch(StepResult::isSuccess);
+            long totalDuration = System.currentTimeMillis() - startTime;
+
+            if (allSuccess) {
+                Map<String, Object> output = allResults.isEmpty() ? 
+                        Map.of() : allResults.get(allResults.size() - 1).getData();
+                return PipelineResult.success(allResults, output, totalDuration);
+            } else {
+                String errorMsg = allResults.stream()
+                        .filter(r -> !r.isSuccess())
+                        .map(StepResult::getErrorMessage)
+                        .findFirst()
+                        .orElse("Unknown error");
+                return PipelineResult.failure(errorMsg, totalDuration);
+            }
+
+        } catch (Exception e) {
+            long totalDuration = System.currentTimeMillis() - startTime;
+            log.error("[Pipeline] async execution failed: {}", e.getMessage());
             return PipelineResult.failure(e.getMessage(), totalDuration);
         }
     }

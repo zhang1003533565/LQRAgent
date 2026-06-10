@@ -1,8 +1,10 @@
 package com.lqragent.backend.agents.base;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Service;
@@ -61,5 +63,12 @@ public class AgentRegistry {
      */
     public int size() {
         return agents.size();
+    }
+
+    /**
+     * 获取所有已注册 Agent ID
+     */
+    public Set<String> getAllAgentIds() {
+        return Collections.unmodifiableSet(agents.keySet());
     }
 }

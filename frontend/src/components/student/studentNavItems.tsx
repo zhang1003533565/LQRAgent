@@ -119,6 +119,7 @@ export const STUDENT_NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+
   {
     to: '/workspace/profile-center',
     label: '个人中心',

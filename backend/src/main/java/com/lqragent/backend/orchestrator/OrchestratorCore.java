@@ -6,6 +6,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.WebSocketSession;
@@ -13,6 +18,8 @@ import org.springframework.web.socket.WebSocketSession;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.agents.base.AgentMemory;
 import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.learn.path.dto.LearningPathDto;
+import com.lqragent.backend.agents.learn.path.service.LearningPathService;
 import com.lqragent.backend.chat.service.AgentRunLogService;
 import com.lqragent.backend.orchestrator.capability.AgentCapability;
 import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
@@ -22,6 +29,7 @@ import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.orchestrator.pipeline.PipelineConfig;
 import com.lqragent.backend.orchestrator.pipeline.PipelineEngine;
 import com.lqragent.backend.orchestrator.pipeline.PipelineResult;
+import com.lqragent.backend.orchestrator.pipeline.PipelineTemplates;
 import com.lqragent.backend.orchestrator.pipeline.StepResult;
 import com.lqragent.backend.orchestrator.planning.PlanIntent;
 import com.lqragent.backend.orchestrator.planning.PlanResult;
@@ -47,6 +55,7 @@ public class OrchestratorCore {
     private final PlanningAgent planningAgent;
     private final PipelineEngine pipelineEngine;
     private final CapabilityRegistry capabilityRegistry;
+    private final LearningPathService learningPathService;
     private final ObjectMapper mapper = new ObjectMapper();
 
     // 任务状态跟踪（用于 learn 流程的 WebSocket 推送）
@@ -55,7 +64,8 @@ public class OrchestratorCore {
     public OrchestratorCore(RedisStreamsService streams, AgentRunLogService runLogService,
                            LlmClient llmClient, AgentMemory agentMemory,
                            PlanningAgent planningAgent, PipelineEngine pipelineEngine,
-                           CapabilityRegistry capabilityRegistry) {
+                           CapabilityRegistry capabilityRegistry,
+                           LearningPathService learningPathService) {
         this.streams = streams;
         this.runLogService = runLogService;
         this.llmClient = llmClient;
@@ -63,6 +73,7 @@ public class OrchestratorCore {
         this.planningAgent = planningAgent;
         this.pipelineEngine = pipelineEngine;
         this.capabilityRegistry = capabilityRegistry;
+        this.learningPathService = learningPathService;
     }
 
     @PostConstruct
@@ -74,8 +85,85 @@ public class OrchestratorCore {
                 .actions(List.of("route", "plan", "execute", "aggregate"))
                 .tags(Set.of("orchestrator", "scheduler", "coordinator"))
                 .build());
+
+        // 批量注册所有 Agent 的能力描述（供帮助信息和能力发现使用）
+        registerAgentCapabilities();
+
         log.info("[OrchestratorCore] registered orchestrator and {} agent capabilities",
                 capabilityRegistry.size());
+    }
+
+    private void registerAgentCapabilities() {
+        capabilityRegistry.register(AgentCapability.builder()
+                .agentId(AgentIds.QA)
+                .displayName("智能问答")
+                .description("智能问答：解答学习问题、知识检索、概念解释")
+                .actions(List.of("search_knowledge", "generate_answer"))
+                .tags(Set.of("qa", "question", "answer"))
+                .build());
+        capabilityRegistry.register(AgentCapability.builder()
+                .agentId(AgentIds.LEARNING_PATH)
+                .displayName("学习路径规划")
+                .description("学习路径规划：生成个性化学习路线和知识图谱")
+                .actions(List.of("generate_path"))
+                .tags(Set.of("learning_path", "path", "plan"))
+                .build());
+        capabilityRegistry.register(AgentCapability.builder()
+                .agentId(AgentIds.RESOURCE)
+                .displayName("学习资源生成")
+                .description("学习资源生成：生成讲义、练习题、代码示例等")
+                .actions(List.of("generate_lesson", "batch_generate"))
+                .tags(Set.of("resource", "lesson", "quiz"))
+                .build());
+        capabilityRegistry.register(AgentCapability.builder()
+                .agentId(AgentIds.PROFILE)
+                .displayName("用户画像")
+                .description("用户画像分析：了解你的学习状态和知识掌握程度")
+                .actions(List.of("get_profile"))
+                .tags(Set.of("profile", "learner"))
+                .build());
+        capabilityRegistry.register(AgentCapability.builder()
+                .agentId(AgentIds.DIAGRAM)
+                .displayName("图表生成")
+                .description("图表生成：生成思维导图、流程图、知识图谱等")
+                .actions(List.of("generate_diagram"))
+                .tags(Set.of("diagram", "mindmap", "flowchart"))
+                .build());
+        capabilityRegistry.register(AgentCapability.builder()
+                .agentId(AgentIds.SUMMARY)
+                .displayName("总结生成")
+                .description("总结生成：生成知识点摘要和复习笔记")
+                .actions(List.of("generate_summary"))
+                .tags(Set.of("summary", "review"))
+                .build());
+        capabilityRegistry.register(AgentCapability.builder()
+                .agentId(AgentIds.RECOMMENDATION)
+                .displayName("个性化推荐")
+                .description("个性化推荐：根据学习情况推荐资源和方向")
+                .actions(List.of("recommend"))
+                .tags(Set.of("recommendation", "suggest"))
+                .build());
+        capabilityRegistry.register(AgentCapability.builder()
+                .agentId(AgentIds.ASSESSMENT)
+                .displayName("学习评估")
+                .description("学习评估：评估学习效果、批改作业")
+                .actions(List.of("grade"))
+                .tags(Set.of("assessment", "grade", "evaluation"))
+                .build());
+        capabilityRegistry.register(AgentCapability.builder()
+                .agentId(AgentIds.INTERVENTION)
+                .displayName("学习干预")
+                .description("学习干预：分析学习状态并提供干预建议")
+                .actions(List.of("assess_and_intervene"))
+                .tags(Set.of("intervention", "suggest"))
+                .build());
+        capabilityRegistry.register(AgentCapability.builder()
+                .agentId(AgentIds.MEDIA_GEN)
+                .displayName("媒体生成")
+                .description("媒体生成：生成图片、视频等多媒体内容")
+                .actions(List.of("generate_media"))
+                .tags(Set.of("media", "image", "video"))
+                .build());
     }
 
     // ==================== 核心入口 ====================
@@ -92,6 +180,16 @@ public class OrchestratorCore {
         // Step 1: PlanningAgent LLM 拆解
         PlanResult plan = planningAgent.decompose(message, userId);
 
+        // 将可映射到 Pipeline 的 SIMPLE 意图升级为 PIPELINE 执行
+        if (plan.isSimple() && plan.intent() != null) {
+            PipelineConfig upgradedConfig = upgradeToPipeline(plan.intent());
+            if (upgradedConfig != null) {
+                plan = PlanResult.pipeline(upgradedConfig, upgradedConfig.getSteps());
+                log.info("[Orchestrator] upgraded intent {} to pipeline {}",
+                        plan.intent(), upgradedConfig.getPipelineId());
+            }
+        }
+
         if (plan.isSimple()) {
             return handleSimpleRequest(plan.intent(), message);
         }
@@ -103,6 +201,52 @@ public class OrchestratorCore {
 
         // 兜底：QA
         return Map.of("route", "qa", "agent", AgentIds.QA, "message", message);
+    }
+
+    /**
+     * 仅做意图识别，不执行 Pipeline（用于异步模式的第一步）
+     */
+    public PlanResult planOnly(String userId, String message) {
+        return planOnly(userId, message, null);
+    }
+
+    /**
+     * 仅做意图识别，不执行 Pipeline（用于异步模式的第一步，带对话历史）
+     */
+    public PlanResult planOnly(String userId, String message, String chatHistory) {
+        log.info("[Orchestrator] planOnly: userId={}, msg={}", userId, message);
+        PlanResult plan = planningAgent.decompose(message, userId, chatHistory);
+
+        // 将可映射到 Pipeline 的 SIMPLE 意图升级为 PIPELINE
+        if (plan.isSimple() && plan.intent() != null) {
+            PipelineConfig upgradedConfig = upgradeToPipeline(plan.intent());
+            if (upgradedConfig != null) {
+                plan = PlanResult.pipeline(upgradedConfig, upgradedConfig.getSteps());
+            }
+        }
+        return plan;
+    }
+
+    /**
+     * 异步执行 Pipeline，每个步骤完成后通过 callback 通知
+     * 返回 PipelineResult（同步等待完成，但在新线程中调用此方法）
+     */
+    public PipelineResult handlePipelineAsync(PlanResult plan, String userId,
+                                              String message,
+                                              PipelineEngine.StepCallback callback) {
+        PipelineConfig config = plan.pipelineConfig();
+        String taskId = UUID.randomUUID().toString();
+        TaskContext context = new TaskContext(taskId, userId, null, message);
+
+        log.info("[Orchestrator] async pipeline: {}, steps={}",
+                config.getName(), config.getSteps().size());
+
+        try {
+            return pipelineEngine.execute(config, context, callback);
+        } catch (Exception e) {
+            log.error("[Orchestrator] async pipeline failed: {}", e.getMessage(), e);
+            return PipelineResult.failure(e.getMessage(), 0);
+        }
     }
 
     /**
@@ -132,7 +276,7 @@ public class OrchestratorCore {
 
     // ==================== 简单请求处理 ====================
 
-    private Map<String, Object> handleSimpleRequest(PlanIntent intent, String message) {
+    public Map<String, Object> handleSimpleRequest(PlanIntent intent, String message) {
         return switch (intent) {
             case GREETING -> Map.of("route", "direct", "response",
                     "你好！我是 LQRAgent 智能学习助手，可以帮你解答问题、规划学习路径、生成学习资源。请问有什么可以帮助你的？");
@@ -150,6 +294,8 @@ public class OrchestratorCore {
             case ASSESSMENT -> Map.of("route", "assessment", "agent",
                     capabilityRegistry.matchBestAgent("assessment"));
             case PROFILE -> Map.of("route", "profile", "agent", "profile_agent", "message", message);
+            case INTERVENTION -> Map.of("route", "intervention", "agent",
+                    capabilityRegistry.matchBestAgent("intervention"));
             default -> Map.of("route", "qa", "agent", AgentIds.QA, "message", message);
         };
     }
@@ -181,29 +327,39 @@ public class OrchestratorCore {
         log.info("[Orchestrator] executing pipeline: {}, steps={}",
                 config.getName(), config.getSteps().size());
 
-        TaskContext context = new TaskContext(taskId, userId, null, message);
-        PipelineResult result = pipelineEngine.execute(config, context);
+        try {
+            TaskContext context = new TaskContext(taskId, userId, null, message);
+            PipelineResult result = pipelineEngine.execute(config, context);
 
-        if (result.isSuccess()) {
-            // 聚合所有步骤结果
-            String aggregated = aggregateResults(config, result);
-            return Map.of(
-                    "route", "pipeline_complete",
-                    "agent", "pipeline_engine",
-                    "response", aggregated,
-                    "stepResults", result.getStepResults() != null
-                            ? result.getStepResults().stream()
-                                .map(sr -> Map.of("stepId", sr.getStepId(), "agentId", sr.getAgentId(), "success", sr.isSuccess()))
-                                .toList()
-                            : List.of(),
-                    "durationMs", result.getTotalDurationMs()
-            );
-        } else {
+            if (result.isSuccess()) {
+                // 聚合所有步骤结果
+                String aggregated = aggregateResults(config, result);
+                return Map.of(
+                        "route", "pipeline_complete",
+                        "agent", "pipeline_engine",
+                        "response", aggregated,
+                        "stepResults", result.getStepResults() != null
+                                ? result.getStepResults().stream()
+                                    .map(sr -> Map.of("stepId", sr.getStepId(), "agentId", sr.getAgentId(), "success", sr.isSuccess()))
+                                    .toList()
+                                : List.of(),
+                        "durationMs", result.getTotalDurationMs()
+                );
+            } else {
+                return Map.of(
+                        "route", "pipeline_error",
+                        "agent", "pipeline_engine",
+                        "response", "任务执行失败: " + result.getErrorMessage(),
+                        "error", result.getErrorMessage()
+                );
+            }
+        } catch (Exception e) {
+            log.error("[Orchestrator] pipeline execution failed: {}", e.getMessage(), e);
             return Map.of(
                     "route", "pipeline_error",
                     "agent", "pipeline_engine",
-                    "response", "任务执行失败: " + result.getErrorMessage(),
-                    "error", result.getErrorMessage()
+                    "response", "任务执行失败: " + e.getMessage(),
+                    "error", e.getMessage()
             );
         }
     }
@@ -268,7 +424,7 @@ public class OrchestratorCore {
     /**
      * 将 Pipeline 多步骤结果聚合为自然语言
      */
-    private String aggregateResults(PipelineConfig config, PipelineResult result) {
+    public String aggregateResults(PipelineConfig config, PipelineResult result) {
         if (result.getStepResults() == null || result.getStepResults().isEmpty()) {
             return "任务执行完成，但未获得结果。";
         }
@@ -303,6 +459,13 @@ public class OrchestratorCore {
         if (data.containsKey("llm_analysis")) {
             return String.valueOf(data.get("llm_analysis"));
         }
+        // content 字段（Agent 的 LLM 回答）
+        if (data.containsKey("content")) {
+            Object content = data.get("content");
+            if (content != null && !String.valueOf(content).isBlank()) {
+                return String.valueOf(content);
+            }
+        }
         // 学习路径特殊处理
         if (agentId.contains("learning_path") && data.containsKey("nodes")) {
             return "学习路径已生成，包含 " + data.get("nodeCount") + " 个节点。";
@@ -334,17 +497,51 @@ public class OrchestratorCore {
         PipelineConfig config = com.lqragent.backend.orchestrator.pipeline.PipelineTemplates.learningPath();
         TaskContext context = new TaskContext(taskId, userId, null, goal);
 
-        // 在后台线程执行
-        Thread executor = new Thread(() -> {
+        // 使用 ExecutorService + Future 实现优雅超时控制
+        ExecutorService executorService = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "learn-exec-" + taskId);
+            t.setDaemon(true);
+            return t;
+        });
+        
+        Future<?> future = executorService.submit(() -> {
             try {
+                // 发送开始消息
+                sendToFrontend(session, Map.of(
+                        "type", "progress",
+                        "agent", "orchestrator",
+                        "message", "开始生成学习路径..."
+                ));
+                
                 PipelineResult result = pipelineEngine.execute(config, context);
                 if (result.isSuccess()) {
-                    Map<String, Object> output = result.getOutput() != null
-                            ? result.getOutput() : Map.of();
+                    // 从数据库获取刚生成的路径数据（Pipeline 中 GeneratePathTool 已保存到 DB）
+                    Long uid = Long.parseLong(userId);
+                    java.util.Optional<LearningPathDto> pathOpt = learningPathService.getCurrentPath(uid);
+                    
+                    Map<String, Object> agentResult = new HashMap<>();
+                    if (pathOpt.isPresent()) {
+                        LearningPathDto pathDto = pathOpt.get();
+                        Map<String, Object> pathData = new HashMap<>();
+                        pathData.put("goal", pathDto.getGoal());
+                        pathData.put("planDescription", pathDto.getPlanDescription());
+                        pathData.put("nodes", pathDto.getNodes());
+                        agentResult.put("path", pathData);
+                        agentResult.put("result", pathData);
+                        log.info("[Orchestrator] path data fetched from DB: nodes={}", pathDto.getNodes().size());
+                    } else {
+                        log.warn("[Orchestrator] pipeline succeeded but no path found in DB");
+                        agentResult.put("path", Map.of("goal", goal, "nodes", List.of(), "planDescription", ""));
+                        agentResult.put("result", agentResult.get("path"));
+                    }
+                    
+                    Map<String, Object> results = new HashMap<>();
+                    results.put("learning_path_agent", agentResult);
+                    
                     sendToFrontend(session, Map.of(
                             "type", "complete",
                             "taskId", taskId,
-                            "results", output
+                            "results", results
                     ));
                 } else {
                     sendToFrontend(session, Map.of(
@@ -355,22 +552,62 @@ public class OrchestratorCore {
                 }
             } catch (Exception e) {
                 log.error("[Orchestrator] learn pipeline failed: {}", e.getMessage(), e);
+                String errorMsg = e.getCause() instanceof InterruptedException 
+                    ? "生成超时，请稍后重试" 
+                    : "Pipeline执行失败: " + e.getMessage();
                 sendToFrontend(session, Map.of(
                         "type", "error",
                         "taskId", taskId,
-                        "message", e.getMessage()
+                        "message", errorMsg
                 ));
             } finally {
                 tasks.remove(taskId);
             }
-        }, "learn-exec-" + taskId);
-        executor.setDaemon(true);
-        executor.start();
+        });
+        
+        // 设置整体超时（3分钟）
+        Thread timeoutThread = new Thread(() -> {
+            try {
+                // 等待任务完成，最多3分钟
+                future.get(180, TimeUnit.SECONDS);
+            } catch (TimeoutException e) {
+                log.warn("[Orchestrator] learn task {} timed out after 3 minutes", taskId);
+                sendToFrontend(session, Map.of(
+                        "type", "error",
+                        "taskId", taskId,
+                        "message", "生成超时，请稍后重试"
+                ));
+                tasks.remove(taskId);
+                future.cancel(true); // 请求取消任务
+            } catch (Exception e) {
+                log.error("[Orchestrator] learn task {} execution error: {}", taskId, e.getMessage());
+            } finally {
+                executorService.shutdownNow();
+            }
+        }, "learn-timeout-" + taskId);
+        timeoutThread.setDaemon(true);
+        timeoutThread.start();
 
         return taskId;
     }
 
     // ==================== 工具方法 ====================
+
+    /**
+     * 将 SIMPLE 意图升级为 Pipeline（当存在对应模板时）
+     */
+    private PipelineConfig upgradeToPipeline(PlanIntent intent) {
+        return switch (intent) {
+            case LEARNING_PATH -> PipelineTemplates.learningPath();
+            case DIAGRAM -> PipelineTemplates.diagram();
+            case SUMMARY -> PipelineTemplates.summary();
+            case RECOMMENDATION -> PipelineTemplates.recommendation();
+            case ASSESSMENT -> PipelineTemplates.assessment();
+            case RESOURCE -> PipelineTemplates.resource();
+            case INTERVENTION -> PipelineTemplates.intervention();
+            default -> null;
+        };
+    }
 
     private void sendTask(String taskId, String agentId, String action, Map<String, Object> payload) {
         Map<String, Object> content = new HashMap<>(payload);

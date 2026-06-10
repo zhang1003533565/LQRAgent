@@ -162,13 +162,16 @@ public class ChatHistoryService {
     }
 
     /**
-     * 删除会话（软删除）
+     * 删除会话（硬删除，同时删除关联的消息）
      */
     @Transactional
     public void deleteSession(Long sessionId) {
-        ChatSession session = sessionRepo.findById(sessionId).orElseThrow();
-        session.setStatus(SessionStatus.DELETED);
-        sessionRepo.save(session);
+        // 先删除关联的消息
+        messageRepo.deleteBySessionId(sessionId);
+        log.info("[ChatHistory] deleted messages for session: {}", sessionId);
+        
+        // 再删除会话
+        sessionRepo.deleteById(sessionId);
         log.info("[ChatHistory] deleted session: {}", sessionId);
     }
 

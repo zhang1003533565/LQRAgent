@@ -32,6 +32,7 @@ export default function WorkspacePage() {
           <Route path="resources" element={<LearningResourcesPage />} />
           <Route path="quiz" element={<QuizPage />} />
           <Route path="profile-center" element={<ProfileCenterPage />} />
+
           <Route path="notes" element={<NotesView />} />
           <Route path="quiz/practice/:questionId" element={backgroundLocation ? <QuizPage /> : <QuizPracticeDrawer questionId={activeQuestionId} />} />
         </Route>

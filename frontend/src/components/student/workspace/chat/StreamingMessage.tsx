@@ -5,6 +5,7 @@ import type { ChatMessage } from '@/utils/types/chat'
 import MultiCardMessage from './MultiCardMessage'
 import MermaidRenderer from './MermaidRenderer'
 import RagSourcesCard from './RagSourcesCard'
+import LearningPathCard from './LearningPathCard'
 import styles from './StreamingMessage.module.css'
 
 interface Props {
@@ -27,6 +28,7 @@ function RobotIcon() {
 export default function StreamingMessage({ message }: Props) {
   const isUser = message.role === 'user'
   const isMulti = message.contentType === 'multi_card' && message.cards?.length
+  const isLearningPath = message.contentType === 'learning_path'
   const [liked, setLiked] = useState<boolean | null>(null)
 
   const timeLabel = new Date(message.createdAt).toLocaleTimeString('zh-CN', {
@@ -47,6 +49,11 @@ export default function StreamingMessage({ message }: Props) {
         <div className={styles.bubble}>
           {isUser ? (
             <p style={{ margin: 0 }}>{message.content}</p>
+          ) : isLearningPath ? (
+            <>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content || ' '}</ReactMarkdown>
+              <LearningPathCard />
+            </>
           ) : isMulti ? (
             <MultiCardMessage cards={message.cards!} />
           ) : (

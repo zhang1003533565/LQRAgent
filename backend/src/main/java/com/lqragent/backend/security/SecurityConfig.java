@@ -67,6 +67,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/media/**").permitAll()
                 // 题库（前端学生端答题）
                 .requestMatchers("/api/quiz/**").permitAll()
+                // WebSocket 端点（JWT 由握手拦截器校验）
+                .requestMatchers("/ws/**").permitAll()
                 // 其余接口需要认证
                 .anyRequest().authenticated()
             )

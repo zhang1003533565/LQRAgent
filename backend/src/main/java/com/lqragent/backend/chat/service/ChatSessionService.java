@@ -53,16 +53,6 @@ public class ChatSessionService {
     }
 
     @Transactional
-    public boolean deleteSession(Long sessionId) {
-        return chatSessionRepository.findById(sessionId).map(session -> {
-            session.setStatus(SessionStatus.DELETED);
-            chatSessionRepository.save(session);
-            log.info("[ChatSession] deleted: id={}", sessionId);
-            return true;
-        }).orElse(false);
-    }
-
-    @Transactional
     public void updateAiServerSessionId(Long sessionId, String aiServerSessionId) {
         chatSessionRepository.findById(sessionId).ifPresent(session -> {
             // 将 aiServerSessionId 存储到 metadata 或其他字段

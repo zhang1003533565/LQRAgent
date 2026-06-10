@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { uploadFile, listUploadTasks, deleteUploadTask } from '@/api/student/upload'
+import { trackBehavior } from '@/utils/tracker'
 import { listKnowledgePointsByIds } from '@/api/student/knowledge'
 import FileHistoryDrawer from '@/components/student/upload/FileHistoryDrawer'
 import type { UploadTask, KbScope, TaskStatus } from '@/api/student/upload'
@@ -99,7 +100,7 @@ function parseAnalysis(task: UploadTask): ParsedAnalysis {
                   : null
             return { kpId, score }
           })
-          .filter((item): item is NonNullable<typeof item> => Boolean(item))
+          .filter((item: { kpId: string; score: number | null } | null): item is { kpId: string; score: number | null } => Boolean(item))
       } else if (result?.matchedKnowledgePoints && typeof result.matchedKnowledgePoints === 'object') {
         matchedKnowledgePoints = Object.entries(result.matchedKnowledgePoints as Record<string, unknown>)
           .map(([kpId, rawScore]) => {
@@ -139,7 +140,7 @@ export default function UploadPage() {
 
   const [tasks, setTasks] = useState<UploadTask[]>([])
   const [uploading, setUploading] = useState(false)
-  const [scope, setScope] = useState<KbScope>('PERSONAL')
+  const [scope] = useState<KbScope>('PERSONAL')
   const [dragOver, setDragOver] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [knowledgePointTitles, setKnowledgePointTitles] = useState<Record<string, string>>({})
@@ -285,6 +286,7 @@ export default function UploadPage() {
       setError(null)
       try {
         await uploadFile(file, scope)
+        trackBehavior({ kpId: '', action: 'upload_file', extra: file.name })
         await refreshTasks()
       } catch (e: any) {
         setError(e?.message || '上传失败，请重试')

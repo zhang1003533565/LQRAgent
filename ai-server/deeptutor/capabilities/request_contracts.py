@@ -55,6 +55,21 @@ class VisualizeRequestConfig(BaseModel):
     render_mode: Literal["auto", "svg", "chartjs", "mermaid", "html"] = "auto"
 
 
+class LlmGenerateRequestConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    prompt_type: str = ""
+    title: str = ""
+    description: str = ""
+    content: str = ""
+    input: str = ""
+    behavior_data: str = ""
+    dialog_summary: str = ""
+    kp_ids: list[str] = Field(default_factory=list)
+    profile_hint: str = ""
+    user_prompt: str = ""
+
+
 def _clean_public_config(raw_config: dict[str, Any] | None) -> dict[str, Any]:
     if raw_config is None:
         return {}
@@ -105,6 +120,12 @@ def validate_visualize_request_config(
     return _validate_model(VisualizeRequestConfig, raw_config, label="visualize")
 
 
+def validate_llm_generate_request_config(
+    raw_config: dict[str, Any] | None,
+) -> LlmGenerateRequestConfig:
+    return _validate_model(LlmGenerateRequestConfig, raw_config, label="llm generate")
+
+
 def build_request_schema(model_type: type[BaseModel]) -> dict[str, Any]:
     return model_type.model_json_schema(mode="validation")
 
@@ -116,6 +137,7 @@ CAPABILITY_CONFIG_VALIDATORS: dict[str, Callable[[dict[str, Any] | None], Any]] 
     "deep_research": validate_research_request_config,
     "math_animator": validate_math_animator_request_config,
     "visualize": validate_visualize_request_config,
+    "llm_generate": validate_llm_generate_request_config,
 }
 
 CAPABILITY_REQUEST_SCHEMAS: dict[str, dict[str, Any]] = {
@@ -125,6 +147,7 @@ CAPABILITY_REQUEST_SCHEMAS: dict[str, dict[str, Any]] = {
     "deep_research": build_request_schema(DeepResearchRequestConfig),
     "math_animator": build_request_schema(MathAnimatorRequestConfig),
     "visualize": build_request_schema(VisualizeRequestConfig),
+    "llm_generate": build_request_schema(LlmGenerateRequestConfig),
 }
 
 
@@ -150,6 +173,7 @@ __all__ = [
     "ChatRequestConfig",
     "DeepQuestionRequestConfig",
     "DeepSolveRequestConfig",
+    "LlmGenerateRequestConfig",
     "VisualizeRequestConfig",
     "build_request_schema",
     "get_capability_request_schema",
@@ -157,5 +181,6 @@ __all__ = [
     "validate_chat_request_config",
     "validate_deep_question_request_config",
     "validate_deep_solve_request_config",
+    "validate_llm_generate_request_config",
     "validate_visualize_request_config",
 ]

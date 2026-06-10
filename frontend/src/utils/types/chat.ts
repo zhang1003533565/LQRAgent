@@ -3,7 +3,7 @@ import type { RagSource } from './artifact'
 
 export type ChatRole = 'user' | 'assistant' | 'system'
 
-export type MessageContentType = 'text' | 'multi_card' | 'diagram'
+export type MessageContentType = 'text' | 'multi_card' | 'diagram' | 'learning_path'
 
 /**
  * 聊天会话

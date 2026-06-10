@@ -334,7 +334,30 @@ export interface AgentTestResult {
   durationMs: number
 }
 
-export async function testAgent(agentType: string, payload: Record<string, unknown>): Promise<AgentTestResult> {
-  const res = await http.post<{ data: AgentTestResult }>('/admin/agent-test', { agentType, payload })
+export async function testAgent(message: string): Promise<AgentTestResult> {
+  const res = await http.post<{ data: AgentTestResult }>('/admin/agent-test', { message })
+  return res.data.data
+}
+
+// ===== 上传管理（管理员） =====
+
+/** 重试一条失败的上传任务 */
+export async function retryUploadTask(taskId: number): Promise<{ message: string; taskId: number }> {
+  const res = await http.post<{ data: { message: string; taskId: number } }>(`/admin/upload/process/${taskId}`)
+  return res.data.data
+}
+
+/** 删除一条上传任务 */
+export async function deleteAdminUploadTask(taskId: number): Promise<void> {
+  await http.delete(`/admin/upload/tasks/${taskId}`)
+}
+
+/** 上传文件到公共知识库 */
+export async function uploadPublic(file: File): Promise<UploadTask> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await http.post<{ data: UploadTask }>('/admin/upload-public', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
   return res.data.data
 }

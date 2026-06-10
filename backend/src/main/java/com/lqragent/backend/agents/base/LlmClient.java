@@ -1,10 +1,12 @@
 package com.lqragent.backend.agents.base;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -67,7 +69,13 @@ public class LlmClient {
             log.info("[LlmClient] calling LLM: host={}, model={}, apiKey={}...", baseUrl, model, 
                     apiKey.length() > 8 ? apiKey.substring(0, 4) + "****" + apiKey.substring(apiKey.length() - 4) : "(short)");
             
-            String response = RestClient.builder().build()
+            SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+            requestFactory.setConnectTimeout(Duration.ofSeconds(10));
+            requestFactory.setReadTimeout(Duration.ofSeconds(60));
+            
+            String response = RestClient.builder()
+                    .requestFactory(requestFactory)
+                    .build()
                     .post()
                     .uri(baseUrl + "/chat/completions")
                     .header("Authorization", "Bearer " + apiKey)

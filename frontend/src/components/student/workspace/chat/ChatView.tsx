@@ -1,8 +1,10 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useWebSocket } from '@/utils/hooks/useWebSocket'
 import { useChatStore } from '@/utils/store/chatStore'
 import { useAuthStore } from '@/utils/store/authStore'
+import { usePathStore } from '@/utils/store/pathStore'
 import { chatApi } from '@/utils/api/chat'
+import { trackBehavior } from '@/utils/tracker'
 import ChatMessageList from './ChatMessageList'
 import ChatComposer from './ChatComposer'
 import AgentStepsBar from './AgentStepsBar'
@@ -17,6 +19,7 @@ export default function ChatView() {
   const loadMessages = useChatStore((s) => s.loadMessages)
   const messages = useChatStore((s) => s.messages)
   const userId = useAuthStore((s) => s.user?.userId != null ? String(s.user.userId) : null)
+  const selectedKpId = usePathStore((s) => s.selectedKpId)
   const [showSidebar, setShowSidebar] = useState(true)
   const [autoLoaded, setAutoLoaded] = useState(false)
   const [sidebarRefresh, setSidebarRefresh] = useState(0)
@@ -48,7 +51,13 @@ export default function ChatView() {
     loadRecentSession()
   }, [userId, autoLoaded, loadMessages, messages.length])
 
-  // sessionId 变化时（新会话创建），刷新侧边栏
+  // 包装 send 以添加埋点
+  const trackSend = useCallback((content: string) => {
+    if (selectedKpId) {
+      trackBehavior({ kpId: selectedKpId, action: 'chat_send', extra: content.slice(0, 100) })
+    }
+    send(content)
+  }, [send, selectedKpId])
   useEffect(() => {
     if (sessionId) {
       setSidebarRefresh((n) => n + 1)
@@ -105,7 +114,7 @@ export default function ChatView() {
               <ChatMessageList />
             </div>
           </div>
-          <ChatComposer onSend={send} />
+          <ChatComposer onSend={trackSend} />
         </div>
       </div>
     </section>

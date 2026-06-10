@@ -8,7 +8,7 @@ interface ProfileData {
   cognitiveStyle: string
   learningPace: string
   weakTopics: string[]
-  knowledgeMap: { kpId: string; title: string; mastery: number; status: string }[]
+  knowledgeMap: { kpId: string; title: string; mastery: number; status?: string }[]
 }
 
 // 从 API 获取真实数据
@@ -89,11 +89,13 @@ export default function ProfilePage() {
     async function fetchProfile() {
       try {
         const detail = await getProfileDetail()
+        // 优先使用展平字段，兼容旧嵌套结构
+        const summary = detail.summary ?? {}
         setProfile({
-          knowledgeLevel: detail.summary?.knowledgeLevel || 'BEGINNER',
-          learningGoal: detail.summary?.learningGoal || '',
-          cognitiveStyle: detail.summary?.cognitiveStyle || '',
-          learningPace: detail.summary?.learningPace || '',
+          knowledgeLevel: detail.knowledgeLevel || summary.knowledgeLevel || 'BEGINNER',
+          learningGoal: detail.learningGoal || summary.learningGoal || '',
+          cognitiveStyle: detail.cognitiveStyle || summary.cognitiveStyle || '',
+          learningPace: detail.learningPace || summary.learningPace || '',
           weakTopics: detail.weakTopics || [],
           knowledgeMap: detail.knowledgeMap || [],
         })

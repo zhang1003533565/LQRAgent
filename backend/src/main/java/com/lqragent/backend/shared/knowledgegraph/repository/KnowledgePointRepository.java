@@ -1,11 +1,12 @@
 package com.lqragent.backend.shared.knowledgegraph.repository;
 
-import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
+import java.util.List;
+import java.util.Optional;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
-import java.util.List;
-import java.util.Optional;
+import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
 
 public interface KnowledgePointRepository extends JpaRepository<KnowledgePoint, Long> {
 
@@ -19,4 +20,7 @@ public interface KnowledgePointRepository extends JpaRepository<KnowledgePoint, 
 
     @Query("SELECT DISTINCT kp.subject FROM KnowledgePoint kp WHERE kp.subject IS NOT NULL ORDER BY kp.subject")
     List<String> findDistinctSubjects();
+
+    List<KnowledgePoint> findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
+            String titleKeyword, String descKeyword);
 }

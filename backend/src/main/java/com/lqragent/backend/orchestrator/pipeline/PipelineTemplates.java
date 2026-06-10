@@ -35,7 +35,8 @@ public class PipelineTemplates {
         engine.registerTemplate(recommendation());
         engine.registerTemplate(assessment());
         engine.registerTemplate(intervention());
-        log.info("[PipelineTemplates] registered {} templates", 11);
+        engine.registerTemplate(learningPathCore());
+        log.info("[PipelineTemplates] registered {} templates", 12);
     }
 
     /**
@@ -304,6 +305,32 @@ public class PipelineTemplates {
                                 .agentId(AgentIds.INTERVENTION)
                                 .action("assess_and_intervene")
                                 .timeoutMs(60000)
+                                .build()
+                ))
+                .build();
+    }
+
+    /**
+     * 学习路径核心流水线（仅画像+路径，不生成资源）
+     * 用于异步模式：快速返回路径结果，资源按需生成
+     */
+    public static PipelineConfig learningPathCore() {
+        return PipelineConfig.builder()
+                .pipelineId("learning_path_core")
+                .name("学习路径规划")
+                .description("根据用户画像生成个性化学习路径（不含资源生成）")
+                .steps(List.of(
+                        PipelineStep.builder()
+                                .stepId("profile")
+                                .agentId(AgentIds.PROFILE)
+                                .action("get_profile")
+                                .build(),
+                        PipelineStep.builder()
+                                .stepId("path_gen")
+                                .agentId(AgentIds.LEARNING_PATH)
+                                .action("generate_path")
+                                .dependsOn(List.of("profile"))
+                                .resultMapping(Map.of("profile", "profile"))
                                 .build()
                 ))
                 .build();

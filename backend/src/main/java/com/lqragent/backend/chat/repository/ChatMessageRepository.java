@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -37,4 +38,11 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
      */
     @Query("SELECT COUNT(m) FROM ChatMessage m WHERE m.userId = :userId")
     long countByUserId(@Param("userId") Long userId);
+    
+    /**
+     * 删除指定会话的所有消息
+     */
+    @Modifying
+    @Query("DELETE FROM ChatMessage m WHERE m.sessionId = :sessionId")
+    void deleteBySessionId(@Param("sessionId") Long sessionId);
 }

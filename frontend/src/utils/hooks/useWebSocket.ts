@@ -27,6 +27,15 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
         nodes: p.nodes,
         planDescription: p.planDescription ?? '',
       })
+      // 更新最后一条助手消息为学习路径类型
+      const msgs = useChatStore.getState().messages
+      const last = [...msgs].reverse().find((m) => m.role === 'assistant')
+      if (last) {
+        useChatStore.getState().updateMessage(last.id, {
+          contentType: 'learning_path',
+          streaming: false,
+        })
+      }
     }
     return
   }

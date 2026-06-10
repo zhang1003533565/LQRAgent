@@ -1,21 +1,24 @@
 package com.lqragent.backend.shared.knowledgegraph.controller;
 
-import com.lqragent.backend.common.dto.ApiResponse;
-import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
-import com.lqragent.backend.shared.knowledgegraph.repository.KnowledgePointRepository;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.lqragent.backend.common.dto.ApiResponse;
+import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.shared.knowledgegraph.repository.KnowledgePointRepository;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.RequiredArgsConstructor;
 
 @Tag(name = "知识点", description = "知识点查询接口")
 @RestController
@@ -56,4 +59,29 @@ public class KnowledgePointController {
     }
 
     public record KnowledgePointDto(String kpId, String title, String subject, String description) {}
+
+    @Operation(summary = "按 kpId 查询单个知识点详情")
+    @GetMapping("/{kpId}")
+    public ApiResponse<KnowledgePointDto> getByKpId(
+            @PathVariable String kpId) {
+        return knowledgePointRepository.findByKpId(kpId)
+                .map(kp -> ApiResponse.ok(toDto(kp)))
+                .orElse(ApiResponse.fail(404, "知识点不存在: " + kpId));
+    }
+
+    @Operation(summary = "按关键词搜索知识点")
+    @GetMapping("/search")
+    public ApiResponse<List<KnowledgePointDto>> search(
+            @Parameter(description = "搜索关键词")
+            @RequestParam String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return ApiResponse.ok(List.of());
+        }
+        List<KnowledgePointDto> result = knowledgePointRepository
+                .findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(keyword, keyword)
+                .stream()
+                .map(KnowledgePointController::toDto)
+                .collect(Collectors.toList());
+        return ApiResponse.ok(result);
+    }
 }

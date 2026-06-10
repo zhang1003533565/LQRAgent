@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { usePathStore } from '@/utils/store/pathStore'
 import { getQuizQuestions, submitQuiz } from '@/api/student/quiz'
+import { trackBehavior } from '@/utils/tracker'
 import type { LearningResource } from '@/utils/types/media-resource'
 import QuizEmptyPage from './QuizEmptyPage'
 import styles from './QuizPage.module.css'
@@ -105,7 +106,7 @@ export default function QuizPage() {
       const ans = answers[q.id]
       if (ans) {
         try {
-          const res = await submitQuiz({ kpId, resourceId: q.id, answer: ans })
+          const res = await submitQuiz({ questionId: q.id, kpId, resourceId: q.id, answer: ans })
           if (res.correct) correct.add(q.id)
         } catch {
           // best-effort
@@ -113,6 +114,7 @@ export default function QuizPage() {
       }
     }
     setCorrectSet(correct)
+    trackBehavior({ kpId, action: 'quiz_answer', extra: `${correct.size}/${questions.length}` })
   }, [questions, answers, kpId, currentQuestion])
 
   if (!selectedKpId) {

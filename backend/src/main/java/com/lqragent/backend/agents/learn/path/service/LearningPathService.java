@@ -1,28 +1,30 @@
 package com.lqragent.backend.agents.learn.path.service;
 
-import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
-import com.lqragent.backend.shared.knowledgegraph.service.KnowledgeGraphService;
-import com.lqragent.backend.chat.proxy.AiServerWsProxy;
-import com.lqragent.backend.agents.learnerprofile.dto.ProfileSummaryDto;
-import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.lqragent.backend.agents.learn.path.dto.LearningPathDto;
 import com.lqragent.backend.agents.learn.path.entity.LearningPath;
 import com.lqragent.backend.agents.learn.path.entity.LearningPathStep;
 import com.lqragent.backend.agents.learn.path.repository.LearningPathRepository;
 import com.lqragent.backend.agents.learn.path.repository.LearningPathStepRepository;
+import com.lqragent.backend.agents.learnerprofile.dto.ProfileSummaryDto;
+import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
+import com.lqragent.backend.chat.proxy.AiServerWsProxy;
+import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.shared.knowledgegraph.service.KnowledgeGraphService;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.Optional;
-import java.util.stream.Collectors;
 
 /**
  * 学习路径规划服务。
@@ -126,6 +128,32 @@ public class LearningPathService {
                 .nodes(nodes)
                 .planDescription(planDescription)
                 .build();
+    }
+
+    /**
+     * 更新学习路径步骤状态
+     * @param pathId 路径ID
+     * @param kpId 知识点ID
+     * @param completed 是否完成
+     * @param status 步骤状态：PENDING/ACTIVE/COMPLETED/SKIPPED
+     * @return 是否更新成功
+     */
+    @Transactional
+    public boolean updateStepStatus(Long pathId, String kpId, boolean completed, String status) {
+        Optional<LearningPathStep> optional = stepRepo.findByPathIdAndKpId(pathId, kpId);
+        if (optional.isEmpty()) {
+            log.warn("[LearningPath] step not found: pathId={}, kpId={}", pathId, kpId);
+            return false;
+        }
+        LearningPathStep step = optional.get();
+        step.setCompleted(completed);
+        step.setStatus(status);
+        if (completed) {
+            step.setCompletedAt(java.time.LocalDateTime.now());
+        }
+        stepRepo.save(step);
+        log.info("[LearningPath] step updated: pathId={}, kpId={}, completed={}, status={}", pathId, kpId, completed, status);
+        return true;
     }
 
     /** 查询当前用户最近一条 ACTIVE 路径 */
@@ -564,7 +592,15 @@ private List<String> resolveAllKpIds(String goal) {
                 )
             );
 
-            var httpClient = org.springframework.web.client.RestClient.builder().build();
+            // 配置带超时的 RestClient
+            var requestFactory = new org.springframework.http.client.SimpleClientHttpRequestFactory();
+            requestFactory.setConnectTimeout(java.time.Duration.ofSeconds(15));
+            requestFactory.setReadTimeout(java.time.Duration.ofSeconds(90));
+            
+            var httpClient = org.springframework.web.client.RestClient.builder()
+                .requestFactory(requestFactory)
+                .build();
+            
             String respJson = httpClient.post()
                 .uri(baseUrl + "/chat/completions")
                 .header("Authorization", "Bearer " + apiKey)
@@ -671,6 +707,12 @@ private List<String> resolveAllKpIds(String goal) {
                         .build();
             }
         } catch (Exception e) {
+            // 检查是否是中断导致的（超时场景）
+            if (Thread.currentThread().isInterrupted() || e.getCause() instanceof InterruptedException) {
+                Thread.currentThread().interrupt(); // 恢复中断状态
+                log.warn("[LearningPath] 动态生成被中断（可能是超时）: {}", e.getMessage());
+                throw new RuntimeException("学习路径生成超时", e);
+            }
             log.error("[LearningPath] 动态生成失败: {}", e.getMessage(), e);
         }
 

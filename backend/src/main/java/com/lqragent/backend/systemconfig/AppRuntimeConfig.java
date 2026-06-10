@@ -68,4 +68,9 @@ public class AppRuntimeConfig {
     public int getWsResponseTimeoutSec() {
         return Integer.parseInt(get(ConfigKeys.AI_SERVER_WS_RESPONSE_TIMEOUT_SEC, "120"));
     }
+
+    /** 是否使用 ai-server Agentic Pipeline（false=走旧方案，Java 自己做 AI） */
+    public boolean isUseAgenticPipeline() {
+        return Boolean.parseBoolean(get(ConfigKeys.AI_SERVER_USE_AGENTIC_PIPELINE, "true"));
+    }
 }

@@ -717,6 +717,10 @@
   border-radius: 12px;
 }
 
+.pathContent {
+  min-width: 0;
+}
+
 .pathBtn {
   min-width: 108px;
   height: 38px;

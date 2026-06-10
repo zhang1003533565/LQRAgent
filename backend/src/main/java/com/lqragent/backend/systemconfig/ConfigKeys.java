@@ -62,4 +62,7 @@ public final class ConfigKeys {
     public static final String AI_SERVER_WS_CONNECT_TIMEOUT_SEC = "ai-server.ws.connect-timeout-sec";
     public static final String AI_SERVER_WS_RESPONSE_TIMEOUT_SEC = "ai-server.ws.response-timeout-sec";
 
+    /** 使用 ai-server Agentic Pipeline 开关 */
+    public static final String AI_SERVER_USE_AGENTIC_PIPELINE = "ai-server.use-agentic-pipeline";
+
 }

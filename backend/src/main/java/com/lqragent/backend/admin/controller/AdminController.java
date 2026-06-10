@@ -1,54 +1,65 @@
 package com.lqragent.backend.admin.controller;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
 import com.lqragent.backend.admin.dto.AdminStatusDto;
 import com.lqragent.backend.admin.dto.AdminUserDto;
 import com.lqragent.backend.admin.dto.ModelConfigDto;
 import com.lqragent.backend.admin.dto.ModelConfigSaveRequest;
 import com.lqragent.backend.admin.dto.SysConfigDto;
 import com.lqragent.backend.admin.dto.SysConfigSaveRequest;
+import com.lqragent.backend.admin.repository.AgentRunLogRepository;
 import com.lqragent.backend.admin.service.AdminService;
-import com.lqragent.backend.orchestrator.OrchestratorCore;
 import com.lqragent.backend.admin.service.ModelConfigService;
-import com.lqragent.backend.common.dto.ApiResponse;
-import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgeEdge;
-import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
-import com.lqragent.backend.shared.knowledgegraph.repository.KnowledgeEdgeRepository;
-import com.lqragent.backend.shared.knowledgegraph.repository.KnowledgePointRepository;
-import com.lqragent.backend.agents.learnerprofile.dto.ProfileSummaryDto;
-import com.lqragent.backend.agents.learnerprofile.repository.LearnerProfileRepository;
+import com.lqragent.backend.agents.base.AgentRegistry;
+import com.lqragent.backend.agents.content.summary.lessongeneration.entity.ResourceItem;
+import com.lqragent.backend.agents.content.summary.lessongeneration.repository.ResourceItemRepository;
 import com.lqragent.backend.agents.learn.path.entity.LearningPath;
 import com.lqragent.backend.agents.learn.path.entity.LearningPathStep;
 import com.lqragent.backend.agents.learn.path.repository.LearningPathRepository;
 import com.lqragent.backend.agents.learn.path.repository.LearningPathStepRepository;
-import com.lqragent.backend.agents.content.summary.lessongeneration.entity.ResourceItem;
-import com.lqragent.backend.agents.content.summary.lessongeneration.repository.ResourceItemRepository;
+import com.lqragent.backend.agents.learnerprofile.dto.ProfileSummaryDto;
+import com.lqragent.backend.agents.learnerprofile.repository.LearnerProfileRepository;
 import com.lqragent.backend.chat.entity.AgentRunLog;
-import com.lqragent.backend.admin.repository.AgentRunLogRepository;
+import com.lqragent.backend.common.dto.ApiResponse;
+import com.lqragent.backend.orchestrator.OrchestratorCore;
+import com.lqragent.backend.quiz.repository.QuizRecordRepository;
+import com.lqragent.backend.quiz.repository.StudyBehaviorRepository;
+import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgeEdge;
+import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.shared.knowledgegraph.repository.KnowledgeEdgeRepository;
+import com.lqragent.backend.shared.knowledgegraph.repository.KnowledgePointRepository;
+import com.lqragent.backend.storage.QiniuStorageService;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask.KbScope;
 import com.lqragent.backend.uploadqueue.service.UploadQueueService;
-import com.lqragent.backend.storage.QiniuStorageService;
-import com.lqragent.backend.storage.FileCategories;
 import com.lqragent.backend.user.service.CurrentUserService;
-import com.lqragent.backend.quiz.repository.QuizRecordRepository;
-import com.lqragent.backend.quiz.repository.StudyBehaviorRepository;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
-
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Tag(name = "管理后台", description = "系统配置、模型管理、用户管理（仅 ADMIN 角色）")
@@ -73,6 +84,7 @@ public class AdminController {
     private final StudyBehaviorRepository studyBehaviorRepo;
     private final QiniuStorageService qiniuStorageService;
     private final CurrentUserService currentUserService;
+    private final AgentRegistry agentRegistry;
 
     @Operation(summary = "系统状态总览", description = "返回后端端口、AI 服务连通性、用户/任务统计")
     @GetMapping("/status")
@@ -282,8 +294,8 @@ public class AdminController {
 
         Map<String, Object> result = new HashMap<>();
         result.put("stats", stats);
-        result.put("registeredAgents", java.util.List.of("profile_agent", "learning_path_agent", "resource_agent", "quality_agent", "effect_agent", "qa_agent", "content_analysis_agent"));
-        result.put("agentCount", 7);
+        result.put("registeredAgents", new ArrayList<>(agentRegistry.getAllAgentIds()));
+        result.put("agentCount", agentRegistry.size());
         return ApiResponse.ok(result);
     }
 

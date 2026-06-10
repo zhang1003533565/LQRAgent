@@ -102,3 +102,31 @@ export async function submitQuiz(req: QuizSubmitRequest): Promise<QuizResult> {
   const res = await http.post<{ data: QuizResult }>('/quiz/submit', req)
   return res.data.data
 }
+
+export interface QuizStats {
+  total: number
+  correct: number
+  wrong: number
+  accuracy: number
+}
+
+export async function getQuizStats(): Promise<QuizStats> {
+  const res = await http.get<{ data: QuizStats }>('/quiz/stats')
+  return res.data.data
+}
+
+export interface QuizRecordItem {
+  id: number
+  questionId: number
+  correct: boolean
+  score: number
+  kpId: string
+  answer: string
+  correctAnswer: string | null
+  createdAt: string
+}
+
+export async function getQuizRecords(): Promise<QuizRecordItem[]> {
+  const res = await http.get<{ data: QuizRecordItem[] }>('/quiz/records')
+  return res.data.data
+}

@@ -16,6 +16,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.agents.base.AgentMemory;
 import com.lqragent.backend.agents.base.BaseAgent.AgentRequest;
 import com.lqragent.backend.agents.base.BaseAgent.AgentResponse;
+import com.lqragent.backend.agents.learn.path.dto.LearningPathDto;
+import com.lqragent.backend.agents.learn.path.service.LearningPathService;
 import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
 import com.lqragent.backend.agents.serve.qa.QaAgent;
 import com.lqragent.backend.chat.entity.ChatSession;
@@ -23,6 +25,14 @@ import com.lqragent.backend.chat.repository.ChatMessageRepository;
 import com.lqragent.backend.chat.service.ChatSessionService;
 import com.lqragent.backend.core.session.RequestContext;
 import com.lqragent.backend.orchestrator.OrchestratorCore;
+import com.lqragent.backend.orchestrator.context.TaskContext;
+import com.lqragent.backend.orchestrator.pipeline.PipelineConfig;
+import com.lqragent.backend.orchestrator.pipeline.PipelineEngine;
+import com.lqragent.backend.orchestrator.pipeline.PipelineResult;
+import com.lqragent.backend.orchestrator.pipeline.PipelineTemplates;
+import com.lqragent.backend.orchestrator.planning.PlanResult;
+import com.lqragent.backend.chat.proxy.AiServerWsProxy;
+import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,10 +57,14 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final ChatSessionService chatSessionService;
     private final QaAgent qaAgent;
     private final OrchestratorCore orchestratorCore;
+    private final PipelineEngine pipelineEngine;
+    private final AiServerWsProxy aiServerWsProxy;
+    private final AppRuntimeConfig runtimeConfig;
     private final ChatMessageRepository chatMessageRepository;
     private final WebSocketSessionManager sessionManager;
     private final LearnerProfileService learnerProfileService;
     private final AgentMemory agentMemory;
+    private final LearningPathService learningPathService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -126,24 +140,240 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             sessionIdStr = String.valueOf(sessionId);
         }
 
+        // 把 chatSessionId 存入 session attributes（供 AiServerWsProxy 回调使用）
+        session.getAttributes().put("chatSessionId", sessionId);
+
+        // ==================== 新路径：ai-server Agentic Pipeline ====================
+        if (runtimeConfig.isUseAgenticPipeline()) {
+            // 获取对话历史（传给 ai-server 作为上下文）
+            String chatHistory = agentMemory.getFormattedHistory(userInfo.userId(), 10);
+
+            // 获取用户画像摘要
+            String learnerProfile = "";
+            try {
+                learnerProfile = learnerProfileService.getProfileSummary(userInfo.userId());
+            } catch (Exception e) {
+                log.warn("[WS] getProfileSummary failed: {}", e.getMessage());
+            }
+
+            // 交给 AiServerWsProxy 处理（它负责：发消息给 ai-server + 翻译事件 + 存库）
+            aiServerWsProxy.startSession(
+                    session.getId(),
+                    userInfo.userId(),
+                    sessionId,
+                    content,
+                    chatHistory,
+                    learnerProfile,
+                    session
+            );
+            return;
+        }
+        // ==================== 旧路径：Java 自有的 Agent 系统（回滚用） ====================
+
         // 记录用户消息到 Agent 记忆（同时持久化到DB）
         agentMemory.addUserMessage(userInfo.userId(), sessionId, content);
 
         final String finalSessionId = sessionIdStr;
 
-        // OrchestratorCore: 意图识别 + 路由
+        // 获取对话历史（用于 PlanningAgent 上下文理解）
+        String chatHistory = agentMemory.getFormattedHistory(userInfo.userId(), 10);
+
+        // OrchestratorCore: 仅做意图识别（快速，约2秒）
         sendEvent(session, "agent_step", objectMapper.createObjectNode()
                 .put("agent", "orchestrator")
                 .put("label", "正在分析问题...")
                 .put("status", "running")
                 .toString());
 
+        PlanResult plan;
+        try {
+            plan = orchestratorCore.planOnly(
+                    String.valueOf(userInfo.userId()), content, chatHistory);
+        } catch (Exception e) {
+            log.error("[WS] planOnly error: {}", e.getMessage(), e);
+            sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                    .put("agent", "orchestrator")
+                    .put("label", "处理异常")
+                    .put("status", "failed")
+                    .toString());
+            sendEvent(session, "error", "处理异常: " + e.getMessage());
+            agentMemory.addAgentResponse(userInfo.userId(), Long.parseLong(finalSessionId), "抱歉，处理异常: " + e.getMessage(), "orchestrator");
+            return;
+        }
+
+        // CLARIFY 类型 → 发送引导性问题，等待用户确认
+        if (plan.isClarify()) {
+            sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                    .put("agent", "orchestrator")
+                    .put("label", "需要更多信息")
+                    .put("status", "done")
+                    .toString());
+
+            // 构建引导性问题
+            StringBuilder clarifyMsg = new StringBuilder();
+            List<String> questions = plan.clarifyQuestions();
+            if (questions != null && !questions.isEmpty()) {
+                for (int i = 0; i < questions.size(); i++) {
+                    clarifyMsg.append(i + 1).append(". ").append(questions.get(i)).append("\n");
+                }
+            }
+            clarifyMsg.append("\n请告诉我这些信息，我会为你量身定制学习路径。");
+
+            sendEvent(session, "chunk", clarifyMsg.toString());
+            sendEvent(session, "done", objectMapper.createObjectNode()
+                    .put("session_id", finalSessionId)
+                    .toString());
+            agentMemory.addAgentResponse(userInfo.userId(), Long.parseLong(finalSessionId), clarifyMsg.toString(), "orchestrator");
+            return;
+        }
+
+        // Pipeline 类型 → 异步执行，立即返回进度
+        if (plan.isPipeline() && plan.pipelineConfig() != null) {
+            // 立即告知前端正在规划
+            sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                    .put("agent", "orchestrator")
+                    .put("label", "正在规划学习路径...")
+                    .put("status", "running")
+                    .toString());
+            sendEvent(session, "chunk", "正在为你规划学习路径，请稍候...");
+
+            final Long currentUserId = userInfo.userId();
+            final String finalSessionIdForPipeline = finalSessionId;
+            final WebSocketSession wsSession = session;
+
+            // 在新线程中异步执行 Pipeline
+            CompletableFuture.runAsync(() -> {
+                try {
+                    // 调用 handlePipelineAsync，传入 callback 处理步骤通知
+                    PipelineResult pipelineResult = orchestratorCore.handlePipelineAsync(
+                            plan, String.valueOf(currentUserId), content,
+                            new PipelineEngine.StepCallback() {
+                                @Override
+                                public void onStepComplete(String stepId, String agentId, boolean success, Map<String, Object> stepData) {
+                                    try {
+                                        // 发送步骤完成通知
+                                        sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
+                                                .put("agent", agentId)
+                                                .put("label", success ? "已完成" : "执行失败")
+                                                .put("status", success ? "done" : "failed")
+                                                .toString());
+
+                                        // 先发送 artifact（学习路径、图表等）
+                                        if (success && stepData != null) {
+                                            // 学习路径特殊处理：发送 artifact
+                                            if (agentId.contains("learning_path")) {
+                                                try {
+                                                    java.util.Optional<LearningPathDto> pathOpt = learningPathService.getCurrentPath(currentUserId);
+                                                    if (pathOpt.isPresent()) {
+                                                        LearningPathDto pathDto = pathOpt.get();
+                                                        var payloadNode = objectMapper.createObjectNode()
+                                                                .put("goal", pathDto.getGoal())
+                                                                .put("planDescription", pathDto.getPlanDescription() != null ? pathDto.getPlanDescription() : "");
+                                                        payloadNode.set("nodes", objectMapper.valueToTree(pathDto.getNodes()));
+                                                        sendEvent(wsSession, "artifact", objectMapper.createObjectNode()
+                                                                .put("kind", "learning_path")
+                                                                .set("payload", payloadNode)
+                                                                .toString());
+                                                    }
+                                                } catch (Exception e) {
+                                                    log.warn("[WS] async: failed to fetch learning path: {}", e.getMessage());
+                                                }
+                                            }
+
+                                            // 图表特殊处理：发送 diagram artifact
+                                            if (agentId.contains("diagram")) {
+                                                Object contentObj = stepData.get("content");
+                                                if (contentObj != null) {
+                                                    String diagramCode = String.valueOf(contentObj);
+                                                    String format = "mermaid";
+                                                    int start = diagramCode.indexOf("```mermaid");
+                                                    if (start >= 0) {
+                                                        start = diagramCode.indexOf('\n', start) + 1;
+                                                        int end = diagramCode.indexOf("```", start);
+                                                        if (end > start) {
+                                                            diagramCode = diagramCode.substring(start, end).trim();
+                                                        }
+                                                    }
+                                                    var diagPayload = objectMapper.createObjectNode()
+                                                            .put("diagram", diagramCode)
+                                                            .put("format", format);
+                                                    sendEvent(wsSession, "artifact", objectMapper.createObjectNode()
+                                                            .put("kind", "diagram")
+                                                            .set("payload", diagPayload)
+                                                            .toString());
+                                                }
+                                            }
+                                        }
+
+                                        // 再发送步骤文本内容
+                                        // 注意：profile_agent 是内部处理，不输出给用户
+                                        if (success && stepData != null && !agentId.contains("profile")) {
+                                            String stepContent = extractStepContent(agentId, stepData);
+                                            if (stepContent != null && !stepContent.isBlank()) {
+                                                sendEvent(wsSession, "chunk", stepContent);
+                                            }
+                                        }
+
+                                    } catch (Exception e) {
+                                        log.error("[WS] step callback error: {}", e.getMessage(), e);
+                                    }
+                                }
+                            });
+
+                    // Pipeline 完成后，只发送 done 事件（内容已在 callback 中分步推送）
+                    String agent = plan.pipelineConfig().getPipelineId();
+
+                    // 聚合所有步骤内容用于记忆记录
+                    StringBuilder allContent = new StringBuilder();
+                    for (var sr : pipelineResult.getStepResults()) {
+                        if (sr.isSuccess() && sr.getData() != null) {
+                            String stepContent = extractStepContent(sr.getAgentId(), sr.getData());
+                            if (stepContent != null && !stepContent.isBlank()) {
+                                if (allContent.length() > 0) allContent.append("\n\n");
+                                allContent.append(stepContent);
+                            }
+                        }
+                    }
+                    String finalContent = allContent.isEmpty() ? "任务执行完成。" : allContent.toString();
+
+                    sendEvent(wsSession, "done", objectMapper.createObjectNode()
+                            .put("session_id", finalSessionIdForPipeline)
+                            .toString());
+
+                    // 记录到记忆
+                    agentMemory.addAgentResponse(currentUserId, Long.parseLong(finalSessionIdForPipeline), finalContent, agent);
+
+                    // 记忆更新放到输出后异步执行
+                    triggerProfileExtractionAsync(currentUserId, finalSessionIdForPipeline, wsSession);
+
+                } catch (Exception e) {
+                    log.error("[WS] async pipeline error: {}", e.getMessage(), e);
+                    sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
+                            .put("agent", "pipeline_engine")
+                            .put("label", "处理失败")
+                            .put("status", "failed")
+                            .toString());
+                    sendEvent(wsSession, "chunk", "抱歉，任务执行失败：" + e.getMessage());
+                    sendEvent(wsSession, "done", objectMapper.createObjectNode()
+                            .put("session_id", finalSessionIdForPipeline)
+                            .toString());
+
+                    agentMemory.addAgentResponse(currentUserId, Long.parseLong(finalSessionIdForPipeline),
+                            "抱歉，任务执行失败：" + e.getMessage(), "pipeline_engine");
+                }
+            });
+
+            // 立即返回，不阻塞 WebSocket 线程
+            return;
+        }
+
+        // 非 Pipeline 类型 → 原有同步处理
         Map<String, Object> routeResult;
         try {
-            routeResult = orchestratorCore.handleChatMessage(
-                    String.valueOf(userInfo.userId()), content);
+            routeResult = orchestratorCore.handleSimpleRequest(
+                    plan.intent(), content);
         } catch (Exception e) {
-            log.error("[WS] orchestrator error: {}", e.getMessage(), e);
+            log.error("[WS] handleSimpleRequest error: {}", e.getMessage(), e);
             sendEvent(session, "agent_step", objectMapper.createObjectNode()
                     .put("agent", "orchestrator")
                     .put("label", "处理异常")
@@ -173,7 +403,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        // QA → ReAct 智能体（通过 QaAgent 的 LLM 推理 + 工具调用循环）
+        // QA → PipelineEngine 智能问答流水线（含并行知识检索+内容分析），失败时回退到直接 QaAgent 调用
         if ("qa".equals(route)) {
             sendEvent(session, "agent_step", objectMapper.createObjectNode()
                     .put("agent", "intelligent_qa")
@@ -182,93 +412,70 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     .toString());
 
             final Long currentUserId = userInfo.userId();
+            String qaResponse = null;
+            boolean pipelineSucceeded = false;
+
+            // 优先尝试 PipelineEngine
             try {
-                // 加载对话历史
-                List<AgentMemory.MemoryEntry> recentHistory = agentMemory.getRecentHistory(currentUserId, 10);
-                List<Map<String, Object>> history = recentHistory.stream()
-                        .map(entry -> {
-                            Map<String, Object> msg = new java.util.LinkedHashMap<>();
-                            msg.put("role", entry.getRole());
-                            msg.put("content", entry.getContent());
-                            return msg;
-                        })
-                        .toList();
+                PipelineConfig qaConfig = PipelineTemplates.questionAnswer();
+                TaskContext context = new TaskContext("qa-" + System.currentTimeMillis(),
+                        String.valueOf(currentUserId), finalSessionId, content);
+                PipelineResult pipelineResult = pipelineEngine.execute(qaConfig, context);
 
-                // 通过 QaAgent ReAct 循环处理（LLM 推理 + 工具调用）
-                AgentRequest agentRequest = new AgentRequest("qa", content, Map.of());
-                AgentResponse agentResponse = qaAgent.process(agentRequest, history);
-
-                String qaResponse;
-                if (agentResponse.success()) {
-                    qaResponse = agentResponse.content();
+                if (pipelineResult.isSuccess()) {
+                    qaResponse = orchestratorCore.aggregateResults(qaConfig, pipelineResult);
+                    pipelineSucceeded = true;
                 } else {
-                    log.warn("[WS] QA agent failed: {}", agentResponse.error());
-                    qaResponse = "抱歉，处理问题时出现异常。请稍后再试。";
+                    log.warn("[WS] QA pipeline failed: {}, falling back",
+                            pipelineResult.getErrorMessage());
                 }
-
-                sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                        .put("agent", "intelligent_qa")
-                        .put("label", "回答完成")
-                        .put("status", "done")
-                        .toString());
-                sendEvent(session, "chunk", qaResponse);
-                sendEvent(session, "done", objectMapper.createObjectNode()
-                        .put("session_id", finalSessionId)
-                        .toString());
-                agentMemory.addAgentResponse(currentUserId, Long.parseLong(finalSessionId), qaResponse, "qa_agent");
-                triggerProfileExtractionAsync(currentUserId, finalSessionId, session);
             } catch (Exception e) {
-                log.error("[WS] QA agent error: {}", e.getMessage(), e);
-                String fallbackResponse = "抱歉，AI 服务暂时不可用。请稍后再试。";
-                sendEvent(session, "chunk", fallbackResponse);
-                sendEvent(session, "done", objectMapper.createObjectNode()
-                        .put("session_id", finalSessionId)
-                        .toString());
-                agentMemory.addAgentResponse(currentUserId, Long.parseLong(finalSessionId), fallbackResponse, "qa_agent");
+                log.warn("[WS] QA pipeline exception: {}, falling back", e.getMessage());
             }
-            return;
-        }
 
-        // Pipeline 完成 — OrchestratorCore 已通过 PipelineEngine 执行 Agent 并聚合结果
-        if ("pipeline_complete".equals(route)) {
-            String pipelineAgent = routeResult.containsKey("agent") ? (String) routeResult.get("agent") : "pipeline_engine";
-            String pipelineResponse = routeResult.containsKey("response")
-                    ? (String) routeResult.get("response")
-                    : "任务执行完成。";
-                
+            // 回退：直接调用 QaAgent
+            if (!pipelineSucceeded) {
+                try {
+                    List<AgentMemory.MemoryEntry> recentHistory = agentMemory.getRecentHistory(currentUserId, 10);
+                    List<Map<String, Object>> history = recentHistory.stream()
+                            .map(entry -> {
+                                Map<String, Object> msg = new java.util.LinkedHashMap<>();
+                                msg.put("role", entry.getRole());
+                                msg.put("content", entry.getContent());
+                                return msg;
+                            })
+                            .toList();
+
+                    AgentRequest agentRequest = new AgentRequest("qa", content, Map.of());
+                    AgentResponse agentResponse = qaAgent.process(agentRequest, history);
+
+                    if (agentResponse.success()) {
+                        qaResponse = agentResponse.content();
+                    } else {
+                        log.warn("[WS] QA agent failed: {}", agentResponse.error());
+                        qaResponse = "抱歉，处理问题时出现异常。请稍后再试。";
+                    }
+                } catch (Exception e) {
+                    log.error("[WS] QA fallback error: {}", e.getMessage(), e);
+                    qaResponse = "抱歉，AI 服务暂时不可用。请稍后再试。";
+                }
+            }
+
             sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                    .put("agent", pipelineAgent)
-                    .put("label", "处理完成")
+                    .put("agent", "intelligent_qa")
+                    .put("label", pipelineSucceeded ? "智能流水线完成" : "回答完成")
                     .put("status", "done")
                     .toString());
-            sendEvent(session, "chunk", pipelineResponse);
+            sendEvent(session, "chunk", qaResponse);
             sendEvent(session, "done", objectMapper.createObjectNode()
                     .put("session_id", finalSessionId)
                     .toString());
-            agentMemory.addAgentResponse(userInfo.userId(), Long.parseLong(finalSessionId), pipelineResponse, pipelineAgent);
-            triggerProfileExtractionAsync(userInfo.userId(), finalSessionId, session);
+            agentMemory.addAgentResponse(currentUserId, Long.parseLong(finalSessionId), qaResponse,
+                    pipelineSucceeded ? "pipeline_qa" : "qa_agent");
+            triggerProfileExtractionAsync(currentUserId, finalSessionId, session);
             return;
         }
-    
-        // Pipeline 失败
-        if ("pipeline_error".equals(route)) {
-            String errorMsg = routeResult.containsKey("error")
-                    ? (String) routeResult.get("error")
-                    : "未知错误";
-            sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                    .put("agent", "pipeline_engine")
-                    .put("label", "处理失败")
-                    .put("status", "failed")
-                    .toString());
-            sendEvent(session, "chunk", "抱歉，任务执行失败：" + errorMsg);
-            sendEvent(session, "done", objectMapper.createObjectNode()
-                    .put("session_id", finalSessionId)
-                    .toString());
-            agentMemory.addAgentResponse(userInfo.userId(), Long.parseLong(finalSessionId),
-                    "抱歉，任务执行失败：" + errorMsg, "pipeline_engine");
-            return;
-        }
-    
+
         // 兜底
         String fallback = "我可以帮你：\n" +
                 "1. 解答问题 - 直接提问即可\n" +
@@ -292,6 +499,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         RequestContext.clear();
+        aiServerWsProxy.onFrontendDisconnected(session.getId());
         sessionManager.unregister(session.getId());
         log.info("[WS] client disconnected: sessionId={}, status={}", session.getId(), status);
     }
@@ -299,6 +507,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void handleTransportError(WebSocketSession session, Throwable exception) {
         RequestContext.clear();
+        aiServerWsProxy.onFrontendDisconnected(session.getId());
         log.error("[WS] transport error: sessionId={}, msg={}", session.getId(), exception.getMessage());
         sessionManager.unregister(session.getId());
     }
@@ -331,6 +540,34 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         } catch (IOException e) {
             log.error("[WS] send error: sessionId={}, type={}, msg={}", session.getId(), type, e.getMessage());
         }
+    }
+
+    /**
+     * 从步骤数据中提取内容文本
+     */
+    private String extractStepContent(String agentId, Map<String, Object> data) {
+        // 优先取 content 字段（Agent 的 LLM 回答）
+        if (data.containsKey("content")) {
+            Object content = data.get("content");
+            if (content != null && !String.valueOf(content).isBlank()) {
+                return String.valueOf(content);
+            }
+        }
+        // summary/result 字段
+        if (data.containsKey("summary")) {
+            return String.valueOf(data.get("summary"));
+        }
+        if (data.containsKey("result")) {
+            return String.valueOf(data.get("result"));
+        }
+        if (data.containsKey("llm_analysis")) {
+            return String.valueOf(data.get("llm_analysis"));
+        }
+        // 学习路径特殊处理
+        if (agentId.contains("learning_path") && data.containsKey("nodes")) {
+            return "学习路径已生成，包含 " + data.get("nodeCount") + " 个节点。";
+        }
+        return null;
     }
 
     private void triggerProfileExtractionAsync(Long userId, String chatSessionId, WebSocketSession ws) {

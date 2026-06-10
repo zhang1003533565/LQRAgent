@@ -42,6 +42,26 @@ public class LearnerProfileService {
     private final ChatMessageRepository chatMessageRepository;
     private final AiServerWsProxy aiServerWsProxy;
 
+    /**
+     * 获取用户画像的文本摘要（用于传递给 ai-server 作为上下文）
+     */
+    public String getProfileSummary(Long userId) {
+        try {
+            ProfileSummaryDto dto = getSummary(userId);
+            StringBuilder sb = new StringBuilder();
+            sb.append("知识水平: ").append(dto.getKnowledgeLevel());
+            if (dto.getLearningGoal() != null) sb.append("; 学习目标: ").append(dto.getLearningGoal());
+            if (dto.getCognitiveStyle() != null) sb.append("; 认知风格: ").append(dto.getCognitiveStyle());
+            if (dto.getLearningPace() != null) sb.append("; 学习节奏: ").append(dto.getLearningPace());
+            if (dto.getPreferredResourceType() != null) sb.append("; 偏好资源: ").append(dto.getPreferredResourceType());
+            if (dto.getInterestDirection() != null) sb.append("; 兴趣方向: ").append(dto.getInterestDirection());
+            return sb.toString();
+        } catch (Exception e) {
+            log.warn("[LearnerProfile] getProfileSummary failed: {}", e.getMessage());
+            return "";
+        }
+    }
+
     /** 获取或创建画像 */
     @Transactional
     public LearnerProfile getOrCreate(Long userId) {
@@ -71,9 +91,12 @@ public class LearnerProfileService {
         if (profile == null) {
             return ProfileDetailDto.builder()
                     .summary(ProfileSummaryDto.builder().userId(userId).knowledgeLevel("BEGINNER").build())
+                    .knowledgeLevel("BEGINNER")
                     .weakTopics(List.of())
                     .recentGoals(List.of())
                     .knowledgeMap(List.of())
+                    .completedKpCount(0)
+                    .streakDays(0)
                     .build();
         }
 
@@ -82,12 +105,20 @@ public class LearnerProfileService {
         List<String> goals = profile.getLearningGoal() != null && !profile.getLearningGoal().isBlank()
                 ? List.of(profile.getLearningGoal())
                 : List.of();
+        long masteredCount = topics.values().stream().filter("MASTERED"::equals).count();
 
+        ProfileSummaryDto summaryDto = toDto(profile);
         return ProfileDetailDto.builder()
-                .summary(toDto(profile))
+                .summary(summaryDto)
+                .knowledgeLevel(summaryDto.getKnowledgeLevel())
+                .learningGoal(summaryDto.getLearningGoal())
+                .cognitiveStyle(summaryDto.getCognitiveStyle())
+                .learningPace(summaryDto.getLearningPace())
                 .weakTopics(weakTopics)
                 .recentGoals(goals)
                 .knowledgeMap(ProfileDetailDto.fromTopicMastery(topics))
+                .completedKpCount((int) masteredCount)
+                .streakDays(0)
                 .build();
     }
 

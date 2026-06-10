@@ -166,10 +166,17 @@ public class AgentMemory {
     }
     
     /**
-     * 清除用户记忆
+     * 清除用户记忆（内存 + 数据库）
      */
     public void clearMemory(Long userId) {
+        // 清除内存中的短期记忆
         userMemories.remove(userId);
+        // 清除数据库中的长期记忆
+        try {
+            memoryService.deleteAllMemories(userId);
+        } catch (Exception e) {
+            log.warn("[AgentMemory] clear database memory failed: {}", e.getMessage());
+        }
     }
     
     private void trimMemory(Long userId) {

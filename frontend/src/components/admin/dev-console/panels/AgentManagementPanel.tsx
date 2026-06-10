@@ -6,21 +6,11 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getAgentStats, listSysConfig, saveSysConfig, testAgent, type AgentStatsResponse } from '@/api/admin/admin'
+import { getPrompt, savePrompt, resetPrompt, type AgentPrompt } from '@/api/admin/prompt'
+import { generatePrompt } from '@/api/student/media'
 import http from '@/api/http'
 import { Card, CardContent, CardHeader, CardTitle, ConsoleBadge } from '@/components/admin/dev-console/ui'
 import { panel } from './panelStyles'
-
-// ==================== 提示词管理接口 ====================
-
-interface AgentPrompt {
-  id: number
-  agentId: string
-  agentName: string
-  promptContent: string
-  defaultContent: string
-  version: number
-  updatedAt: string
-}
 
 // ==================== Agent 定义 ====================
 
@@ -410,7 +400,10 @@ function AgentDetail({ agent, stats, configMap, onSave, saving, promptData, prom
           res = r.data.data
         }
       } else {
-        res = await testAgent(agent.logName, payload)
+        // 将 payload 组装为消息文本，后端只读 message 字段
+        const message = (payload.message as string)
+          || Object.entries(payload).map(([k, v]) => `${k}: ${v}`).join('，')
+        res = await testAgent(message)
       }
       setTestResult(JSON.stringify(res, null, 2))
     } catch (e: unknown) {
@@ -542,7 +535,7 @@ function AgentDetail({ agent, stats, configMap, onSave, saving, promptData, prom
                   onClick={async () => {
                     if (!confirm('确定要重置为默认提示词吗？')) return
                     try {
-                      await fetch(`/api/admin/prompts/${agent.promptAgentId}/reset`, { method: 'POST' })
+                      await resetPrompt(agent.promptAgentId!)
                       onPromptSave('') // 触发刷新
                     } catch (e) {
                       console.error('Reset failed:', e)
@@ -716,22 +709,18 @@ export default function AgentManagementPanel() {
     queryKey: ['admin', 'prompt', promptAgentId],
     queryFn: async () => {
       if (!promptAgentId) return null
-      const res = await fetch(`/api/admin/prompts/${promptAgentId}`)
-      if (!res.ok) return null
-      return res.json() as Promise<AgentPrompt>
+      try {
+        return await getPrompt(promptAgentId)
+      } catch {
+        return null
+      }
     },
     enabled: !!promptAgentId,
   })
   
   const promptMutation = useMutation({
     mutationFn: async ({ agentId, content }: { agentId: string; content: string }) => {
-      const res = await fetch(`/api/admin/prompts/${agentId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, updatedBy: 'admin' }),
-      })
-      if (!res.ok) throw new Error('保存失败')
-      return res.json()
+      return savePrompt(agentId, content)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin', 'prompt'] })

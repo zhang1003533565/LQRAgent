@@ -187,6 +187,20 @@ public class UserMemoryService {
         log.info("[Memory] deleted: id={}, userId={}", memoryId, memory.getUserId());
     }
 
+    /**
+     * 删除用户所有记忆
+     */
+    @Transactional
+    public void deleteAllMemories(Long userId) {
+        List<UserMemory> memories = memoryRepo.findByUserIdOrderByImportanceDesc(userId);
+        memoryRepo.deleteAll(memories);
+        // 清除所有类型的缓存
+        for (MemoryType type : MemoryType.values()) {
+            evictMemoryCache(userId, type);
+        }
+        log.info("[Memory] deleted all memories for userId={}", userId);
+    }
+
     private void evictMemoryCache(Long userId, MemoryType type) {
         redisTemplate.delete(CACHE_PREFIX + userId + ":" + type.name());
     }

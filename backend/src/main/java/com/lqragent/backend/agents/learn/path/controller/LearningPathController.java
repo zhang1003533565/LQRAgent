@@ -41,4 +41,15 @@ public class LearningPathController {
                 .map(ApiResponse::ok)
                 .orElse(ApiResponse.fail(404, "暂无活跃学习路径"));
     }
+
+    @Operation(summary = "更新步骤状态", description = "标记学习路径中某步骤为已完成/进行中等")
+    @PutMapping("/steps/{pathId}/{kpId}")
+    public ApiResponse<Void> updateStepStatus(
+            @PathVariable Long pathId,
+            @PathVariable String kpId,
+            @RequestParam boolean completed,
+            @RequestParam(defaultValue = "COMPLETED") String status) {
+        boolean ok = learningPathService.updateStepStatus(pathId, kpId, completed, status);
+        return ok ? ApiResponse.ok(null) : ApiResponse.fail(404, "步骤不存在");
+    }
 }

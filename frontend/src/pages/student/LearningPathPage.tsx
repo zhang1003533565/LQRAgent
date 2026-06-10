@@ -1,8 +1,9 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePathStore } from '@/utils/store/pathStore'
+import { trackBehavior } from '@/utils/tracker'
 import { useOrchestrator } from '@/utils/hooks/useOrchestrator'
-import { getLearningPath, getCurrentPath } from '@/api/student/learningPath'
+import { getCurrentPath } from '@/api/student/learningPath'
 import styles from './WorkspacePage.module.css'
 
 
@@ -15,6 +16,11 @@ export default function LearningPathPage() {
   const [inputGoal, setInputGoal] = useState(goal || '学习Python基础语法，包括变量、数据类型、控制流和函数')
   const [cycle, setCycle] = useState('2周')
   const [error, setError] = useState<string | null>(null)
+
+  const handleSelectNode = useCallback((kpId: string) => {
+    trackBehavior({ kpId, action: 'view_path' })
+    selectNode(kpId)
+  }, [selectNode])
 
   const totalNodes = nodes.length
   const completedCount = nodes.filter((n) => n.completed || n.status === 'COMPLETED').length
@@ -176,7 +182,7 @@ export default function LearningPathPage() {
                     <article
                       key={node.kpId}
                       className={`${styles.nodeCard} ${styles[`node${ns}`]}`}
-                      onClick={() => selectNode(node.kpId)}
+                      onClick={() => handleSelectNode(node.kpId)}
                     >
                       <div className={`${styles.nodeIndex} ${styles[`index${ns}`]}`}>{node.order || i + 1}</div>
                       <h3 className={styles.nodeTitle}>{node.title}</h3>

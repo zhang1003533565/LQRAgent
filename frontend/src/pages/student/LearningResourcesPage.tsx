@@ -1,6 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { usePathStore } from '@/utils/store/pathStore'
 import { getResources, generateResource } from '@/api/student/resources'
+import { generateImage, generateVideo, submitVideoTask, getVideoTaskStatus } from '@/api/student/media'
+import { trackBehavior } from '@/utils/tracker'
 import type { LearningResource, ResourceType } from '@/utils/types/media-resource'
 import LearningResourcesEmptyPage from './LearningResourcesEmptyPage'
 import styles from './LearningResourcesPage.module.css'
@@ -24,6 +26,9 @@ export default function LearningResourcesPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [genImageLoading, setGenImageLoading] = useState(false)
+  const [genVideoLoading, setGenVideoLoading] = useState(false)
+  const [genVideoStatus, setGenVideoStatus] = useState<string | null>(null)
 
   const kpId = selectedKpId || ''
   const currentNode = nodes.find((n) => n.kpId === kpId)
@@ -34,7 +39,10 @@ export default function LearningResourcesPage() {
     getResources(kpId)
       .then((res) => {
         setResources(res)
-        if (res.length > 0) setSelectedId(res[0].id)
+        if (res.length > 0) {
+          setSelectedId(res[0].id)
+          trackBehavior({ kpId, action: 'view_resource', extra: res[0].title })
+        }
       })
       .catch(() => setResources([]))
       .finally(() => setLoading(false))
@@ -69,6 +77,57 @@ export default function LearningResourcesPage() {
       state: r.id === selectedId ? 'active' : i === 0 && selectedId === null ? 'active' : 'done',
     }))
   }, [filtered, selectedId])
+
+  async function handleGenerateImage() {
+    if (!kpId || genImageLoading) return
+    setGenImageLoading(true)
+    try {
+      const nodeTitle = currentNode?.title || kpId
+      const result = await generateImage(kpId, `${nodeTitle} 教学示意图，清晰简洁`)
+      if (result.success && result.imageUrl) {
+        const updated = await getResources(kpId)
+        setResources(updated)
+      }
+    } catch {
+      // best-effort
+    } finally {
+      setGenImageLoading(false)
+    }
+  }
+
+  const handleGenerateVideo = useCallback(async () => {
+    if (!kpId || genVideoLoading) return
+    setGenVideoLoading(true)
+    setGenVideoStatus('正在提交生成任务...')
+    try {
+      const nodeTitle = currentNode?.title || kpId
+      const { taskId } = await submitVideoTask(`${nodeTitle} 教学演示视频`, 5)
+      setGenVideoStatus('视频生成中，请稍候...')
+
+      const poll = async (attempts: number): Promise<void> => {
+        if (attempts <= 0) {
+          setGenVideoStatus('生成超时，请稍后刷新')
+          return
+        }
+        const status = await getVideoTaskStatus(taskId)
+        if (status.status === 'done' || status.status === 'completed') {
+          setGenVideoStatus(null)
+          const updated = await getResources(kpId)
+          setResources(updated)
+        } else if (status.status === 'failed' || status.status === 'error') {
+          setGenVideoStatus('生成失败：' + (status.error || '未知错误'))
+        } else {
+          setGenVideoStatus(`视频生成中... ${status.status}`)
+          setTimeout(() => poll(attempts - 1), 5000)
+        }
+      }
+      await poll(120)
+    } catch {
+      setGenVideoStatus('生成失败，请重试')
+    } finally {
+      setGenVideoLoading(false)
+    }
+  }, [kpId, genVideoLoading, currentNode?.title])
 
   async function handleGenerate(type: ResourceType) {
     if (!kpId || generating) return
@@ -305,21 +364,48 @@ export default function LearningResourcesPage() {
                 </svg>
               )}
             </div>
+            <button
+              type="button"
+              className={styles.primaryBtn}
+              onClick={handleGenerateImage}
+              disabled={genImageLoading}
+              style={{ marginTop: 10, width: '100%' }}
+            >
+              {genImageLoading ? '生成中...' : '✦ AI 生成示意图'}
+            </button>
           </section>
 
           <section className={styles.panel}>
             <div className={styles.videoHead}>
               <h2 className={styles.panelTitle}>短视频预览</h2>
-              <span className={styles.videoBadge}>P4 / 即将开放</span>
+              {genVideoStatus && <span className={styles.videoBadge}>{genVideoStatus}</span>}
             </div>
             <div className={styles.videoCard}>
-              <div className={styles.videoPlay}>▶</div>
-              <div className={styles.videoTimeline}>
-                <span>00:00</span>
-                <span>00:00</span>
-              </div>
-              <p className={styles.videoHint}>短视频生成功能暂未开放</p>
+              {resources.find((r) => r.resourceType === 'VIDEO_CLIP' && r.mediaUrl) ? (
+                <video
+                  src={resources.find((r) => r.resourceType === 'VIDEO_CLIP' && r.mediaUrl)!.mediaUrl}
+                  controls
+                  style={{ width: '100%', borderRadius: 12 }}
+                />
+              ) : (
+                <>
+                  <div className={styles.videoPlay}>▶</div>
+                  <div className={styles.videoTimeline}>
+                    <span>00:00</span>
+                    <span>00:00</span>
+                  </div>
+                </>
+              )}
             </div>
+            <button
+              type="button"
+              className={styles.primaryBtn}
+              onClick={handleGenerateVideo}
+              disabled={genVideoLoading}
+              style={{ marginTop: 10, width: '100%' }}
+            >
+              {genVideoLoading ? '生成中...' : '✦ AI 生成视频'}
+            </button>
           </section>
 
           <section className={styles.panel}>

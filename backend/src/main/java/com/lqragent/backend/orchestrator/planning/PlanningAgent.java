@@ -139,6 +139,35 @@ public class PlanningAgent {
                 "name", "route_assessment",
                 "description", "用户请求评估答案质量、批改作业、评分、检查答案正确性"
             )
+        ),
+        Map.of(
+            "type", "function",
+            "function", Map.of(
+                "name", "route_intervention",
+                "description", "用户遇到学习困难或瓶颈，需要学习干预、学习建议、调整学习策略"
+            )
+        ),
+        Map.of(
+            "type", "function",
+            "function", Map.of(
+                "name", "route_clarify",
+                "description", "用户表达学习意愿但信息不足以制定个性化计划，需要先询问更多细节。例如：'我想学python'、'教我编程'、'学习一下AI'等模糊请求。",
+                "parameters", Map.of(
+                    "type", "object",
+                    "properties", Map.of(
+                        "questions", Map.of(
+                            "type", "array",
+                            "items", Map.of("type", "string"),
+                            "description", "需要询问用户的问题列表，2-3个关键问题"
+                        ),
+                        "context", Map.of(
+                            "type", "string",
+                            "description", "已识别的用户意图摘要"
+                        )
+                    ),
+                    "required", List.of("questions", "context")
+                )
+            )
         )
     );
     
@@ -162,13 +191,31 @@ public class PlanningAgent {
      * @return 规划结果
      */
     public PlanResult decompose(String message, String userId) {
+        return decompose(message, userId, null);
+    }
+
+    /**
+     * 核心方法：使用 Function Calling 识别用户意图（带对话历史）
+     *
+     * @param message 用户原始消息
+     * @param userId  用户ID
+     * @param chatHistory 对话历史（可选）
+     * @return 规划结果
+     */
+    public PlanResult decompose(String message, String userId, String chatHistory) {
         log.info("[PlanningAgent] decomposing: {}", message);
 
         try {
-            // 使用 Function Calling 让 LLM 自动选择工具
-            List<Map<String, Object>> messages = List.of(
-                Map.of("role", "user", "content", message)
-            );
+            // 构建消息列表，包含对话历史
+            List<Map<String, Object>> messages = new ArrayList<>();
+            
+            // 添加对话历史（如果有）
+            if (chatHistory != null && !chatHistory.isBlank()) {
+                messages.add(Map.of("role", "system", "content", "以下是之前的对话历史，请参考上下文理解用户意图：\n" + chatHistory));
+            }
+            
+            // 添加当前用户消息
+            messages.add(Map.of("role", "user", "content", message));
             
             LlmClient.LlmResponse response = llmClient.chat(systemPrompt, messages, INTENT_TOOLS);
             
@@ -219,6 +266,17 @@ public class PlanningAgent {
                 case "route_recommendation" -> pipelineFor("recommendation", args, AgentIds.RECOMMENDATION, "recommend");
                 case "route_summary" -> pipelineFor("summary", args, AgentIds.SUMMARY, "generate_summary");
                 case "route_assessment" -> pipelineFor("assessment", args, AgentIds.ASSESSMENT, "grade");
+                case "route_intervention" -> pipelineFor("intervention", args, AgentIds.INTERVENTION, "suggest_intervention");
+                case "route_clarify" -> {
+                    // 需求确认：返回 CLARIFY 类型，不执行 Pipeline
+                    List<String> questions = args.containsKey("questions")
+                            ? (List<String>) args.get("questions")
+                            : List.of("你想学习哪个方向？", "你有相关基础吗？");
+                    String context = args.containsKey("context")
+                            ? (String) args.get("context")
+                            : "用户想要学习";
+                    yield PlanResult.clarify(questions, context);
+                }
                 // QA 保留 SIMPLE（走 QaAgent 单独处理，支持流式）
                 case "route_qa" -> PlanResult.simple(PlanIntent.QA);
                 default -> {

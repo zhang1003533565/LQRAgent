@@ -42,3 +42,9 @@ export async function getProfileDetail(): Promise<ProfileDetail> {
     }
   }
 }
+
+/** 局部更新画像字段 */
+export async function patchProfile(data: Partial<ProfileSummary>): Promise<ProfileSummary> {
+  const res = await http.patch<{ data: ProfileSummary }>('/profile/summary', data)
+  return res.data.data
+}
