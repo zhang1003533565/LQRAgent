@@ -4,11 +4,14 @@ import { useEffect, useRef, useCallback } from 'react'
  * 消息列表变化时滚动到底部。
  * 流式输出时使用 instant 行为避免抖动，完成后使用 smooth。
  * 使用 throttle 避免过于频繁的滚动操作。
+ * 
+ * @param isHistoryLoading - 是否正在加载历史消息（加载时不自动滚动）
  */
-export function useChatAutoScroll<T>(deps: T[]) {
+export function useChatAutoScroll<T>(deps: T[], isHistoryLoading = false) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const lastScrollTime = useRef(0)
   const rafId = useRef<number | null>(null)
+  const hasScrolledForHistory = useRef(false)
 
   const scroll = useCallback(() => {
     const el = bottomRef.current
@@ -40,8 +43,21 @@ export function useChatAutoScroll<T>(deps: T[]) {
   }, [])
 
   useEffect(() => {
+    // 加载历史消息时不自动滚动（首次加载后标记）
+    if (isHistoryLoading) {
+      hasScrolledForHistory.current = false
+      return
+    }
+
+    // 首次加载历史消息后，滚动一次到顶部附近（显示最新消息）
+    if (!hasScrolledForHistory.current) {
+      hasScrolledForHistory.current = true
+      return
+    }
+
+    // 后续消息变化时自动滚动
     scroll()
-  }, [...deps, scroll])
+  }, [...deps, scroll, isHistoryLoading])
 
   return bottomRef
 }

@@ -91,4 +91,14 @@ public class ChatController {
             @RequestParam String keyword) {
         return ResponseEntity.ok(chatHistoryService.searchSessions(userId, keyword));
     }
+
+    /**
+     * 更新消息 metadata（用于保存图片、图表等附加信息）
+     */
+    @PutMapping("/messages/{messageId}/metadata")
+    public ResponseEntity<ChatMessage> updateMessageMetadata(
+            @PathVariable Long messageId,
+            @RequestBody Map<String, Object> metadata) {
+        return ResponseEntity.ok(chatHistoryService.updateMessageMetadata(messageId, metadata));
+    }
 }

@@ -5,8 +5,9 @@ import { useAgentTraceStore } from '@/utils/store/agentTraceStore'
 import { useArtifactStore } from '@/utils/store/artifactStore'
 import { usePathStore } from '@/utils/store/pathStore'
 import { useProfileStore } from '@/utils/store/profileStore'
+import { chatApi } from '@/utils/api/chat'
 import type { AgentId, AgentStepStatus } from '@/utils/types/agent-events'
-import type { ArtifactKind, RagSource } from '@/utils/types/artifact'
+import type { ArtifactKind, MediaImagePayload, RagSource } from '@/utils/types/artifact'
 import type { WsRawMessage } from '@/utils/types/agent-events'
 import type { LearningPathArtifactPayload } from '@/utils/types/artifact'
 import type { MultiCardBlock } from '@/utils/types/multi-card'
@@ -14,6 +15,13 @@ import type { ProfileSummary } from '@/utils/types/profile'
 
 const MAX_RETRY = 8
 const BASE_DELAY = 1000
+
+/**
+ * 保存消息 metadata 到后端（fire-and-forget）
+ */
+function saveMessageMetadata(messageId: string, metadata: Record<string, unknown>) {
+  chatApi.updateMessageMetadata(messageId, metadata).catch(() => {})
+}
 
 function handleArtifact(kind: ArtifactKind, payload: unknown) {
   const artifact = useArtifactStore.getState()
@@ -35,6 +43,8 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
           contentType: 'learning_path',
           streaming: false,
         })
+        // 保存到后端
+        saveMessageMetadata(last.id, { contentType: 'learning_path' })
       }
     }
     return
@@ -54,6 +64,12 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
           diagramFormat: p.format || 'mermaid',
           streaming: false,
         })
+        // 保存到后端
+        saveMessageMetadata(last.id, {
+          contentType: 'diagram',
+          diagramCode: p.diagram,
+          diagramFormat: p.format || 'mermaid',
+        })
       }
     }
     return
@@ -69,6 +85,11 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
         cards: payload as MultiCardBlock[],
         streaming: false,
       })
+      // 保存到后端
+      saveMessageMetadata(last.id, {
+        contentType: 'multi_card',
+        cards: payload,
+      })
     }
   }
 
@@ -81,7 +102,30 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
       useChatStore.getState().updateMessage(last.id, {
         ragSources: sources,
       })
+      // 保存到后端
+      saveMessageMetadata(last.id, { ragSources: sources })
     }
+  }
+
+  if (kind === 'media_image' && payload) {
+    const p = payload as MediaImagePayload
+    if (p.url) {
+      const msgs = useChatStore.getState().messages
+      const last = [...msgs].reverse().find((m) => m.role === 'assistant')
+      if (last) {
+        useChatStore.getState().updateMessage(last.id, {
+          contentType: 'image',
+          imageUrl: p.url,
+          streaming: false,
+        })
+        // 保存到后端
+        saveMessageMetadata(last.id, {
+          contentType: 'image',
+          imageUrl: p.url,
+        })
+      }
+    }
+    return
   }
 }
 

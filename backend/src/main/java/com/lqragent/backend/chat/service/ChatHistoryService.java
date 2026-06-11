@@ -3,11 +3,13 @@ package com.lqragent.backend.chat.service;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.chat.entity.ChatMessage;
 import com.lqragent.backend.chat.entity.ChatSession;
 import com.lqragent.backend.chat.entity.ChatSession.SessionStatus;
@@ -28,6 +30,7 @@ public class ChatHistoryService {
 
     private final ChatSessionRepository sessionRepo;
     private final ChatMessageRepository messageRepo;
+    private final ObjectMapper objectMapper;
 
     private static final DateTimeFormatter TITLE_FORMAT = DateTimeFormatter.ofPattern("MM-dd HH:mm");
 
@@ -188,5 +191,42 @@ public class ChatHistoryService {
         // 去除换行符
         String clean = content.replaceAll("\\n", " ").trim();
         return clean.length() > 20 ? clean.substring(0, 20) + "..." : clean;
+    }
+
+    /**
+     * 更新消息 metadata（用于保存图片、图表等附加信息）
+     */
+    @Transactional
+    public ChatMessage updateMessageMetadata(Long messageId, Map<String, Object> metadata) {
+        ChatMessage message = messageRepo.findById(messageId).orElseThrow();
+        
+        // 合并现有 metadata
+        String existingMetadata = message.getMetadata();
+        Map<String, Object> mergedMetadata = new java.util.HashMap<>();
+        
+        if (existingMetadata != null && !existingMetadata.isBlank()) {
+            try {
+                mergedMetadata = objectMapper.readValue(existingMetadata, Map.class);
+            } catch (Exception e) {
+                log.warn("[ChatHistory] failed to parse existing metadata: {}", e.getMessage());
+            }
+        }
+        
+        // 合并新 metadata
+        mergedMetadata.putAll(metadata);
+        
+        // 保存
+        try {
+            message.setMetadata(objectMapper.writeValueAsString(mergedMetadata));
+        } catch (Exception e) {
+            log.warn("[ChatHistory] failed to serialize metadata: {}", e.getMessage());
+        }
+        
+        // 如果 metadata 中有 contentType，也更新到实体字段
+        if (metadata.containsKey("contentType")) {
+            message.setContentType((String) metadata.get("contentType"));
+        }
+        
+        return messageRepo.save(message);
     }
 }

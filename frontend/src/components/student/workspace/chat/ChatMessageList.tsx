@@ -12,7 +12,8 @@ const SUGGESTIONS = [
 
 export default function ChatMessageList() {
   const messages = useChatStore((s) => s.messages)
-  const bottomRef = useChatAutoScroll([messages])
+  const loadingMessages = useChatStore((s) => s.loadingMessages)
+  const bottomRef = useChatAutoScroll([messages], loadingMessages)
   const { send } = useWebSocket()
 
   return (

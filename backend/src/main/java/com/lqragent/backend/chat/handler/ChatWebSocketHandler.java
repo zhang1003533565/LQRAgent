@@ -14,6 +14,9 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.agents.base.AgentMemory;
+import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.mediageneration.service.MediaGenerationService;
+import com.lqragent.backend.agents.mediageneration.service.PromptGenerationService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.orchestrator.message.Performative;
 import com.lqragent.backend.agents.learn.path.dto.LearningPathDto;
@@ -65,6 +68,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final WebSocketSessionManager sessionManager;
     private final LearnerProfileService learnerProfileService;
     private final AgentMemory agentMemory;
+    private final LlmClient llmClient;
+    private final MediaGenerationService mediaGenerationService;
+    private final PromptGenerationService promptGenerationService;
     private final LearningPathService learningPathService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -361,7 +367,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                         log.warn("[WS] pipeline {} failed ({}), using fallback", pipelineId, errorMsg);
 
                         // 如果是学习路径 pipeline，尝试直接生成
-                        if ("learning_path".equals(pipelineId)) {
+                        if ("learning_path".equals(pipelineId) || "learning_path_core".equals(pipelineId)) {
                             try {
                                 LearningPathDto pathDto = learningPathService.generatePath(
                                         currentUserId, content, null);
@@ -390,6 +396,127 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                                 return;
                             } catch (Exception e2) {
                                 log.warn("[WS] learning path fallback also failed: {}", e2.getMessage());
+                            }
+                        }
+
+                        // 图表生成 pipeline → 调用 MediaGenerationService 生成图片 + Mermaid 代码
+                        if ("diagram".equals(pipelineId)) {
+                            try {
+                                // 生成图片
+                                String provider = runtimeConfig.get("image.binding", "mock");
+                                String apiKey = runtimeConfig.get("image.api-key", "");
+                                boolean keySet = !apiKey.isBlank() && !apiKey.startsWith("sk-placeholder");
+                                Map<String, Object> promptResult = promptGenerationService.generatePrompt(content, "image");
+                                String imagePrompt = (String) promptResult.getOrDefault("prompt", content);
+                                String imageUrl = mediaGenerationService.generateImageByPrompt(imagePrompt);
+                                boolean isMock = imageUrl.startsWith("data:");
+
+                                // 发图片 artifact
+                                var imgPayload = objectMapper.createObjectNode()
+                                        .put("url", imageUrl)
+                                        .put("prompt", imagePrompt)
+                                        .put("mediaType", "image");
+                                sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
+                                        .put("agent", "diagram")
+                                        .put("label", "示意图已生成")
+                                        .put("status", "done")
+                                        .toString());
+                                sendEvent(wsSession, "artifact", objectMapper.createObjectNode()
+                                        .put("kind", "media_image")
+                                        .set("payload", imgPayload)
+                                        .toString());
+                                String mode = isMock ? "🧩 占位图（provider=" + provider + ", key=" + (keySet ? "已配置" : "未配置") + "）" : "🖼️ 真实图片";
+                                String msg = "🎨 已生成示意图 —— " + mode + "\n\n"
+                                        + "提示词：" + imagePrompt + "\n\n"
+                                        + (isMock && !keySet ? "⚠️ 未配置 image.api-key，当前为占位模式（内置 SVG）。\n" : "")
+                                        + (isMock && keySet ? "⚠️ 已配置 API Key 但 API 调用未返回真实图片，请检查 provider=" + provider + " 是否与 key 匹配\n" : "");
+                                sendEvent(wsSession, "chunk", msg);
+                                sendEvent(wsSession, "done", objectMapper.createObjectNode()
+                                        .put("session_id", finalSessionIdForPipeline)
+                                        .toString());
+                                agentMemory.addAgentResponse(currentUserId, Long.parseLong(finalSessionIdForPipeline),
+                                        msg, "diagram_fallback_image");
+                                triggerProfileExtractionAsync(currentUserId, finalSessionIdForPipeline, wsSession);
+                                return;
+                            } catch (Exception e2) {
+                                log.warn("[WS] diagram image fallback also failed: {}", e2.getMessage());
+                                // 如果图片生成也失败，继续兜底到 LLM 文本回答
+                            }
+                        }
+
+                        // 资源生成 pipeline → 使用 LLM 生成
+                        if ("resource".equals(pipelineId)) {
+                            try {
+                                String resp = llmClient.chat(
+                                    "你是一个学习资源生成专家。根据用户的需求生成结构化的学习资源，包含：讲义、代码示例（如需）、练习题等。",
+                                    java.util.List.of(java.util.Map.of("role", "user", "content", content)),
+                                    null
+                                ).content();
+                                sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
+                                        .put("agent", "resource")
+                                        .put("label", "资源已生成")
+                                        .put("status", "done")
+                                        .toString());
+                                sendEvent(wsSession, "chunk", resp);
+                                sendEvent(wsSession, "done", objectMapper.createObjectNode()
+                                        .put("session_id", finalSessionIdForPipeline)
+                                        .toString());
+                                agentMemory.addAgentResponse(currentUserId, Long.parseLong(finalSessionIdForPipeline),
+                                        resp, "resource_fallback");
+                                triggerProfileExtractionAsync(currentUserId, finalSessionIdForPipeline, wsSession);
+                                return;
+                            } catch (Exception e2) {
+                                log.warn("[WS] resource fallback also failed: {}", e2.getMessage());
+                            }
+                        }
+
+                        // 媒体生成 pipeline → 调用 MediaGenerationService 生成图片
+                        if ("media_gen".equals(pipelineId)) {
+                            try {
+                                // 0. 读取当前配置状态方便诊断
+                                String provider = runtimeConfig.get("image.binding", "mock");
+                                String apiKey = runtimeConfig.get("image.api-key", "");
+                                boolean keySet = !apiKey.isBlank() && !apiKey.startsWith("sk-placeholder");
+                                // 1. 用 LLM 生成 prompt
+                                Map<String, Object> promptResult = promptGenerationService.generatePrompt(content, "image");
+                                String imagePrompt = (String) promptResult.getOrDefault("prompt", content);
+                                // 2. 生成图片
+                                String imageUrl = mediaGenerationService.generateImageByPrompt(imagePrompt);
+                                // 3. 发 artifact
+                                boolean isMock = imageUrl.startsWith("data:");
+                                var payload = objectMapper.createObjectNode()
+                                        .put("url", imageUrl)
+                                        .put("prompt", imagePrompt)
+                                        .put("mediaType", "image");
+                                sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
+                                        .put("agent", "media_gen")
+                                        .put("label", "示意图已生成")
+                                        .put("status", "done")
+                                        .toString());
+                                sendEvent(wsSession, "artifact", objectMapper.createObjectNode()
+                                        .put("kind", "media_image")
+                                        .set("payload", payload)
+                                        .toString());
+                                String mode = isMock ? "🧩 占位图（provider=" + provider + ", key=" + (keySet ? "已配置" : "未配置") + "）" : "🖼️ 真实图片";
+                                String msg = "🎨 已生成示意图 —— " + mode + "\n\n"
+                                        + "提示词：" + imagePrompt + "\n\n"
+                                        + (isMock && !keySet ? "⚠️ 未配置 image.api-key，当前为占位模式（内置 SVG）。\n" : "")
+                                        + (isMock && keySet ? "⚠️ 已配置 API Key 但 API 调用未返回真实图片，请检查 provider=" + provider + " 是否与 key 匹配\n" : "");
+                                sendEvent(wsSession, "chunk", msg);
+                                sendEvent(wsSession, "done", objectMapper.createObjectNode()
+                                        .put("session_id", finalSessionIdForPipeline)
+                                        .toString());
+                                agentMemory.addAgentResponse(currentUserId, Long.parseLong(finalSessionIdForPipeline),
+                                        msg, "media_fallback");
+                                triggerProfileExtractionAsync(currentUserId, finalSessionIdForPipeline, wsSession);
+                                return;
+                            } catch (Exception e2) {
+                                String errMsg = "❌ 媒体生成失败: " + e2.getMessage();
+                                log.warn("[WS] media fallback also failed: {}", e2.getMessage());
+                                sendEvent(wsSession, "chunk", errMsg);
+                                sendEvent(wsSession, "done", objectMapper.createObjectNode()
+                                        .put("session_id", finalSessionIdForPipeline)
+                                        .toString());
                             }
                         }
 

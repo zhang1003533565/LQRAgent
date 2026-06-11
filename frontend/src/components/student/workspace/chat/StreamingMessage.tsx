@@ -29,6 +29,7 @@ export default function StreamingMessage({ message }: Props) {
   const isUser = message.role === 'user'
   const isMulti = message.contentType === 'multi_card' && message.cards?.length
   const isLearningPath = message.contentType === 'learning_path'
+  const isImage = message.contentType === 'image' && message.imageUrl
   const [liked, setLiked] = useState<boolean | null>(null)
 
   const timeLabel = new Date(message.createdAt).toLocaleTimeString('zh-CN', {
@@ -54,6 +55,20 @@ export default function StreamingMessage({ message }: Props) {
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content || ' '}</ReactMarkdown>
               <LearningPathCard />
             </>
+          ) : isImage ? (
+            <div style={{ maxWidth: '100%', borderRadius: 8, overflow: 'hidden' }}>
+              <img
+                src={message.imageUrl}
+                alt="AI 生成的示意图"
+                style={{
+                  display: 'block',
+                  maxWidth: '100%',
+                  height: 'auto',
+                  borderRadius: 8,
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.1)'
+                }}
+              />
+            </div>
           ) : isMulti ? (
             <MultiCardMessage cards={message.cards!} />
           ) : (

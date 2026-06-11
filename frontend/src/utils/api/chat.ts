@@ -70,6 +70,15 @@ export const chatApi = {
    */
   getMessages: (sessionId: string, limit = 50) =>
     request<ChatMessage[]>(`/chat/sessions/${sessionId}/messages?limit=${limit}`),
+
+  /**
+   * 更新消息 metadata（用于保存图片、图表等附加信息）
+   */
+  updateMessageMetadata: (messageId: string, metadata: Record<string, unknown>) =>
+    request<ChatMessage>(`/chat/messages/${messageId}/metadata`, {
+      method: 'PUT',
+      body: JSON.stringify(metadata),
+    }),
 }
 
 /**

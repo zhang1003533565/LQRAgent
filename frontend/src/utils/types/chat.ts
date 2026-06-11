@@ -3,7 +3,7 @@ import type { RagSource } from './artifact'
 
 export type ChatRole = 'user' | 'assistant' | 'system'
 
-export type MessageContentType = 'text' | 'multi_card' | 'diagram' | 'learning_path'
+export type MessageContentType = 'text' | 'multi_card' | 'diagram' | 'learning_path' | 'image'
 
 /**
  * 聊天会话
@@ -32,6 +32,7 @@ export interface ChatMessage {
   agentName?: string
   cards?: MultiCardBlock[]
   ragSources?: RagSource[]
+  imageUrl?: string
   diagramCode?: string
   diagramFormat?: string
   metadata?: Record<string, any>

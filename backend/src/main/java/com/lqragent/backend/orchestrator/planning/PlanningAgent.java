@@ -109,11 +109,25 @@ public class PlanningAgent {
             "type", "function",
             "function", Map.of(
                 "name", "route_diagram",
-                "description", "用户请求生成图表、流程图、思维导图、架构图等可视化内容",
+                "description", "用户请求生成流程图、思维导图、架构图、UML图等可以用代码表现的图表或流程图",
                 "parameters", Map.of(
                     "type", "object",
                     "properties", Map.of(
                         "topic", Map.of("type", "string", "description", "图表主题")
+                    ),
+                    "required", List.of("topic")
+                )
+            )
+        ),
+        Map.of(
+            "type", "function",
+            "function", Map.of(
+                "name", "route_media_gen",
+                "description", "用户请求生成真实的图片、示意图、照片、海报、绘画、插画等需要AI绘画生成的内容（不是流程图、思维导图等代码图表）",
+                "parameters", Map.of(
+                    "type", "object",
+                    "properties", Map.of(
+                        "topic", Map.of("type", "string", "description", "图片/内容主题")
                     ),
                     "required", List.of("topic")
                 )
@@ -262,6 +276,7 @@ public class PlanningAgent {
                 case "route_learning_path" -> pipelineFor("learning_path", args, AgentIds.LEARNING_PATH, "generate_path");
                 case "route_resource_generate" -> pipelineFor("resource", args, AgentIds.RESOURCE, "generate_lesson");
                 case "route_diagram" -> pipelineFor("diagram", args, AgentIds.DIAGRAM, "generate_diagram");
+                case "route_media_gen" -> pipelineFor("media_gen", args, AgentIds.MEDIA_GEN, "generate_media");
                 case "route_profile" -> pipelineFor("profile", args, AgentIds.PROFILE, "get_profile");
                 case "route_recommendation" -> pipelineFor("recommendation", args, AgentIds.RECOMMENDATION, "recommend");
                 case "route_summary" -> pipelineFor("summary", args, AgentIds.SUMMARY, "generate_summary");

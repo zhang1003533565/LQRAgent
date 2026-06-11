@@ -8,6 +8,7 @@ import java.net.http.WebSocket;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -24,6 +25,7 @@ import com.lqragent.backend.chat.entity.ChatMessage;
 import com.lqragent.backend.chat.repository.ChatMessageRepository;
 import com.lqragent.backend.chat.service.ChatSessionService;
 import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
+import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import com.lqragent.backend.systemconfig.ConfigKeys;
 
@@ -41,6 +43,7 @@ public class AiServerWsProxy {
     private final ObjectMapper objectMapper;
     /** 复用的 HttpClient 单例，避免每次调用都创建新连接 */
     private final HttpClient sharedHttpClient;
+    private final LlmClient llmClient;
 
     // ───────── 新增改造相关的依赖 ─────────
     private final ChatMessageRepository chatMessageRepository;
@@ -57,12 +60,17 @@ public class AiServerWsProxy {
     private final ConcurrentHashMap<Long, String> sessionIdMap = new ConcurrentHashMap<>();
 
     public AiServerWsProxy(AppRuntimeConfig runtimeConfig,
+                           LlmClient llmClient,
                            ChatMessageRepository chatMessageRepository,
                            ChatSessionService chatSessionService,
                            @Lazy LearnerProfileService learnerProfileService) {
         this.runtimeConfig = runtimeConfig;
+        this.llmClient = llmClient;
         this.objectMapper = new ObjectMapper();
-        this.sharedHttpClient = HttpClient.newHttpClient();
+        // 配置 HttpClient 支持 WebSocket
+        this.sharedHttpClient = HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(10))
+                .build();
         this.chatMessageRepository = chatMessageRepository;
         this.chatSessionService = chatSessionService;
         this.learnerProfileService = learnerProfileService;
@@ -232,7 +240,7 @@ public class AiServerWsProxy {
         String wsUrl = runtimeConfig.getAiServerWsUrl();
         int connectTimeoutSec = runtimeConfig.getWsConnectTimeoutSec();
         int responseTimeoutSec = runtimeConfig.getWsResponseTimeoutSec();
-        log.debug("[AiServerWsProxy] callCapability: capability={}", capability);
+        log.info("[AiServerWsProxy] callCapability: capability={}, url={}", capability, wsUrl);
 
         try {
             CountDownLatch doneLatch = new CountDownLatch(1);
@@ -240,31 +248,44 @@ public class AiServerWsProxy {
             AtomicReference<String> errorMsg = new AtomicReference<>();
 
             WebSocket ws = sharedHttpClient.newWebSocketBuilder()
+                    .header("User-Agent", "LQRAgent/1.0")
                     .buildAsync(URI.create(wsUrl), new WebSocket.Listener() {
                         @Override
                         public void onOpen(WebSocket webSocket) {
-                            var payloadNode = objectMapper.createObjectNode()
-                                    .put("type", "message")
-                                    .put("capability", capability)
-                                    .put("content", "")
-                                    .put("session_id", "");
-                            if (config != null && !config.isEmpty()) {
-                                payloadNode.set("config", objectMapper.valueToTree(config));
-                            }
-                            if (knowledgeBases != null && !knowledgeBases.isEmpty()) {
-                                var kbArray = payloadNode.putArray("knowledge_bases");
-                                for (String kb : knowledgeBases) {
-                                    if (kb != null && !kb.isBlank()) kbArray.add(kb);
+                            log.info("[AiServerWsProxy] WebSocket connected");
+                            webSocket.request(1);
+                            // 延迟发送消息，确保连接完全建立
+                            CompletableFuture.runAsync(() -> {
+                                try {
+                                    var payloadNode = objectMapper.createObjectNode()
+                                            .put("type", "message")
+                                            .put("capability", capability)
+                                            .put("content", "")
+                                            .put("session_id", "");
+                                    if (config != null && !config.isEmpty()) {
+                                        payloadNode.set("config", objectMapper.valueToTree(config));
+                                    }
+                                    if (knowledgeBases != null && !knowledgeBases.isEmpty()) {
+                                        var kbArray = payloadNode.putArray("knowledge_bases");
+                                        for (String kb : knowledgeBases) {
+                                            if (kb != null && !kb.isBlank()) kbArray.add(kb);
+                                        }
+                                    }
+                                    String msg = payloadNode.toString();
+                                    log.info("[AiServerWsProxy] sending message: {}", msg.substring(0, Math.min(200, msg.length())));
+                                    webSocket.sendText(msg, true);
+                                } catch (Exception e) {
+                                    log.error("[AiServerWsProxy] send message failed: {}", e.getMessage());
                                 }
-                            }
-                            webSocket.sendText(payloadNode.toString(), true);
-                            WebSocket.Listener.super.onOpen(webSocket);
+                            });
                         }
 
                         @Override
                         public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
+                            String text = data.toString();
+                            log.debug("[AiServerWsProxy] received: {}", text.substring(0, Math.min(200, text.length())));
                             try {
-                                JsonNode node = objectMapper.readTree(data.toString());
+                                JsonNode node = objectMapper.readTree(text);
                                 if (!node.has("type")) return WebSocket.Listener.super.onText(webSocket, data, last);
                                 switch (node.get("type").asText()) {
                                     case "content", "stream" -> {
@@ -280,11 +301,13 @@ public class AiServerWsProxy {
                                     case "error" -> { errorMsg.set(node.has("content") ? node.get("content").asText() : "Unknown error"); doneLatch.countDown(); }
                                 }
                             } catch (Exception ignored) {}
+                            webSocket.request(1);
                             return WebSocket.Listener.super.onText(webSocket, data, last);
                         }
 
                         @Override
                         public void onError(WebSocket webSocket, Throwable error) {
+                            log.error("[AiServerWsProxy] WebSocket error: {}", error.getMessage());
                             errorMsg.set("WS error: " + error.getMessage());
                             doneLatch.countDown();
                             WebSocket.Listener.super.onError(webSocket, error);
@@ -292,6 +315,7 @@ public class AiServerWsProxy {
 
                         @Override
                         public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
+                            log.info("[AiServerWsProxy] WebSocket closed: status={}, reason={}", statusCode, reason);
                             if (doneLatch.getCount() > 0) {
                                 if (fullResponse.length() > 0) doneLatch.countDown();
                                 else errorMsg.set("Connection closed");
@@ -303,65 +327,89 @@ public class AiServerWsProxy {
 
             boolean completed = doneLatch.await(responseTimeoutSec, TimeUnit.SECONDS);
             ws.sendClose(WebSocket.NORMAL_CLOSURE, "");
-            if (!completed) return null;
-            if (errorMsg.get() != null) return null;
+            if (!completed) {
+                log.warn("[AiServerWsProxy] callCapability timeout: capability={}", capability);
+                return null;
+            }
+            if (errorMsg.get() != null) {
+                log.warn("[AiServerWsProxy] callCapability error: capability={}, error={}", capability, errorMsg.get());
+                return null;
+            }
             String result = fullResponse.toString();
             return result.isBlank() ? null : result;
         } catch (Exception e) {
-            log.error("[AiServerWsProxy] callCapability exception: {}", e.getMessage());
+            log.error("[AiServerWsProxy] callCapability exception: capability={}, error={}", capability, e.getMessage());
             return null;
         }
     }
 
     /** 生成教学资源 */
     public String generateResource(String type, String title, String description) {
-        return callCapability("llm_generate", Map.of(
-                "prompt_type", type,
-                "title", title != null ? title : "",
-                "description", description != null ? description : title != null ? title : ""
-        ));
+        String prompt = String.format(
+                "你是一个学习资源生成专家。请根据以下信息生成%s类型的学习资源。\n标题：%s\n描述：%s\n\n请生成结构化的学习资源内容。",
+                type, title != null ? title : "", description != null ? description : "");
+        return callLlmDirect(prompt);
     }
 
     /** 从对话中抽取学生画像 */
     public String extractProfile(String dialogSummary) {
-        return callCapability("llm_generate", Map.of(
-                "prompt_type", "profile_extract",
-                "dialog_summary", dialogSummary != null ? dialogSummary : ""
-        ));
+        String prompt = String.format(
+                "请从以下对话记录中抽取学生的学习画像，包括：知识水平、学习风格、薄弱点、学习目标。\n\n对话记录：\n%s\n\n请以JSON格式输出画像信息。",
+                dialogSummary != null ? dialogSummary : "");
+        return callLlmDirect(prompt);
     }
 
     /** 对学习路径做个性化排序 */
     public String sortPath(List<String> kpIds, String profileHint) {
-        return callCapability("llm_generate", Map.of(
-                "prompt_type", "path_sort",
-                "kp_ids", kpIds != null ? kpIds : List.of(),
-                "profile_hint", profileHint != null ? profileHint : ""
-        ));
+        String prompt = String.format(
+                "请根据学生画像对以下知识点进行个性化排序，给出最佳学习顺序。\n知识点列表：%s\n学生画像：%s\n\n请输出排序后的知识点ID列表。",
+                kpIds != null ? String.join(", ", kpIds) : "",
+                profileHint != null ? profileHint : "");
+        return callLlmDirect(prompt);
     }
 
     /** 事实性校验 */
     public String qualityCheck(String title, String content) {
-        return callCapability("llm_generate", Map.of(
-                "prompt_type", "factual_check",
-                "title", title != null ? title : "",
-                "content", content != null ? content : ""
-        ));
+        String prompt = String.format(
+                "请检查以下学习内容的事实准确性。如果发现错误，请指出并说明正确信息。\n\n标题：%s\n内容：%s\n\n如果内容正确，请回复'PASS'。如果发现错误，请回复'FAIL: 错误描述'。",
+                title != null ? title : "", content != null ? content : "");
+        return callLlmDirect(prompt);
     }
 
     /** 薄弱点分析 */
     public String analyzeWeakness(String behaviorData) {
-        return callCapability("llm_generate", Map.of(
-                "prompt_type", "weakness_analysis",
-                "behavior_data", behaviorData != null ? behaviorData : ""
-        ));
+        String prompt = String.format(
+                "请根据以下学生学习行为数据分析其薄弱知识点和学习问题。\n\n学习行为数据：\n%s\n\n请分析并输出：1. 薄弱知识点列表 2. 学习问题分析 3. 改进建议。",
+                behaviorData != null ? behaviorData : "");
+        return callLlmDirect(prompt);
     }
 
     /** 生成 Mermaid 流程图 */
     public String generateMermaid(String input) {
-        return callCapability("llm_generate", Map.of(
-                "prompt_type", "mermaid",
-                "input", input != null ? input : ""
-        ));
+        String prompt = String.format(
+                "请根据以下内容生成Mermaid流程图代码。\n\n内容：%s\n\n请只输出Mermaid代码，不要包含其他说明。",
+                input != null ? input : "");
+        return callLlmDirect(prompt);
+    }
+
+    /** 直接调用 LLM（用于简单任务） */
+    private String callLlmDirect(String userMessage) {
+        try {
+            var response = llmClient.chat(
+                    "你是一个专业的教育助手，请根据用户要求完成任务。",
+                    List.of(Map.of("role", "user", "content", userMessage)),
+                    null
+            );
+            if (response.isSuccess()) {
+                return response.content();
+            } else {
+                log.warn("[AiServerWsProxy] callLlmDirect failed: {}", response.error());
+                return null;
+            }
+        } catch (Exception e) {
+            log.error("[AiServerWsProxy] callLlmDirect exception: {}", e.getMessage());
+            return null;
+        }
     }
 
     /** 同步记忆到 ai-server 的 MemoryService */

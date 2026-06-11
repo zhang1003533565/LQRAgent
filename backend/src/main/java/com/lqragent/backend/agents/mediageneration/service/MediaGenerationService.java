@@ -575,15 +575,29 @@ public class MediaGenerationService {
 
     /** 生成内联 SVG data URI 占位图，前端可直接 <img src> 渲染 */
     private String buildPlaceholderSvg(String label) {
+        String escapedLabel = label.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\"", "&quot;").replace("'", "&apos;");
         String svg = """
             <svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
-              <rect width="400" height="300" rx="16" fill="#eef2f7"/>
-              <rect x="1" y="1" width="398" height="298" rx="15" fill="none" stroke="#c5d0de" stroke-width="1.5" stroke-dasharray="6 4"/>
-              <circle cx="200" cy="120" r="36" fill="#c5d0de"/>
-              <text x="200" y="128" text-anchor="middle" font-family="sans-serif" font-size="28" fill="#8b9ab6">?</text>
-              <text x="200" y="190" text-anchor="middle" font-family="sans-serif" font-size="16" fill="#526989">%s</text>
-              <text x="200" y="215" text-anchor="middle" font-family="sans-serif" font-size="12" fill="#8b9ab6">Mock 模式 · 配置 AI 图片 Provider 后自动生成</text>
-            </svg>""".formatted(label);
+              <defs>
+                <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#f0f4ff"/>
+                  <stop offset="100%" stop-color="#e8ecf4"/>
+                </linearGradient>
+                <linearGradient id="circle" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#818cf8"/>
+                  <stop offset="100%" stop-color="#6366f1"/>
+                </linearGradient>
+              </defs>
+              <rect width="400" height="300" rx="16" fill="url(#bg)"/>
+              <rect x="1" y="1" width="398" height="298" rx="15" fill="none" stroke="#c7d2fe" stroke-width="1.5" stroke-dasharray="6 4"/>
+              <circle cx="200" cy="110" r="40" fill="url(#circle)" opacity="0.15"/>
+              <circle cx="200" cy="110" r="28" fill="url(#circle)" opacity="0.3"/>
+              <circle cx="200" cy="110" r="16" fill="url(#circle)"/>
+              <path d="M196 104 L196 116 M204 110 L192 110" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+              <text x="200" y="180" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="15" font-weight="600" fill="#4338ca">%s</text>
+              <text x="200" y="210" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="11" fill="#94a3b8">配置 image.api-key 可生成真实 AI 图片</text>
+            </svg>""".formatted(escapedLabel);
         return "data:image/svg+xml," + java.net.URLEncoder.encode(svg, java.nio.charset.StandardCharsets.UTF_8);
     }
 }

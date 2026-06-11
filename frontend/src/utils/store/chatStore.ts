@@ -1,5 +1,7 @@
 import { create } from 'zustand'
-import type { ChatMessage } from '@/utils/types/chat'
+import type { ChatMessage, MessageContentType } from '@/utils/types/chat'
+import type { MultiCardBlock } from '@/utils/types/multi-card'
+import type { RagSource } from '@/utils/types/artifact'
 import { chatApi } from '@/utils/api/chat'
 
 interface ChatState {
@@ -73,23 +75,34 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setConnected: (connected) => set({ isConnected: connected }),
   clearMessages: () => set({ messages: [] }),
 
-  /**
-   * 加载指定会话的历史消息
-   */
   loadMessages: async (sessionId: string) => {
     set({ loadingMessages: true, sessionId, messages: [] })
     try {
       const messages = await chatApi.getMessages(sessionId, 50)
       const reversed = [...messages].reverse()
-      // 一次性批量设置消息，避免逐条添加导致的重复key问题
-      const formattedMessages: ChatMessage[] = reversed.map((msg) => ({
-        id: String(msg.id),
-        role: msg.role as 'user' | 'assistant' | 'system',
-        content: msg.content,
-        agentName: msg.agentName,
-        createdAt: new Date(msg.createdAt),
-        streaming: false,
-      }))
+      const formattedMessages: ChatMessage[] = reversed.map((msg) => {
+        let metadataParsed: Record<string, unknown> = {}
+        if (msg.metadata && typeof msg.metadata === 'string') {
+          try { metadataParsed = JSON.parse(msg.metadata) } catch {}
+        } else if (msg.metadata && typeof msg.metadata === 'object') {
+          metadataParsed = msg.metadata as Record<string, unknown>
+        }
+        return {
+          id: String(msg.id),
+          role: msg.role as 'user' | 'assistant' | 'system',
+          content: msg.content,
+          contentType: (metadataParsed.contentType as MessageContentType) || (msg.contentType as MessageContentType | undefined),
+          agentName: msg.agentName,
+          imageUrl: (metadataParsed.imageUrl as string) || msg.imageUrl,
+          diagramCode: (metadataParsed.diagramCode as string) || msg.diagramCode,
+          diagramFormat: (metadataParsed.diagramFormat as string) || msg.diagramFormat,
+          cards: (metadataParsed.cards as MultiCardBlock[]) || msg.cards,
+          ragSources: (metadataParsed.ragSources as RagSource[]) || msg.ragSources,
+          metadata: metadataParsed,
+          createdAt: new Date(msg.createdAt),
+          streaming: false,
+        }
+      })
       set({ messages: formattedMessages })
     } catch (err) {
       console.error('Failed to load messages:', err)

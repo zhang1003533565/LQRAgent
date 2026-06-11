@@ -18,6 +18,12 @@ export interface ArtifactEvent {
   session_id?: string
 }
 
+export interface MediaImagePayload {
+  url: string
+  prompt?: string
+  mediaType?: string
+}
+
 export interface LearningPathArtifactPayload {
   goal: string
   nodes: import('./learning-path').PathNode[]
