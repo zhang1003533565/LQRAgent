@@ -1,46 +1,86 @@
 package com.lqragent.backend.orchestrator.agents;
 
-import com.lqragent.backend.orchestrator.AgentIds;
+import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.base.AgentTool;
+import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.orchestrator.capability.AgentCapability;
 import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.orchestrator.message.Performative;
+import com.lqragent.backend.prompt.service.PromptService;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ClassPathResource;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.TimeoutException;
 
 /**
- * 智能体基类
+ * 智能体基类（v3 Streams 版）
  * <p>
- * 所有业务智能体继承此类，实现 process 方法即可。
- * v2 新增：Agent 对等通信能力（requestPeer / negotiate / cfp）
+ * 所有业务智能体继承此类，实现 getSystemPrompt() / getTools() / process() 即可。
+ * <p>
+ * 通信方式：Agent 监听 stream:agent:{agentId}，收到 REQUEST 后运行 LLM 循环，
+ * 结果通过 stream:agent:events 返回。Agent 间无直接调用，全部经协调体中转。
+ * <p>
+ * 与旧框架 agents.base.BaseAgent 的区别：
+ * - 不实现 AgentInterface（不走同步方法调用）
+ * - LLM 循环作为工具方法由子类自行调用
+ * - 全部通信走 Redis Streams
  */
 @Slf4j
 public abstract class BaseAgent {
 
+    // ==================== Redis Streams ====================
     protected final String agentId;
     protected final RedisStreamsService streams;
     private volatile boolean running = false;
     private Thread consumerThread;
 
-    /** 能力注册中心（可选，由子类注入） */
+    // ==================== LLM 推理 ====================
+    protected final LlmClient llmClient;
+    protected final AgentToolRegistry toolRegistry;
+    protected final PromptService promptService;
+    protected final ObjectMapper mapper = new ObjectMapper();
+
+    protected static final int MAX_ITERATIONS = 3;
+
+    /** CapabilityRegistry（CFP 协商协议使用） */
     protected CapabilityRegistry capabilityRegistry;
 
-    protected BaseAgent(String agentId, RedisStreamsService streams) {
+    protected BaseAgent(String agentId, RedisStreamsService streams,
+                        LlmClient llmClient, AgentToolRegistry toolRegistry,
+                        PromptService promptService) {
         this.agentId = agentId;
         this.streams = streams;
+        this.llmClient = llmClient;
+        this.toolRegistry = toolRegistry;
+        this.promptService = promptService;
     }
 
-    /**
-     * 设置能力注册中心（子类在构造后调用）
-     */
     public void setCapabilityRegistry(CapabilityRegistry registry) {
         this.capabilityRegistry = registry;
     }
+
+    // ==================== 子类必须实现 ====================
+
+    /** 获取系统提示词 */
+    protected abstract String getSystemPrompt();
+
+    /** 获取可用工具列表 */
+    protected abstract List<AgentTool> getTools();
+
+    /**
+     * 处理消息（子类实现）
+     * 通常调用 executeLlmLoop(msg) 或 executeLlmLoop(msg, history) 来完成 LLM 推理
+     */
+    public abstract AgentMessage process(AgentMessage request);
+
+    // ==================== Redis Streams 消费者 ====================
 
     @PostConstruct
     public void start() {
@@ -55,24 +95,16 @@ public abstract class BaseAgent {
                 try {
                     var messages = streams.consume(stream, group, agentId + ":worker-1", 1);
                     for (AgentMessage msg : messages) {
-                        Performative perf = msg.getPerformative();
-                        if (perf == Performative.REQUEST || perf == Performative.REQUEST_PEER) {
+                        if (msg.getPerformative() == Performative.REQUEST) {
                             try {
                                 AgentMessage result = process(msg);
-                                // REQUEST_PEER → 回复 INFORM_PEER；REQUEST → 回复 INFORM
-                                if (perf == Performative.REQUEST_PEER && result.getPerformative() == Performative.INFORM) {
-                                    result = AgentMessage.informPeer(
-                                            result.getTaskId(), result.getSender(), result.getReceiver(),
-                                            result.getContent());
-                                }
                                 streams.send("stream:agent:events", result);
                             } catch (Exception e) {
                                 log.error("[{}] process failed: {}", agentId, e.getMessage(), e);
                                 streams.send("stream:agent:events",
                                         AgentMessage.error(msg.getTaskId(), agentId, e.getMessage()));
                             }
-                        } else if (perf == Performative.CFP) {
-                            // 处理招标请求：评估自身能力，提交提案
+                        } else if (msg.getPerformative() == Performative.CFP) {
                             handleCfp(msg);
                         }
                     }
@@ -96,199 +128,175 @@ public abstract class BaseAgent {
         }
     }
 
-    // ==================== 对等通信 API ====================
+    // ==================== LLM 推理循环 ====================
 
     /**
-     * 向同级 Agent 发送协作请求
+     * 运行 LLM 推理循环
+     * 子类在 process() 中调用此方法
      *
-     * @param peerAgentId 目标 Agent ID
-     * @param taskId      任务ID
-     * @param content     请求内容
+     * @param request  收到的消息
+     * @return 回复消息（INFORM 或 ERROR）
      */
-    protected void requestPeer(String peerAgentId, String taskId, Map<String, Object> content) {
-        AgentMessage msg = AgentMessage.requestPeer(taskId, agentId, peerAgentId, content);
-        streams.send("stream:agent:" + peerAgentId, msg);
-        log.info("[{}] requested peer {}: taskId={}", agentId, peerAgentId, taskId);
+    protected AgentMessage executeLlmLoop(AgentMessage request) {
+        return executeLlmLoop(request, null);
     }
 
     /**
-     * 请求同级 Agent 协助并等待结果
+     * 运行 LLM 推理循环（支持对话历史）
      *
-     * @param peerAgentId 目标 Agent ID
-     * @param taskId      任务ID
-     * @param content     请求内容
-     * @param timeoutMs   超时（毫秒）
-     * @return Agent 返回的结果
+     * @param request  收到的消息
+     * @param history  对话历史（可选）
+     * @return 回复消息（INFORM 或 ERROR）
      */
-    protected Map<String, Object> requestPeerAndWait(String peerAgentId, String taskId,
-                                                      Map<String, Object> content, long timeoutMs)
-            throws TimeoutException {
-        requestPeer(peerAgentId, taskId, content);
-        return waitForPeerResult(taskId, peerAgentId, timeoutMs);
-    }
+    protected AgentMessage executeLlmLoop(AgentMessage request,
+                                           List<Map<String, Object>> history) {
+        String taskId = request.getTaskId();
+        log.info("[{}] LLM loop: taskId={}", agentId, taskId);
 
-    /**
-     * 等待同级 Agent 的响应
-     */
-    protected Map<String, Object> waitForPeerResult(String taskId, String peerAgentId, long timeoutMs)
-            throws TimeoutException {
-        long startTime = System.currentTimeMillis();
-        String stream = "stream:agent:events";
-        String group = "group:" + agentId + ":peer";
-        String consumer = agentId + ":peer-worker-" + Thread.currentThread().getId();
-        streams.createGroup(stream, group);
+        // 注册工具
+        List<AgentTool> tools = getTools();
+        for (AgentTool tool : tools) {
+            toolRegistry.register(tool);
+        }
 
-        while (System.currentTimeMillis() - startTime < timeoutMs) {
-            try {
-                var messages = streams.consumePending(stream, group, consumer, 10);
-                for (AgentMessage msg : messages) {
-                    if (!taskId.equals(msg.getTaskId())) continue;
-                    if (msg.getPerformative() == Performative.INFORM_PEER
-                            && peerAgentId.equals(msg.getSender())) {
-                        return msg.getContent();
-                    }
-                    if (msg.getPerformative() == Performative.ERROR
-                            && peerAgentId.equals(msg.getSender())) {
-                        throw new RuntimeException(
-                                (String) msg.getContent().getOrDefault("error", "Peer error"));
-                    }
-                    if (msg.getPerformative() == Performative.REFUSE
-                            && peerAgentId.equals(msg.getSender())) {
-                        throw new RuntimeException("Peer " + peerAgentId + " refused the request");
-                    }
-                }
-                Thread.sleep(300);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Interrupted while waiting for peer", e);
+        // 构建消息
+        String userMessage = buildUserMessage(request);
+        List<Map<String, Object>> messages = new ArrayList<>();
+        if (history != null) {
+            messages.addAll(history);
+        }
+        messages.add(Map.of("role", "user", "content", userMessage));
+
+        List<Map<String, Object>> toolSchemas = toolRegistry.getToolSchemas();
+        String systemPrompt = getSystemPrompt();
+
+        for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+            log.debug("[{}] LLM iteration {}/{}", agentId, iteration + 1, MAX_ITERATIONS);
+
+            LlmClient.LlmResponse llmResponse = llmClient.chat(
+                    systemPrompt, messages, toolSchemas);
+
+            if (!llmResponse.isSuccess()) {
+                return AgentMessage.error(taskId, agentId,
+                        "LLM call failed: " + llmResponse.error());
             }
-        }
-        throw new TimeoutException("Timeout waiting for peer agent: " + peerAgentId);
-    }
 
-    // ==================== 协商协议（CFP） ====================
-
-    /**
-     * 发起招标（Call for Proposal）：向多个 Agent 征求方案
-     *
-     * @param taskId      任务ID
-     * @param description 任务描述
-     * @param candidates  候选 Agent ID 列表
-     * @param timeoutMs   等待提案超时
-     * @return 收到的提案列表（agentId → 提案内容）
-     */
-    protected Map<String, Map<String, Object>> callForProposals(String taskId, String description,
-                                                                  List<String> candidates, long timeoutMs) {
-        Map<String, Map<String, Object>> proposals = new LinkedHashMap<>();
-
-        // 向所有候选 Agent 发送 CFP
-        for (String candidate : candidates) {
-            AgentMessage cfp = AgentMessage.builder()
-                    .id(UUID.randomUUID().toString())
-                    .taskId(taskId)
-                    .performative(Performative.CFP)
-                    .sender(agentId)
-                    .receiver(candidate)
-                    .content(Map.of("description", description, "deadline", System.currentTimeMillis() + timeoutMs))
-                    .timestamp(System.currentTimeMillis())
-                    .build();
-            streams.send("stream:agent:" + candidate, cfp);
-        }
-
-        // 收集提案
-        long deadline = System.currentTimeMillis() + timeoutMs;
-        String stream = "stream:agent:events";
-        String group = "group:" + agentId + ":cfp";
-        String consumer = agentId + ":cfp-worker-" + Thread.currentThread().getId();
-        streams.createGroup(stream, group);
-
-        while (System.currentTimeMillis() < deadline && proposals.size() < candidates.size()) {
-            try {
-                var messages = streams.consumePending(stream, group, consumer, candidates.size());
-                for (AgentMessage msg : messages) {
-                    if (!taskId.equals(msg.getTaskId())) continue;
-                    if (msg.getPerformative() == Performative.PROPOSE) {
-                        proposals.put(msg.getSender(), msg.getContent());
-                        log.info("[{}] received proposal from {}", agentId, msg.getSender());
-                    }
-                    if (msg.getPerformative() == Performative.REFUSE) {
-                        log.info("[{}] {} refused CFP", agentId, msg.getSender());
-                    }
-                }
-                if (proposals.size() >= candidates.size()) break;
-                Thread.sleep(500);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+            if (!llmResponse.hasToolCalls()) {
+                Map<String, Object> resultContent = new LinkedHashMap<>();
+                resultContent.put("content", llmResponse.content());
+                resultContent.put("status", "completed");
+                log.info("[{}] LLM completed after {} iterations", agentId, iteration + 1);
+                return AgentMessage.inform(taskId, agentId, "pipeline", resultContent);
             }
+
+            // 执行工具调用
+            List<LlmClient.ToolCall> toolCalls = llmResponse.toolCalls();
+            Map<String, Object> assistantMsg = new LinkedHashMap<>();
+            assistantMsg.put("role", "assistant");
+            assistantMsg.put("content", llmResponse.content() != null ? llmResponse.content() : "");
+            assistantMsg.put("tool_calls", toolCalls.stream()
+                    .map(tc -> Map.of("id", tc.id(), "type", "function",
+                            "function", Map.of("name", tc.name(), "arguments", tc.argumentsJson())))
+                    .toList());
+            messages.add(assistantMsg);
+
+            for (LlmClient.ToolCall tc : toolCalls) {
+                log.info("[{}] tool: {}", agentId, tc.name());
+                Map<String, Object> args = tc.parseArguments();
+                try {
+                    AgentTool.ToolResult result = toolRegistry.execute(tc.name(), args);
+                    messages.add(Map.of("role", "tool", "tool_call_id", (Object) tc.id(),
+                            "content", (Object) (result.success() ? result.content() : "Error: " + result.content())));
+                } catch (Exception e) {
+                    log.error("[{}] tool {} error: {}", agentId, tc.name(), e.getMessage());
+                    messages.add(Map.of("role", "tool", "tool_call_id", (Object) tc.id(),
+                            "content", (Object) ("Error: " + e.getMessage())));
+                }
+            }
+
+            sendProgress(taskId, "iteration " + (iteration + 1));
         }
 
-        return proposals;
+        return AgentMessage.error(taskId, agentId, "Reached maximum iterations");
     }
 
     /**
-     * 接受提案并委托任务
+     * 构建用户消息（子类可覆盖）
      */
-    protected void acceptProposal(String taskId, String winnerAgentId, Map<String, Object> task) {
-        AgentMessage confirm = AgentMessage.builder()
-                .id(UUID.randomUUID().toString())
-                .taskId(taskId)
-                .performative(Performative.CONFIRM)
-                .sender(agentId)
-                .receiver(winnerAgentId)
-                .content(task)
-                .timestamp(System.currentTimeMillis())
-                .build();
-        streams.send("stream:agent:" + winnerAgentId, confirm);
-        log.info("[{}] confirmed proposal from {}", agentId, winnerAgentId);
+    protected String buildUserMessage(AgentMessage request) {
+        Map<String, Object> content = request.getContent();
+        StringBuilder sb = new StringBuilder();
+        sb.append("任务: ").append(content.getOrDefault("action", "process")).append("\n");
+        if (content.containsKey("goal")) {
+            sb.append("目标: ").append(content.get("goal")).append("\n");
+        }
+        sb.append("用户ID: ").append(content.getOrDefault("userId", "unknown")).append("\n");
+        Map<String, Object> context = new LinkedHashMap<>(content);
+        context.remove("action");
+        context.remove("goal");
+        context.remove("userId");
+        context.remove("sessionId");
+        if (!context.isEmpty()) {
+            sb.append("上下文: ").append(mapper.valueToTree(context));
+        }
+        return sb.toString();
     }
 
-    /**
-     * 处理收到的 CFP（子类可覆盖以自定义提案逻辑）
-     */
+    // ==================== Prompt 管理 ====================
+
+    protected String getManagedPrompt() {
+        if (promptService != null) {
+            return promptService.getPrompt(agentId);
+        }
+        return "You are a helpful assistant.";
+    }
+
+    protected String loadPrompt(String path) {
+        try {
+            ClassPathResource resource = new ClassPathResource(path);
+            return resource.getContentAsString(StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            log.error("[{}] failed to load prompt: {}", agentId, path, e);
+            return "You are a helpful assistant.";
+        }
+    }
+
+    // ==================== 进度通知 ====================
+
+    protected void sendProgress(String taskId, String message) {
+        streams.send("stream:agent:events", AgentMessage.progress(taskId, agentId, message));
+    }
+
+    // ==================== CFP 协商协议 ====================
+
     protected void handleCfp(AgentMessage cfp) {
         try {
-            // 默认：评估自身是否能处理此任务
             String description = (String) cfp.getContent().getOrDefault("description", "");
             boolean canHandle = evaluateCapability(description);
-
             if (canHandle) {
                 Map<String, Object> proposal = Map.of(
                         "agentId", agentId,
                         "confidence", 0.8,
                         "estimatedDuration", estimateDuration(description),
-                        "description", "I can handle this task"
-                );
-                AgentMessage propose = AgentMessage.builder()
-                        .id(UUID.randomUUID().toString())
-                        .taskId(cfp.getTaskId())
-                        .performative(Performative.PROPOSE)
-                        .sender(agentId)
-                        .receiver(cfp.getSender())
-                        .content(proposal)
-                        .timestamp(System.currentTimeMillis())
-                        .build();
-                streams.send("stream:agent:events", propose);
+                        "description", "I can handle this task");
+                streams.send("stream:agent:events",
+                        AgentMessage.builder().id(UUID.randomUUID().toString())
+                                .taskId(cfp.getTaskId()).performative(Performative.PROPOSE)
+                                .sender(agentId).receiver(cfp.getSender()).content(proposal)
+                                .timestamp(System.currentTimeMillis()).build());
             } else {
-                AgentMessage refuse = AgentMessage.builder()
-                        .id(UUID.randomUUID().toString())
-                        .taskId(cfp.getTaskId())
-                        .performative(Performative.REFUSE)
-                        .sender(agentId)
-                        .receiver(cfp.getSender())
-                        .content(Map.of("reason", "Cannot handle this task"))
-                        .timestamp(System.currentTimeMillis())
-                        .build();
-                streams.send("stream:agent:events", refuse);
+                streams.send("stream:agent:events",
+                        AgentMessage.builder().id(UUID.randomUUID().toString())
+                                .taskId(cfp.getTaskId()).performative(Performative.REFUSE)
+                                .sender(agentId).receiver(cfp.getSender())
+                                .content(Map.of("reason", "Cannot handle this task"))
+                                .timestamp(System.currentTimeMillis()).build());
             }
         } catch (Exception e) {
             log.error("[{}] handleCfp failed: {}", agentId, e.getMessage());
         }
     }
 
-    /**
-     * 评估自身是否能处理某任务（子类覆盖）
-     */
     protected boolean evaluateCapability(String taskDescription) {
         if (capabilityRegistry == null) return true;
         return capabilityRegistry.findById(agentId)
@@ -297,9 +305,6 @@ public abstract class BaseAgent {
                 .orElse(false);
     }
 
-    /**
-     * 估算任务耗时（子类覆盖）
-     */
     protected long estimateDuration(String taskDescription) {
         if (capabilityRegistry == null) return 30000;
         return capabilityRegistry.findById(agentId)
@@ -307,35 +312,13 @@ public abstract class BaseAgent {
                 .orElse(30000L);
     }
 
-    // ==================== 能力查询 ====================
-
-    /**
-     * 查询可用的同级 Agent
-     */
     protected List<AgentCapability> findCapablePeers(String keyword) {
         if (capabilityRegistry == null) return List.of();
         return capabilityRegistry.findByKeyword(keyword);
     }
 
-    /**
-     * 查询指定 Agent 的能力
-     */
     protected Optional<AgentCapability> getPeerCapability(String peerAgentId) {
         if (capabilityRegistry == null) return Optional.empty();
         return capabilityRegistry.findById(peerAgentId);
-    }
-
-    // ==================== 基础方法 ====================
-
-    /**
-     * 处理消息（子类实现）
-     */
-    protected abstract AgentMessage process(AgentMessage request);
-
-    /**
-     * 发送进度通知
-     */
-    protected void sendProgress(String taskId, String message) {
-        streams.send("stream:agent:events", AgentMessage.progress(taskId, agentId, message));
     }
 }

@@ -36,7 +36,8 @@ public class PipelineTemplates {
         engine.registerTemplate(assessment());
         engine.registerTemplate(intervention());
         engine.registerTemplate(learningPathCore());
-        log.info("[PipelineTemplates] registered {} templates", 12);
+        engine.registerTemplate(quizEvaluation());
+        log.info("[PipelineTemplates] registered {} templates", 13);
     }
 
     /**
@@ -77,6 +78,15 @@ public class PipelineTemplates {
                                 .stepId("quality")
                                 .agentId(AgentIds.QUALITY)
                                 .action("check")
+                                .dependsOn(List.of("resources"))
+                                .resultMapping(Map.of("resources", "resources"))
+                                .optional(true)
+                                .build(),
+                        // Step 5: 效果评估（依赖资源，可选）
+                        PipelineStep.builder()
+                                .stepId("effect")
+                                .agentId(AgentIds.EFFECT)
+                                .action("evaluate")
                                 .dependsOn(List.of("resources"))
                                 .resultMapping(Map.of("resources", "resources"))
                                 .optional(true)
@@ -331,6 +341,34 @@ public class PipelineTemplates {
                                 .action("generate_path")
                                 .dependsOn(List.of("profile"))
                                 .resultMapping(Map.of("profile", "profile"))
+                                .build(),
+                        // Step 3: 效果评估（可选，依赖路径生成）
+                        PipelineStep.builder()
+                                .stepId("effect")
+                                .agentId(AgentIds.EFFECT)
+                                .action("evaluate")
+                                .dependsOn(List.of("path_gen"))
+                                .resultMapping(Map.of("path_gen", "path"))
+                                .optional(true)
+                                .build()
+                ))
+                .build();
+    }
+
+    /**
+     * 答题评估流水线
+     * 答题后触发效果评估 + 路径调整
+     */
+    public static PipelineConfig quizEvaluation() {
+        return PipelineConfig.builder()
+                .pipelineId("quiz_evaluation")
+                .name("答题评估")
+                .description("学生提交答案后进行效果评估与路径调整")
+                .steps(List.of(
+                        PipelineStep.builder()
+                                .stepId("effect")
+                                .agentId(AgentIds.EFFECT)
+                                .action("evaluate")
                                 .build()
                 ))
                 .build();

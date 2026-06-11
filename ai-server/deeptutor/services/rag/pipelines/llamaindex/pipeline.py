@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 import traceback
 from typing import Any, Callable, Dict, List, Optional
@@ -53,6 +54,11 @@ class LlamaIndexPipeline:
     def _configure_settings(self) -> None:
         configure_llamaindex_settings(self.logger)
 
+    @staticmethod
+    def _use_chroma() -> bool:
+        """是否使用 Chroma 向量数据库后端（而非本地文件）。"""
+        return os.environ.get("RAG_STORAGE_BACKEND", "local").strip().lower() == "chroma"
+
     async def _verify_embedding_connectivity(self) -> None:
         await verify_embedding_connectivity(self.logger)
 
@@ -79,16 +85,32 @@ class LlamaIndexPipeline:
             f"Initializing KB '{kb_name}' with {len(file_paths)} files using LlamaIndex"
         )
 
-        kb_dir = Path(self.kb_base_dir) / kb_name
-        signature = self._current_signature()
-        storage_dir = resolve_storage_dir_for_rebuild(kb_dir, signature)
-
         try:
             await self._verify_embedding_connectivity()
             documents = await self.document_loader.load(file_paths)
             if not documents:
                 self.logger.error("No valid documents found")
                 return False
+
+            if self._use_chroma():
+                self.logger.info(
+                    f"Creating Chroma index for KB '{kb_name}' "
+                    f"with {len(documents)} documents..."
+                )
+                if progress_callback:
+                    set_progress_callback(progress_callback)
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    None,
+                    lambda: storage.create_chroma_index(documents, kb_name, show_progress=True),
+                )
+                self.logger.info(f"Chroma index for '{kb_name}' created successfully")
+                return True
+
+            # 本地文件后端
+            kb_dir = Path(self.kb_base_dir) / kb_name
+            signature = self._current_signature()
+            storage_dir = resolve_storage_dir_for_rebuild(kb_dir, signature)
 
             self.logger.info(
                 f"Creating VectorStoreIndex with {len(documents)} documents "
@@ -128,6 +150,30 @@ class LlamaIndexPipeline:
         kwargs.pop("mode", None)
         self._configure_settings()
         self.logger.info(f"Searching KB '{kb_name}' with query: {query[:50]}...")
+
+        if self._use_chroma():
+            if storage.chroma_needs_reindex(kb_name):
+                self.logger.warning(f"No Chroma index found for KB '{kb_name}'")
+                return {
+                    "query": query,
+                    "answer": "知识库尚未建立向量索引，请先执行重建索引操作。",
+                    "content": "",
+                    "provider": "chroma",
+                    "needs_reindex": True,
+                }
+            try:
+                loop = asyncio.get_event_loop()
+                top_k = kwargs.get("top_k", 5)
+                nodes = await loop.run_in_executor(
+                    None,
+                    lambda: storage.retrieve_chroma_nodes(kb_name, query, top_k=top_k),
+                )
+                result = self._nodes_to_result(query, nodes)
+                return result
+            except Exception as exc:
+                result = search_error_result(query, exc)
+                self.logger.error(f"Chroma search failed: {exc}")
+                return result
 
         kb_dir = Path(self.kb_base_dir) / kb_name
         signature = self._current_signature()
@@ -227,10 +273,6 @@ class LlamaIndexPipeline:
 
         self.logger.info(f"Adding {len(file_paths)} documents to KB '{kb_name}' using LlamaIndex")
 
-        kb_dir = Path(self.kb_base_dir) / kb_name
-        signature = self._current_signature()
-        plan = storage.resolve_add_storage_plan(kb_dir, signature)
-
         try:
             await self._verify_embedding_connectivity()
             if progress_callback:
@@ -242,6 +284,19 @@ class LlamaIndexPipeline:
                 return False
 
             loop = asyncio.get_event_loop()
+
+            if self._use_chroma():
+                num_added = await loop.run_in_executor(
+                    None,
+                    lambda: storage.insert_chroma_documents(kb_name, documents),
+                )
+                self.logger.info(f"Added {num_added} documents to Chroma KB '{kb_name}'")
+                return True
+
+            # 本地文件后端
+            kb_dir = Path(self.kb_base_dir) / kb_name
+            signature = self._current_signature()
+            plan = storage.resolve_add_storage_plan(kb_dir, signature)
 
             if plan.existing_storage is not None:
                 self.logger.info(f"Loading existing index from {plan.existing_storage}...")
@@ -278,6 +333,11 @@ class LlamaIndexPipeline:
             set_progress_callback(None)
 
     async def delete(self, kb_name: str) -> bool:
+        if self._use_chroma():
+            deleted = storage.delete_chroma_kb(kb_name)
+            if deleted:
+                self.logger.info(f"Deleted Chroma KB '{kb_name}'")
+            return deleted
         kb_dir = Path(self.kb_base_dir) / kb_name
         deleted = storage.delete_kb_dir(kb_dir)
         if deleted:

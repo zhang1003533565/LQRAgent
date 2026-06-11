@@ -36,7 +36,7 @@ public abstract class BaseAgent implements AgentInterface {
     protected TaskContext currentContext;
     
     // 最大推理循环次数
-    private static final int MAX_ITERATIONS = 5;
+    private static final int MAX_ITERATIONS = 3;
     
     protected BaseAgent(String agentId, LlmClient llmClient, AgentToolRegistry toolRegistry, AgentRegistry agentRegistry) {
         this(agentId, llmClient, toolRegistry, agentRegistry, null);

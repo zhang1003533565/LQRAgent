@@ -53,6 +53,7 @@ public class PipelineResult {
         return PipelineResult.builder()
                 .success(false)
                 .errorMessage(errorMessage)
+                .stepResults(List.of())
                 .totalDurationMs(totalDurationMs)
                 .build();
     }

@@ -8,8 +8,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.lqragent.backend.agents.base.BaseAgent.AgentRequest;
-import com.lqragent.backend.agents.base.BaseAgent.AgentResponse;
+import com.lqragent.backend.orchestrator.message.AgentMessage;
+import com.lqragent.backend.orchestrator.message.Performative;
 import com.lqragent.backend.agents.content.summary.lessongeneration.dto.ResourceGenerateRequest;
 import com.lqragent.backend.agents.content.summary.lessongeneration.dto.ResourceGenerateResponse;
 import com.lqragent.backend.agents.effectassessment.service.EffectAssessmentService;
@@ -63,15 +63,16 @@ public class AgentTestController {
         
         long start = System.currentTimeMillis();
         try {
-            AgentRequest request = new AgentRequest("qa", message, Map.of());
-            AgentResponse response = qaAgent.process(request);
+            AgentMessage request = AgentMessage.request("test", "admin", "qa_agent",
+                Map.of("goal", message));
+            AgentMessage response = qaAgent.process(request);
             long duration = System.currentTimeMillis() - start;
             
+            boolean success = response.getPerformative() == Performative.INFORM;
             Map<String, Object> data = new HashMap<>();
-            data.put("success", response.success());
-            data.put("content", response.content());
-            data.put("executions", response.executions());
-            data.put("error", response.error());
+            data.put("success", success);
+            data.put("content", success ? response.getContent().get("content") : null);
+            data.put("error", success ? null : response.getContent().get("error"));
             data.put("durationMs", duration);
             return data;
         } catch (Exception e) {

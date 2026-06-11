@@ -14,8 +14,8 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.agents.base.AgentMemory;
-import com.lqragent.backend.agents.base.BaseAgent.AgentRequest;
-import com.lqragent.backend.agents.base.BaseAgent.AgentResponse;
+import com.lqragent.backend.orchestrator.message.AgentMessage;
+import com.lqragent.backend.orchestrator.message.Performative;
 import com.lqragent.backend.agents.learn.path.dto.LearningPathDto;
 import com.lqragent.backend.agents.learn.path.service.LearningPathService;
 import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
@@ -30,6 +30,7 @@ import com.lqragent.backend.orchestrator.pipeline.PipelineConfig;
 import com.lqragent.backend.orchestrator.pipeline.PipelineEngine;
 import com.lqragent.backend.orchestrator.pipeline.PipelineResult;
 import com.lqragent.backend.orchestrator.pipeline.PipelineTemplates;
+import com.lqragent.backend.orchestrator.pipeline.StepResult;
 import com.lqragent.backend.orchestrator.planning.PlanResult;
 import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
@@ -229,13 +230,13 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         // Pipeline 类型 → 异步执行，立即返回进度
         if (plan.isPipeline() && plan.pipelineConfig() != null) {
-            // 立即告知前端正在规划
+            // 立即告知前端正在处理
             sendEvent(session, "agent_step", objectMapper.createObjectNode()
                     .put("agent", "orchestrator")
-                    .put("label", "正在规划学习路径...")
+                    .put("label", "正在分析...")
                     .put("status", "running")
                     .toString());
-            sendEvent(session, "chunk", "正在为你规划学习路径，请稍候...");
+            sendEvent(session, "chunk", "正在处理，请稍候...");
 
             final Long currentUserId = userInfo.userId();
             final String finalSessionIdForPipeline = finalSessionId;
@@ -251,15 +252,19 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                                 @Override
                                 public void onStepComplete(String stepId, String agentId, boolean success, Map<String, Object> stepData) {
                                     try {
-                                        // 发送步骤完成通知
+                                        // 只发送成功步骤通知（失败步骤静默，避免前端显示一堆红线）
+                                        if (!success) {
+                                            log.debug("[WS] step {} ({}) failed, skipped in UI", stepId, agentId);
+                                            return;
+                                        }
                                         sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
                                                 .put("agent", agentId)
-                                                .put("label", success ? "已完成" : "执行失败")
-                                                .put("status", success ? "done" : "failed")
+                                                .put("label", "已完成")
+                                                .put("status", "done")
                                                 .toString());
 
                                         // 先发送 artifact（学习路径、图表等）
-                                        if (success && stepData != null) {
+                                        if (stepData != null) {
                                             // 学习路径特殊处理：发送 artifact
                                             if (agentId.contains("learning_path")) {
                                                 try {
@@ -320,31 +325,126 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                                 }
                             });
 
-                    // Pipeline 完成后，只发送 done 事件（内容已在 callback 中分步推送）
+                    // Pipeline 完成后，检查是否成功
                     String agent = plan.pipelineConfig().getPipelineId();
 
-                    // 聚合所有步骤内容用于记忆记录
-                    StringBuilder allContent = new StringBuilder();
-                    for (var sr : pipelineResult.getStepResults()) {
-                        if (sr.isSuccess() && sr.getData() != null) {
-                            String stepContent = extractStepContent(sr.getAgentId(), sr.getData());
-                            if (stepContent != null && !stepContent.isBlank()) {
-                                if (allContent.length() > 0) allContent.append("\n\n");
-                                allContent.append(stepContent);
+                    if (pipelineResult.isSuccess()) {
+                        // 聚合所有步骤内容用于记忆记录
+                        StringBuilder allContent = new StringBuilder();
+                        List<StepResult> stepResults = pipelineResult.getStepResults();
+                        if (stepResults != null) {
+                            for (var sr : stepResults) {
+                                if (sr.isSuccess() && sr.getData() != null) {
+                                    String stepContent = extractStepContent(sr.getAgentId(), sr.getData());
+                                    if (stepContent != null && !stepContent.isBlank()) {
+                                        if (allContent.length() > 0) allContent.append("\n\n");
+                                        allContent.append(stepContent);
+                                    }
+                                }
                             }
                         }
+                        String finalContent = allContent.isEmpty() ? "任务执行完成。" : allContent.toString();
+
+                        sendEvent(wsSession, "done", objectMapper.createObjectNode()
+                                .put("session_id", finalSessionIdForPipeline)
+                                .toString());
+
+                        // 记录到记忆
+                        agentMemory.addAgentResponse(currentUserId, Long.parseLong(finalSessionIdForPipeline), finalContent, agent);
+                        // 记忆更新放到输出后异步执行
+                        triggerProfileExtractionAsync(currentUserId, finalSessionIdForPipeline, wsSession);
+                    } else {
+                        // Pipeline 执行失败 → 回退处理
+                        String pipelineId = plan.pipelineConfig().getPipelineId();
+                        String errorMsg = pipelineResult.getErrorMessage() != null
+                                ? pipelineResult.getErrorMessage() : "未知错误";
+                        log.warn("[WS] pipeline {} failed ({}), using fallback", pipelineId, errorMsg);
+
+                        // 如果是学习路径 pipeline，尝试直接生成
+                        if ("learning_path".equals(pipelineId)) {
+                            try {
+                                LearningPathDto pathDto = learningPathService.generatePath(
+                                        currentUserId, content, null);
+                                String planText = pathDto.getPlanDescription() != null
+                                        ? pathDto.getPlanDescription() : "";
+                                var payloadNode = objectMapper.createObjectNode()
+                                        .put("goal", pathDto.getGoal() != null ? pathDto.getGoal() : content)
+                                        .put("planDescription", planText);
+                                payloadNode.set("nodes", objectMapper.valueToTree(pathDto.getNodes()));
+                                sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
+                                        .put("agent", "learning_path")
+                                        .put("label", "学习路径已生成")
+                                        .put("status", "done")
+                                        .toString());
+                                sendEvent(wsSession, "artifact", objectMapper.createObjectNode()
+                                        .put("kind", "learning_path")
+                                        .set("payload", payloadNode)
+                                        .toString());
+                                sendEvent(wsSession, "chunk", planText);
+                                sendEvent(wsSession, "done", objectMapper.createObjectNode()
+                                        .put("session_id", finalSessionIdForPipeline)
+                                        .toString());
+                                agentMemory.addAgentResponse(currentUserId, Long.parseLong(finalSessionIdForPipeline),
+                                        planText, "learning_path_fallback");
+                                triggerProfileExtractionAsync(currentUserId, finalSessionIdForPipeline, wsSession);
+                                return;
+                            } catch (Exception e2) {
+                                log.warn("[WS] learning path fallback also failed: {}", e2.getMessage());
+                            }
+                        }
+
+                        // 兜底：回退到 QA
+
+                        String fallbackResp = null;
+                        try {
+                            AgentMessage agentRequest = AgentMessage.request("qa", "ws_handler", "qa_agent",
+                                    Map.of("goal", content));
+                            // 加载最近对话历史传给 QA agent 保持上下文
+                            List<AgentMemory.MemoryEntry> recentHistoryLocal = agentMemory.getRecentHistory(currentUserId, 10);
+                            List<Map<String, Object>> qaHistory = new java.util.ArrayList<>();
+                            for (var e : recentHistoryLocal) {
+                                java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+                                m.put("role", e.getRole());
+                                m.put("content", e.getContent());
+                                qaHistory.add(m);
+                            }
+                            AgentMessage agentResponse = qaAgent.processWithHistory(agentRequest, qaHistory);
+                            if (agentResponse.getPerformative() == Performative.INFORM) {
+                                Object respContent = agentResponse.getContent().get("content");
+                                fallbackResp = respContent != null ? respContent.toString() : "";
+                            }
+                        } catch (Exception e2) {
+                            log.error("[WS] QA fallback also failed: {}", e2.getMessage());
+                            fallbackResp = null;
+                        }
+
+                        if (fallbackResp != null && !fallbackResp.isBlank()) {
+                            sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
+                                    .put("agent", "intelligent_qa")
+                                    .put("label", "回答完成")
+                                    .put("status", "done")
+                                    .toString());
+                            sendEvent(wsSession, "chunk", fallbackResp);
+                            sendEvent(wsSession, "done", objectMapper.createObjectNode()
+                                    .put("session_id", finalSessionIdForPipeline)
+                                    .toString());
+                            agentMemory.addAgentResponse(currentUserId, Long.parseLong(finalSessionIdForPipeline),
+                                    fallbackResp, "qa_fallback");
+                            triggerProfileExtractionAsync(currentUserId, finalSessionIdForPipeline, wsSession);
+                        } else {
+                            sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
+                                    .put("agent", agent)
+                                    .put("label", "执行失败")
+                                    .put("status", "failed")
+                                    .toString());
+                            sendEvent(wsSession, "chunk", "抱歉，任务执行失败：" + errorMsg);
+                            sendEvent(wsSession, "done", objectMapper.createObjectNode()
+                                    .put("session_id", finalSessionIdForPipeline)
+                                    .toString());
+                            agentMemory.addAgentResponse(currentUserId, Long.parseLong(finalSessionIdForPipeline),
+                                    "抱歉，任务执行失败：" + errorMsg, agent);
+                        }
                     }
-                    String finalContent = allContent.isEmpty() ? "任务执行完成。" : allContent.toString();
-
-                    sendEvent(wsSession, "done", objectMapper.createObjectNode()
-                            .put("session_id", finalSessionIdForPipeline)
-                            .toString());
-
-                    // 记录到记忆
-                    agentMemory.addAgentResponse(currentUserId, Long.parseLong(finalSessionIdForPipeline), finalContent, agent);
-
-                    // 记忆更新放到输出后异步执行
-                    triggerProfileExtractionAsync(currentUserId, finalSessionIdForPipeline, wsSession);
 
                 } catch (Exception e) {
                     log.error("[WS] async pipeline error: {}", e.getMessage(), e);
@@ -437,22 +537,22 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             if (!pipelineSucceeded) {
                 try {
                     List<AgentMemory.MemoryEntry> recentHistory = agentMemory.getRecentHistory(currentUserId, 10);
-                    List<Map<String, Object>> history = recentHistory.stream()
-                            .map(entry -> {
-                                Map<String, Object> msg = new java.util.LinkedHashMap<>();
-                                msg.put("role", entry.getRole());
-                                msg.put("content", entry.getContent());
-                                return msg;
-                            })
-                            .toList();
+                    List<Map<String, Object>> qaHistory = new java.util.ArrayList<>();
+                    for (var e : recentHistory) {
+                        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+                        m.put("role", e.getRole());
+                        m.put("content", e.getContent());
+                        qaHistory.add(m);
+                    }
+                    AgentMessage agentRequest = AgentMessage.request("qa", "ws_handler", "qa_agent",
+                            Map.of("goal", content));
+                    AgentMessage agentResponse = qaAgent.processWithHistory(agentRequest, qaHistory);
 
-                    AgentRequest agentRequest = new AgentRequest("qa", content, Map.of());
-                    AgentResponse agentResponse = qaAgent.process(agentRequest, history);
-
-                    if (agentResponse.success()) {
-                        qaResponse = agentResponse.content();
+                    if (agentResponse.getPerformative() == Performative.INFORM) {
+                        Object respContent = agentResponse.getContent().get("content");
+                        qaResponse = respContent != null ? respContent.toString() : "";
                     } else {
-                        log.warn("[WS] QA agent failed: {}", agentResponse.error());
+                        log.warn("[WS] QA agent failed: {}", agentResponse.getContent().get("error"));
                         qaResponse = "抱歉，处理问题时出现异常。请稍后再试。";
                     }
                 } catch (Exception e) {

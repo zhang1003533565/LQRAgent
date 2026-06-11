@@ -1,12 +1,16 @@
 package com.lqragent.backend.agents.base;
 
-import java.time.Duration;
+import org.apache.hc.core5.util.TimeValue;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.core5.util.Timeout;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -47,16 +51,30 @@ public class LlmClient {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }
         
-        // 构建消息列表
+        // 构建消息列表（每条消息加上 type 字段，兼容 DeepSeek API schema）
         List<Map<String, Object>> allMessages = new ArrayList<>();
-        allMessages.add(Map.of("role", "system", "content", systemPrompt));
-        allMessages.addAll(messages);
+        // 系统消息
+        {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("role", "system");
+            m.put("type", "system");
+            m.put("content", systemPrompt);
+            allMessages.add(m);
+        }
+        // 业务消息（来自调用方）
+        for (Map<String, Object> msg : messages) {
+            Map<String, Object> m = new LinkedHashMap<>(msg);
+            if (!m.containsKey("type") && m.containsKey("role")) {
+                m.put("type", m.get("role"));
+            }
+            allMessages.add(m);
+        }
         
         // 构建请求体
         Map<String, Object> requestBody = new LinkedHashMap<>();
         requestBody.put("model", model);
         requestBody.put("messages", allMessages);
-        requestBody.put("max_tokens", 2000);
+        requestBody.put("max_tokens", 4096);
         requestBody.put("temperature", 0.1);
         
         if (tools != null && !tools.isEmpty()) {
@@ -69,10 +87,23 @@ public class LlmClient {
             log.info("[LlmClient] calling LLM: host={}, model={}, apiKey={}...", baseUrl, model, 
                     apiKey.length() > 8 ? apiKey.substring(0, 4) + "****" + apiKey.substring(apiKey.length() - 4) : "(short)");
             
-            SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-            requestFactory.setConnectTimeout(Duration.ofSeconds(10));
-            requestFactory.setReadTimeout(Duration.ofSeconds(60));
-            
+            // 连接池：最多 20 个连接，每条路由最多 10 个
+            PoolingHttpClientConnectionManager connManager = new PoolingHttpClientConnectionManager();
+            connManager.setMaxTotal(20);
+            connManager.setDefaultMaxPerRoute(10);
+            connManager.setDefaultConnectionConfig(ConnectionConfig.custom()
+                    .setConnectTimeout(Timeout.ofSeconds(10))
+                    .setSocketTimeout(Timeout.ofSeconds(30))
+                    .build());
+
+            HttpComponentsClientHttpRequestFactory requestFactory =
+                    new HttpComponentsClientHttpRequestFactory(
+                            HttpClients.custom()
+                                    .setConnectionManager(connManager)
+                                    .evictExpiredConnections()
+                                    .evictIdleConnections(TimeValue.ofSeconds(30))
+                                    .build());
+
             String response = RestClient.builder()
                     .requestFactory(requestFactory)
                     .build()
@@ -89,6 +120,10 @@ public class LlmClient {
             
         } catch (Exception e) {
             log.error("[LlmClient] call failed: {}", e.getMessage(), e);
+            // 记录部分请求体用于调试
+            String preview = requestBody.toString();
+            if (preview.length() > 500) preview = preview.substring(0, 500) + "...";
+            log.error("[LlmClient] request body preview: {}", preview);
             return new LlmResponse(null, null, "LLM call failed: " + e.getMessage());
         }
     }

@@ -110,6 +110,12 @@
             <version>2.5.0</version>
         </dependency>
 
+        <!-- Apache HttpClient5（LLM 连接池） -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

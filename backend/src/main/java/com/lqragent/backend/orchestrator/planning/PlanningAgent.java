@@ -211,7 +211,7 @@ public class PlanningAgent {
             
             // 添加对话历史（如果有）
             if (chatHistory != null && !chatHistory.isBlank()) {
-                messages.add(Map.of("role", "system", "content", "以下是之前的对话历史，请参考上下文理解用户意图：\n" + chatHistory));
+                messages.add(Map.of("role", "user", "content", "以下是之前的对话历史，请参考上下文理解用户意图：\n" + chatHistory));
             }
             
             // 添加当前用户消息

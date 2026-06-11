@@ -52,7 +52,16 @@ public class PipelineStep {
     
     /** 从依赖步骤结果中提取的参数映射 */
     private Map<String, String> resultMapping;
-    
+
+    /** 通信模式 */
+    @Builder.Default
+    private CommunicationMode communicationMode = CommunicationMode.DIRECT;
+
+    public enum CommunicationMode {
+        DIRECT,   // 通过 AgentRegistry 直接同步调用（默认）
+        STREAMS   // 通过 Redis Streams 异步调度
+    }
+
     public enum ConditionType {
         ALL_COMPLETED,   // 所有依赖完成
         ANY_COMPLETED    // 任一依赖完成

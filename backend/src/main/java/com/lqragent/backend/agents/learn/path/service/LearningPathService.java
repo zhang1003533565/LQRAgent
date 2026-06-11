@@ -52,9 +52,15 @@ public class LearningPathService {
      */
     @Transactional
     public LearningPathDto generatePath(Long userId, String goal, String currentKpId) {
-        // 1. 解析目标 → 找到所有匹配的知识点ID
-        List<String> allTargetKpIds = llmResolveKpIds(goal);
-        log.info("[LearningPath] generatePath: userId={}, goal={}, targets={}", userId, goal, allTargetKpIds);
+        // 1. 解析目标 → 找到所有匹配的知识点ID（ai-server 不可用时降级到动态生成）
+        List<String> allTargetKpIds;
+        try {
+            allTargetKpIds = llmResolveKpIds(goal);
+            log.info("[LearningPath] generatePath: userId={}, goal={}, targets={}", userId, goal, allTargetKpIds);
+        } catch (Exception e) {
+            log.warn("[LearningPath] llmResolveKpIds failed (ai-server likely unavailable), falling back to dynamic: {}", e.getMessage());
+            allTargetKpIds = List.of();
+        }
 
         // 如果没有匹配到已有知识点，使用LLM动态生成路径
         if (allTargetKpIds.isEmpty()) {

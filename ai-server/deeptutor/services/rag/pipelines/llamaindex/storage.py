@@ -175,3 +175,69 @@ def delete_kb_dir(kb_dir: Path) -> bool:
         shutil.rmtree(kb_dir)
         return True
     return False
+
+
+# =============================================================================
+# Chroma 向量数据库后端（可选）
+# =============================================================================
+
+from deeptutor.services.rag.pipelines.llamaindex.chroma_client import (
+    get_chroma_client,
+    get_or_create_collection,
+    delete_collection,
+)
+from llama_index.vector_stores.chroma import ChromaVectorStore
+from llama_index.core import VectorStoreIndex, StorageContext
+from llama_index.core.schema import Document
+
+
+def create_chroma_index(documents: list[Document], kb_name: str, *,
+                         show_progress: bool = True) -> int:
+    """使用 Chroma 向量数据库创建索引。"""
+    client = get_chroma_client()
+    collection = get_or_create_collection(client, kb_name)
+    vector_store = ChromaVectorStore(chroma_collection=collection)
+    storage_context = StorageContext.from_defaults(vector_store=vector_store)
+    index = VectorStoreIndex.from_documents(
+        documents,
+        storage_context=storage_context,
+        show_progress=show_progress,
+    )
+    return len(documents)
+
+
+def retrieve_chroma_nodes(kb_name: str, query: str, *, top_k: int = 5) -> list[Any]:
+    """从 Chroma 检索最相关的节点。"""
+    client = get_chroma_client()
+    collection = get_or_create_collection(client, kb_name)
+    vector_store = ChromaVectorStore(chroma_collection=collection)
+    index = VectorStoreIndex.from_vector_store(vector_store)
+    retriever = index.as_retriever(similarity_top_k=top_k)
+    return retriever.retrieve(query)
+
+
+def insert_chroma_documents(kb_name: str, documents: list[Document]) -> int:
+    """向 Chroma 中的已有索引插入新文档。"""
+    client = get_chroma_client()
+    collection = get_or_create_collection(client, kb_name)
+    vector_store = ChromaVectorStore(chroma_collection=collection)
+    index = VectorStoreIndex.from_vector_store(vector_store)
+    for doc in documents:
+        index.insert(doc)
+    return len(documents)
+
+
+def delete_chroma_kb(kb_name: str) -> bool:
+    """删除 Chroma 中的知识库集合。"""
+    client = get_chroma_client()
+    return delete_collection(client, kb_name)
+
+
+def chroma_needs_reindex(kb_name: str) -> bool:
+    """检查 Chroma 中是否存在指定知识库的索引。"""
+    try:
+        from deeptutor.services.rag.pipelines.llamaindex.chroma_client import collection_exists
+        client = get_chroma_client()
+        return not collection_exists(client, kb_name)
+    except Exception:
+        return True
