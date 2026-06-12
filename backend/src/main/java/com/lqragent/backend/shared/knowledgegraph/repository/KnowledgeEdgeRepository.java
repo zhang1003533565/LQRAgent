@@ -12,4 +12,7 @@ public interface KnowledgeEdgeRepository extends JpaRepository<KnowledgeEdge, Lo
 
     /** 查以某个知识点为前置的所有后置知识点 */
     List<KnowledgeEdge> findByFromKpId(String fromKpId);
+
+    /** 按 fromKpId 或 toKpId 批量查询边 */
+    List<KnowledgeEdge> findByFromKpIdInOrToKpIdIn(List<String> fromKpIds, List<String> toKpIds);
 }

@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useArtifactStore } from '@/utils/store/artifactStore'
 import { usePathStore } from '@/utils/store/pathStore'
-import { generateResource } from '@/api/student/resources'
+import { getResources, generateResource } from '@/api/student/resources'
 import type { ResourceType } from '@/utils/types/media-resource'
-import { EmptyState, PlaceholderBanner } from '@/components/student/ui'
+import { EmptyState } from '@/components/student/ui'
 import MediaPreview from './MediaPreview'
 import styles from './ResourceSection.module.css'
 
@@ -43,8 +43,6 @@ export default function ResourceSection() {
 
   return (
     <div className={styles.page}>
-      <PlaceholderBanner label="资源生成 API 未实现" hint="当前为本地占位内容" />
-
       <div className={styles.typeRow}>
         {TYPES.map((t) => (
           <button
@@ -68,14 +66,14 @@ export default function ResourceSection() {
             onClick={handleLoad}
             disabled={loading}
           >
-            {loading ? '加载中...' : '加载占位资源'}
+            {loading ? '生成中...' : '生成资源'}
           </button>
           {activeType === 'ILLUSTRATION' || activeType === 'VIDEO_CLIP' ? (
             <MediaPreview resource={current} />
           ) : current?.content ? (
             <article className={styles.content}>{current.content}</article>
           ) : (
-            <EmptyState title="暂无内容" description="点击上方按钮加载占位资源" />
+            <EmptyState title="暂无内容" description="点击上方按钮生成资源" />
           )}
         </>
       )}

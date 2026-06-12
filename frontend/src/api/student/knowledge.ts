@@ -7,6 +7,29 @@ export interface KnowledgePointOption {
   description?: string
 }
 
+export interface KnowledgeGraphNode {
+  kpId: string
+  title: string
+  subject?: string
+  chapter?: string
+  description?: string
+  difficulty?: number
+}
+
+export interface KnowledgeGraphEdge {
+  fromKpId: string
+  toKpId: string
+  relationType: string
+}
+
+export interface KnowledgeGraphData {
+  nodes: KnowledgeGraphNode[]
+  edges: KnowledgeGraphEdge[]
+  nodeCount: number
+  edgeCount: number
+  subjects: string[]
+}
+
 export async function listKnowledgePointsByIds(ids: string[]): Promise<KnowledgePointOption[]> {
   if (ids.length === 0) return []
   const res = await http.get<{ data: KnowledgePointOption[] }>('/knowledge-points', {
@@ -34,5 +57,12 @@ export async function searchKnowledgePoints(keyword: string): Promise<KnowledgeP
   const res = await http.get<{ data: KnowledgePointOption[] }>('/knowledge-points/search', {
     params: { keyword },
   })
+  return res.data.data
+}
+
+/** 获取完整知识图谱（节点+边） */
+export async function getKnowledgeGraph(subject?: string): Promise<KnowledgeGraphData> {
+  const params = subject ? { subject } : {}
+  const res = await http.get<{ data: KnowledgeGraphData }>('/knowledge-points/graph', { params })
   return res.data.data
 }

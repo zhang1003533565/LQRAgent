@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 资源生成门面服务。
@@ -97,6 +98,19 @@ public class ResourceGenerationService {
 
         log.info("[ResourceFacade] 已保存: id={}, type={}, kp={}", item.getId(), type, kpId);
 
+        // 查询关联知识点（前置+后置）
+        List<String> relatedKpIds = new java.util.ArrayList<>();
+        try {
+            List<String> prereqs = kgService.getPrerequisites(kpId).stream()
+                    .map(p -> p.getKpId()).collect(Collectors.toList());
+            List<String> dependents = kgService.getDependents(kpId).stream()
+                    .map(p -> p.getKpId()).collect(Collectors.toList());
+            relatedKpIds.addAll(prereqs);
+            relatedKpIds.addAll(dependents);
+        } catch (Exception e) {
+            log.warn("[ResourceFacade] 查询关联知识点失败: {}", e.getMessage());
+        }
+
         return ResourceGenerateResponse.builder()
                 .resourceId(item.getId())
                 .kpId(kpId)
@@ -105,6 +119,7 @@ public class ResourceGenerationService {
                 .content(item.getContent())
                 .mediaUrl(item.getMediaUrl())
                 .existingCount(count)
+                .relatedKpIds(relatedKpIds)
                 .build();
     }
 

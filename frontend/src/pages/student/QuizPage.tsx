@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { usePathStore } from '@/utils/store/pathStore'
 import { getQuizQuestions, submitQuiz } from '@/api/student/quiz'
 import { trackBehavior } from '@/utils/tracker'
@@ -38,7 +39,10 @@ function parseQuestions(resources: LearningResource[]): Question[] {
 }
 
 export default function QuizPage() {
+  const navigate = useNavigate()
   const { selectedKpId, nodes } = usePathStore()
+  const hasPathUpdates = usePathStore((s) => s.hasUpdates)
+  const clearPathUpdates = usePathStore((s) => s.clearUpdates)
   const [questions, setQuestions] = useState<Question[]>([])
   const [currentIdx, setCurrentIdx] = useState(0)
   const [answers, setAnswers] = useState<Record<number, string>>({})
@@ -46,6 +50,7 @@ export default function QuizPage() {
   const [submitted, setSubmitted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [bookmarked, setBookmarked] = useState<Set<number>>(new Set())
 
   const kpId = selectedKpId || ''
   const currentNode = nodes.find((n) => n.kpId === kpId)
@@ -115,6 +120,11 @@ export default function QuizPage() {
     }
     setCorrectSet(correct)
     trackBehavior({ kpId, action: 'quiz_answer', extra: `${correct.size}/${questions.length}` })
+
+    const wrongCount = questions.length - correct.size
+    if (wrongCount > 0) {
+      usePathStore.getState().refresh()
+    }
   }, [questions, answers, kpId, currentQuestion])
 
   if (!selectedKpId) {
@@ -132,7 +142,20 @@ export default function QuizPage() {
         </div>
         <div className={styles.topMeta}>M6 · 答题</div>
         <div className={styles.topActions}>
-          <button type="button" className={styles.secondaryBtn} disabled={loading}>
+          <button type="button" className={styles.secondaryBtn} disabled={loading}
+            onClick={() => {
+              setAnswers({})
+              setCorrectSet(new Set())
+              setSubmitted(false)
+              setCurrentIdx(0)
+              if (kpId) {
+                setLoading(true)
+                getQuizQuestions(kpId)
+                  .then((res) => setQuestions(parseQuestions(res)))
+                  .catch(() => setError('加载题目失败'))
+                  .finally(() => setLoading(false))
+              }
+            }}>
             <span className={styles.btnIcon}>⇄</span>
             切换题组
           </button>
@@ -162,7 +185,7 @@ export default function QuizPage() {
           <div className={styles.infoDivider} />
           <div className={styles.infoBlock}>
             <span className={styles.infoLabel}>题组目标:</span>
-            <strong>检验当前知识点的理解与应用能力</strong>
+            <strong>检验「{currentNode?.title || '当前知识点'}」的理解与应用能力</strong>
           </div>
         </div>
       </section>
@@ -210,7 +233,9 @@ export default function QuizPage() {
                   <span className={styles.questionIndex}>第 {currentIdx + 1} 题</span>
                   <span className={styles.questionCount}>/ 共 {total} 题</span>
                 </div>
-                <span className={styles.levelBadge}>中等</span>
+                <span className={styles.levelBadge}>
+                  {currentIdx < questions.length * 0.3 ? '基础' : currentIdx < questions.length * 0.7 ? '中等' : '进阶'}
+                </span>
               </div>
 
               <h2 className={styles.questionTitle}>{currentQuestion.title}</h2>
@@ -252,13 +277,37 @@ export default function QuizPage() {
                 </div>
               )}
 
+              {submitted && hasPathUpdates && (
+                <div style={{ marginTop: 12, padding: '12px 16px', borderRadius: 12, background: 'rgba(59,130,246,0.08)', fontSize: 14, color: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>📚 学习路径已自动调整（薄弱知识点已加入复习）</span>
+                  <button
+                    type="button"
+                    style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                    onClick={() => { clearPathUpdates(); navigate('/workspace/learning-path') }}
+                  >
+                    查看路径
+                  </button>
+                </div>
+              )}
+
               <div className={styles.actionBar}>
                 <div className={styles.actionGroup}>
                   <span className={styles.actionHint}>作答记录 / 标记</span>
-                  <button type="button" className={styles.inlineBtn} disabled={submitted}>
-                    <span>🔖</span> 标记此题
+                  <button type="button" className={styles.inlineBtn} disabled={submitted}
+                    onClick={() => {
+                      if (!currentQuestion) return
+                      setBookmarked((prev) => {
+                        const next = new Set(prev)
+                        if (next.has(currentQuestion.id)) next.delete(currentQuestion.id)
+                        else next.add(currentQuestion.id)
+                        return next
+                      })
+                    }}>
+                    <span>{currentQuestion && bookmarked.has(currentQuestion.id) ? '🔖' : '📑'}</span>
+                    {currentQuestion && bookmarked.has(currentQuestion.id) ? '已标记' : '标记此题'}
                   </button>
-                  <button type="button" className={styles.inlineBtn} disabled={submitted}>
+                  <button type="button" className={styles.inlineBtn} disabled={submitted}
+                    onClick={() => setCurrentIdx((i) => Math.min(total - 1, i + 1))}>
                     <span>🕒</span> 稍后再答
                   </button>
                 </div>
@@ -289,16 +338,6 @@ export default function QuizPage() {
             </section>
           )}
 
-          <section className={styles.previewPanel}>
-            <div className={styles.previewHead}>
-              <h3 className={styles.previewTitle}>简答题预览</h3>
-              <span className={styles.previewTag}>示例</span>
-            </div>
-            <p className={styles.previewQuestion}>设函数 y = ln x，求 dy 的表达式。</p>
-            <p className={styles.previewHint}>
-              提示：可回顾微分的定义 <em>dy = f′(x)dx</em> 以及导数求法。
-            </p>
-          </section>
         </main>
 
         <aside className={styles.sideColumn}>
@@ -353,7 +392,7 @@ export default function QuizPage() {
                 <p className={styles.summaryApi}>触发接口： GET /api/profile/summary</p>
               </div>
             </div>
-            <button type="button" className={styles.summaryBtn}>
+            <button type="button" className={styles.summaryBtn} onClick={() => navigate('/workspace/profile')}>
               查看学习画像
             </button>
           </section>

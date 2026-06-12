@@ -1,0 +1,125 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  overflow-x: auto;
+}
+
+.title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.chain {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.stepWrapper {
+  display: flex;
+  align-items: center;
+}
+
+.arrow {
+  color: #cbd5e1;
+  margin: 0 2px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 48px;
+}
+
+.dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  transition: all 0.2s;
+}
+
+.statusDone {
+  background: #22c55e;
+  box-shadow: 0 2px 8px rgba(34, 197, 94, 0.25);
+}
+
+.statusRunning {
+  background: #3b82f6;
+  animation: pulse 1.5s ease-in-out infinite;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.statusFailed {
+  background: #ef4444;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25);
+}
+
+.statusPending {
+  background: #e2e8f0;
+  color: #94a3b8;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.08); }
+}
+
+.label {
+  font-size: 9px;
+  font-weight: 500;
+  color: #64748b;
+  white-space: nowrap;
+  max-width: 56px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+.elapsed {
+  font-size: 8px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.tooltip {
+  position: absolute;
+  top: -32px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 4px 8px;
+  background: #1e293b;
+  color: #fff;
+  font-size: 10px;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 20;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.step:hover .tooltip {
+  opacity: 1;
+}

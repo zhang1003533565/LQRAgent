@@ -3,16 +3,20 @@ package com.lqragent.backend.orchestrator.agents;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.base.AgentTool;
 import com.lqragent.backend.agents.base.AgentToolRegistry;
+import com.lqragent.backend.agents.base.AgentRegistry;
+import com.lqragent.backend.agents.base.AgentInterface;
 import com.lqragent.backend.orchestrator.capability.AgentCapability;
 import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.orchestrator.message.Performative;
+import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.prompt.service.PromptService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
 
 import java.io.IOException;
@@ -33,7 +37,7 @@ import java.util.*;
  * - 全部通信走 Redis Streams
  */
 @Slf4j
-public abstract class BaseAgent {
+public abstract class BaseAgent implements AgentInterface {
 
     // ==================== Redis Streams ====================
     protected final String agentId;
@@ -52,6 +56,10 @@ public abstract class BaseAgent {
     /** CapabilityRegistry（CFP 协商协议使用） */
     protected CapabilityRegistry capabilityRegistry;
 
+    /** AgentRegistry（PipelineEngine 使用） */
+    @Autowired(required = false)
+    protected AgentRegistry agentRegistry;
+
     protected BaseAgent(String agentId, RedisStreamsService streams,
                         LlmClient llmClient, AgentToolRegistry toolRegistry,
                         PromptService promptService) {
@@ -64,6 +72,10 @@ public abstract class BaseAgent {
 
     public void setCapabilityRegistry(CapabilityRegistry registry) {
         this.capabilityRegistry = registry;
+    }
+
+    public void setAgentRegistry(AgentRegistry registry) {
+        this.agentRegistry = registry;
     }
 
     // ==================== 子类必须实现 ====================
@@ -80,10 +92,63 @@ public abstract class BaseAgent {
      */
     public abstract AgentMessage process(AgentMessage request);
 
+    // ==================== AgentInterface 适配器方法 ====================
+
+    @Override
+    public String getAgentId() {
+        return agentId;
+    }
+
+    /**
+     * 适配 AgentInterface：将 AgentRequest 转换为 AgentMessage 并调用 process
+     */
+    @Override
+    public com.lqragent.backend.agents.base.BaseAgent.AgentResponse process(
+            com.lqragent.backend.agents.base.BaseAgent.AgentRequest request) {
+        return process(request, (TaskContext) null);
+    }
+
+    @Override
+    public com.lqragent.backend.agents.base.BaseAgent.AgentResponse process(
+            com.lqragent.backend.agents.base.BaseAgent.AgentRequest request,
+            List<Map<String, Object>> history) {
+        return process(request, (TaskContext) null);
+    }
+
+    @Override
+    public com.lqragent.backend.agents.base.BaseAgent.AgentResponse process(
+            com.lqragent.backend.agents.base.BaseAgent.AgentRequest request,
+            TaskContext context) {
+        try {
+            // 将 AgentRequest 转换为 AgentMessage
+            AgentMessage msg = AgentMessage.request(
+                    "pipeline-" + System.currentTimeMillis(),
+                    "pipeline",
+                    agentId,
+                    request.context() != null ? request.context() : Map.of("goal", request.goal())
+            );
+            AgentMessage result = process(msg);
+            // 将 AgentMessage 转换为 AgentResponse
+            boolean success = result.getPerformative() == Performative.INFORM;
+            String content = success ? String.valueOf(result.getContent().getOrDefault("content", "")) : null;
+            String error = success ? null : String.valueOf(result.getContent().getOrDefault("error", "Unknown error"));
+            return com.lqragent.backend.agents.base.BaseAgent.AgentResponse.success(content, List.of());
+        } catch (Exception e) {
+            log.error("[{}] adapter process failed: {}", agentId, e.getMessage());
+            return com.lqragent.backend.agents.base.BaseAgent.AgentResponse.failure(e.getMessage());
+        }
+    }
+
     // ==================== Redis Streams 消费者 ====================
 
     @PostConstruct
     public void start() {
+        // 注册到 AgentRegistry（供 PipelineEngine 使用）
+        if (agentRegistry != null) {
+            agentRegistry.register(this);
+            log.info("[{}] registered in AgentRegistry", agentId);
+        }
+
         String stream = "stream:agent:" + agentId;
         String group = "group:" + agentId;
         streams.createGroup(stream, group);

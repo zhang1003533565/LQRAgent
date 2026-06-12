@@ -41,10 +41,12 @@ def get_or_create_collection(
     """
     try:
         return client.get_collection(collection_name)
-    except ValueError:
+    except Exception:
+        # Chroma 要求 metadata 不能为空
+        safe_metadata = metadata or {"created_by": "lqragent"}
         return client.create_collection(
             name=collection_name,
-            metadata=metadata or {},
+            metadata=safe_metadata,
         )
 
 
@@ -53,7 +55,7 @@ def collection_exists(client: chromadb.ClientAPI, collection_name: str) -> bool:
     try:
         client.get_collection(collection_name)
         return True
-    except ValueError:
+    except Exception:
         return False
 
 
@@ -63,5 +65,5 @@ def delete_collection(client: chromadb.ClientAPI, collection_name: str) -> bool:
         client.delete_collection(collection_name)
         logger.info(f"Deleted Chroma collection: {collection_name}")
         return True
-    except ValueError:
+    except Exception:
         return False

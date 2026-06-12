@@ -209,3 +209,92 @@
   color: #2563eb;
   border-color: #93c5fd;
 }
+
+/* Agent trace */
+.agentTrace {
+  margin-top: 6px;
+}
+
+.agentToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.agentToggle:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+}
+
+.agentIcon {
+  font-size: 12px;
+}
+
+.agentChevronUp,
+.agentChevronDown {
+  font-size: 10px;
+  transition: transform 0.15s;
+}
+
+.agentList {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agentItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.agentDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e2e8f0;
+  flex-shrink: 0;
+}
+
+.agentDone {
+  background: #22c55e;
+}
+
+.agentRunning {
+  background: #3b82f6;
+  animation: agentPulse 1.5s ease-in-out infinite;
+}
+
+.agentFailed {
+  background: #ef4444;
+}
+
+@keyframes agentPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.agentLabel {
+  color: #334155;
+  font-weight: 500;
+}
+
+.agentStatus {
+  color: #94a3b8;
+  font-size: 11px;
+  margin-left: auto;
+}

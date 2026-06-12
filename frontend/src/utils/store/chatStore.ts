@@ -9,12 +9,14 @@ interface ChatState {
   sessionId: string | null
   isConnected: boolean
   loadingMessages: boolean
+  autoLoaded: boolean
   addMessage: (msg: ChatMessage) => void
   appendToLastMessage: (chunk: string) => void
   setStreaming: (id: string, streaming: boolean) => void
   updateMessage: (id: string, patch: Partial<ChatMessage>) => void
   setSessionId: (id: string | null) => void
   setConnected: (connected: boolean) => void
+  setAutoLoaded: (v: boolean) => void
   clearMessages: () => void
   loadMessages: (sessionId: string) => Promise<void>
 }
@@ -45,6 +47,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sessionId: null,
   isConnected: false,
   loadingMessages: false,
+  autoLoaded: false,
 
   addMessage: (msg) =>
     set((state) => ({ messages: [...state.messages, msg] })),
@@ -73,6 +76,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setSessionId: (id) => set({ sessionId: id }),
   setConnected: (connected) => set({ isConnected: connected }),
+  setAutoLoaded: (v) => set({ autoLoaded: v }),
   clearMessages: () => set({ messages: [] }),
 
   loadMessages: async (sessionId: string) => {

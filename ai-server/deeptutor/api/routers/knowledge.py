@@ -172,17 +172,20 @@ def _save_uploaded_files(
     kb_name: str | None = None,
 ) -> tuple[list[str], list[str]]:
     """
-    Save uploaded files to local filesystem (not Qiniu).
+    Upload files to Qiniu Cloud and save locally temporarily for processing.
     
-    CRITICAL FIX: Backend already uploaded files to Qiniu and sent them via HTTP.
-    We should save them locally instead of uploading to Qiniu again and downloading back.
-    This avoids SSL issues with Qiniu CDN domains.
-
+    Flow:
+    1. Upload to Qiniu Cloud (persistent storage)
+    2. Save locally temporarily (for vectorization)
+    3. Local files will be deleted after processing
+    
     Returns (filenames, local_paths) where local_paths are the local file paths
     used for processing.
     """
+    from deeptutor.utils.qiniu_storage import upload_to_qiniu
+    
     uploaded_files: list[str] = []
-    uploaded_file_paths: list[str] = []  # Local file paths
+    uploaded_file_paths: list[str] = []  # Local file paths for processing
 
     try:
         for file in files:
@@ -209,15 +212,26 @@ def _save_uploaded_files(
                     sanitized_filename, len(file_bytes), allowed_extensions=allowed_extensions
                 )
 
-                # CRITICAL FIX: Save file locally instead of uploading to Qiniu
-                # Backend already uploaded to Qiniu and sent via HTTP, so we just save locally
+                # Step 1: Upload to Qiniu Cloud (persistent storage)
+                ext = sanitized_filename.rsplit(".", 1)[-1].lower() if "." in sanitized_filename else ""
+                category = _categorize_file(ext)
+                qiniu_key = f"knowledge_bases/{kb_name or 'default'}/{category}/{sanitized_filename}"
+                
+                try:
+                    content_type = file.content_type or "application/octet-stream"
+                    upload_to_qiniu(qiniu_key, file_bytes, content_type)
+                    logger.info(f"Uploaded to Qiniu: {qiniu_key}")
+                except Exception as qiniu_err:
+                    logger.warning(f"Qiniu upload failed, continuing with local storage: {qiniu_err}")
+                
+                # Step 2: Save locally temporarily (for vectorization processing)
                 local_file_path = target_dir / sanitized_filename
                 local_file_path.write_bytes(file_bytes)
                 
                 uploaded_files.append(sanitized_filename)
                 uploaded_file_paths.append(str(local_file_path))
 
-                logger.info(f"Saved locally: {sanitized_filename} -> {local_file_path}")
+                logger.info(f"Saved locally for processing: {sanitized_filename} -> {local_file_path}")
 
             except HTTPException:
                 raise
@@ -507,9 +521,12 @@ async def run_upload_processing_task(
     Args:
         kb_name: Knowledge base name
         base_dir: Base directory for knowledge bases
-        uploaded_file_paths: List of file paths to process
+        uploaded_file_paths: List of local file paths to process (temporarily saved)
         rag_provider: RAG provider (ignored - we use the one from KB metadata)
         folder_id: Optional folder ID for sync state update
+    
+    Note: Files are uploaded to Qiniu Cloud first, then saved locally temporarily
+    for vectorization. Local files are deleted after processing.
     """
     task_manager = TaskIDManager.get_instance()
     task_stream_manager = get_task_stream_manager()
@@ -522,9 +539,9 @@ async def run_upload_processing_task(
         try:
             _task_log(task_id, f"Processing {len(uploaded_file_paths)} file(s) for KB '{kb_name}'")
 
-            # CRITICAL FIX: Files are already saved locally by _save_uploaded_files
-            # No need to download from Qiniu anymore
-            local_paths = uploaded_file_paths  # These are now local file paths
+            # Files are saved locally temporarily for processing
+            # They will be deleted after vectorization (in finally block)
+            local_paths = uploaded_file_paths
             
             if not local_paths:
                 _task_log(task_id, "No files to process")
@@ -623,10 +640,17 @@ async def run_upload_processing_task(
             )
             task_stream_manager.emit_failed(task_id, error_msg, details=trace)
         finally:
-            # Clean up temp directory (Qiniu downloads)
+            # Clean up local temporary files after processing
+            # Files are already uploaded to Qiniu, so we can delete local copies
             try:
-                _shutil.rmtree(temp_dir, ignore_errors=True)
-                _task_log(task_id, f"Cleaned up temp dir: {temp_dir}")
+                import os
+                for local_path in uploaded_file_paths:
+                    try:
+                        if os.path.exists(local_path):
+                            os.remove(local_path)
+                            _task_log(task_id, f"Cleaned up local file: {local_path}")
+                    except Exception as cleanup_err:
+                        _task_log(task_id, f"Failed to clean up {local_path}: {cleanup_err}", level="warning")
             except Exception:
                 pass
 

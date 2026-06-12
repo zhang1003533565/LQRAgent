@@ -700,3 +700,44 @@
     display: none;
   }
 }
+
+/* Related knowledge points */
+.relatedList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.relatedItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.relatedItem:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.relatedDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3b82f6;
+  flex-shrink: 0;
+}
+
+.relatedTitle {
+  font-size: 13px;
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

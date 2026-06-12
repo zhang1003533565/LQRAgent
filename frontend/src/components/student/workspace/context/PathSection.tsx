@@ -2,8 +2,6 @@ import { useState } from 'react'
 import { getLearningPath } from '@/api/student/learningPath'
 import { usePathStore } from '@/utils/store/pathStore'
 import { useArtifactStore } from '@/utils/store/artifactStore'
-import { generateResource } from '@/api/student/resources'
-import { PlaceholderBanner } from '@/components/student/ui'
 import styles from './PathSection.module.css'
 
 export default function PathSection() {
@@ -40,16 +38,10 @@ export default function PathSection() {
   async function handleNodeClick(kpId: string) {
     selectNode(kpId)
     setActiveKpId(kpId)
-    await generateResource({ kpId, resourceType: 'LESSON' }).catch(() => {})
   }
 
   return (
     <div className={styles.page}>
-      <PlaceholderBanner
-        label="路径 API 为占位数据"
-        hint="点击节点将触发资源生成占位（待 P1 对接）"
-      />
-
       <div className={styles.inputRow}>
         <input
           value={goalInput}

@@ -37,8 +37,9 @@ export default function LearningPathPage() {
         { label: '预计完成时间', value: '—', unit: '', tone: 'violet' },
       ]
     }
+    const estimatedDays = Math.max(7, Math.ceil(pendingCount * 1.5))
     const d = new Date()
-    d.setDate(d.getDate() + 14)
+    d.setDate(d.getDate() + estimatedDays)
     const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     return [
       { label: '总节点数', value: String(totalNodes), unit: '个', tone: 'indigo' },
@@ -235,7 +236,7 @@ export default function LearningPathPage() {
                       <span className={styles.detailNumber}>{selectedNode.order || nodes.indexOf(selectedNode) + 1}</span>
                       <h2 className={styles.detailTitle}>{selectedNode.title}</h2>
                     </div>
-                    <p className={styles.detailLead}>排序时长</p>
+                    <p className={styles.detailLead}>预计时长</p>
                   </div>
                   <span className={styles.progressPill}>{nodeStatusText(selectedNode)}</span>
                 </div>
@@ -243,11 +244,11 @@ export default function LearningPathPage() {
                 <div className={styles.infoList}>
                   <div className={styles.infoItem}>
                     <span className={styles.infoKey}>推荐时长</span>
-                    <span className={styles.infoValue}>约 4-6 小时</span>
+                    <span className={styles.infoValue}>约 {Math.max(1, Math.ceil((selectedNode.order || 1) * 0.5))}-{Math.ceil((selectedNode.order || 1) * 0.8)} 小时</span>
                   </div>
                   <div className={styles.infoBlock}>
                     <h3>学习目标</h3>
-                    <p>{selectedNode.description || '掌握本节点核心知识点'}</p>
+                    <p>{selectedNode.description || `掌握「${selectedNode.title}」的核心概念与应用`}</p>
                   </div>
                   <div className={styles.infoBlock}>
                     <h3>前置知识</h3>
@@ -255,7 +256,7 @@ export default function LearningPathPage() {
                   </div>
                   <div className={styles.infoBlock}>
                     <h3>节点描述</h3>
-                    <p>{selectedNode.description || '通过系统学习，为后续应用打下坚实基础。'}</p>
+                    <p>{selectedNode.description || `系统学习「${selectedNode.title}」相关内容，理解核心概念并完成配套练习。`}</p>
                   </div>
                 </div>
               </>

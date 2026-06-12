@@ -14,6 +14,7 @@ export interface LearningResource {
   mediaUrl?: string
   mediaMime?: string
   generationPrompt?: string
+  relatedKpIds?: string[]
 }
 
 export interface MediaPayload {

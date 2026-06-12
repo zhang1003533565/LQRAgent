@@ -29,6 +29,18 @@ export const STUDENT_NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    to: '/workspace/dashboard',
+    label: '学习概览',
+    icon: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="3" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <rect x="3" y="14" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <rect x="14" y="14" width="7" height="7" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      </svg>
+    ),
+  },
+  {
     to: '/workspace/learning-path',
     label: '学习路径',
     icon: (
@@ -47,7 +59,7 @@ export const STUDENT_NAV_ITEMS: NavItem[] = [
   },
   {
     to: '/workspace/resources',
-    label: '学习资源展示',
+    label: '学习资源',
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <rect
@@ -119,27 +131,15 @@ export const STUDENT_NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
-
   {
-    to: '/workspace/profile-center',
-    label: '个人中心',
+    to: '/workspace/knowledge-graph',
+    label: '知识图谱',
     icon: (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <circle cx="12" cy="10" r="2.75" fill="none" stroke="currentColor" strokeWidth="1.8" />
-        <path
-          d="M6.5 19.5c.55-2.12 2.55-3.5 5.5-3.5s4.95 1.38 5.5 3.5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        />
-        <path
-          d="M12 3.75A2.25 2.25 0 1 0 12 8.25 2.25 2.25 0 1 0 12 3.75Z"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-        />
-        <path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <circle cx="12" cy="6" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <circle cx="6" cy="17" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <circle cx="18" cy="17" r="2.5" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M10 8l-3 7M14 8l3 7M8.5 17h7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
       </svg>
     ),
   },

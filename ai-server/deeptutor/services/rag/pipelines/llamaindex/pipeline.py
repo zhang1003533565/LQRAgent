@@ -92,6 +92,10 @@ class LlamaIndexPipeline:
                 self.logger.error("No valid documents found")
                 return False
 
+            kb_dir = Path(self.kb_base_dir) / kb_name
+            signature = self._current_signature()
+            storage_dir = resolve_storage_dir_for_rebuild(kb_dir, signature)
+
             if self._use_chroma():
                 self.logger.info(
                     f"Creating Chroma index for KB '{kb_name}' "
@@ -108,10 +112,6 @@ class LlamaIndexPipeline:
                 return True
 
             # 本地文件后端
-            kb_dir = Path(self.kb_base_dir) / kb_name
-            signature = self._current_signature()
-            storage_dir = resolve_storage_dir_for_rebuild(kb_dir, signature)
-
             self.logger.info(
                 f"Creating VectorStoreIndex with {len(documents)} documents "
                 f"(chunking + embedding)..."

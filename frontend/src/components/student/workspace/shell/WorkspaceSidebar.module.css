@@ -1,213 +1,368 @@
 .sidebar {
-  width: 348px;
+  position: relative;
+  width: 240px;
   height: 100vh;
   height: 100dvh;
   box-sizing: border-box;
-  padding: clamp(20px, 3vh, 36px) 28px clamp(16px, 2.5vh, 28px);
   display: flex;
   flex-direction: column;
-  gap: clamp(14px, 2vh, 28px);
-  color: #4f6087;
-  background:
-    radial-gradient(circle at 18% 12%, rgba(137, 223, 255, 0.22), transparent 20%),
-    radial-gradient(circle at 82% 90%, rgba(135, 211, 255, 0.16), transparent 24%),
-    linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-  border-right: 1px solid rgba(199, 219, 248, 0.7);
+  background: #fafcff;
+  border-right: 1px solid #e8edf5;
+  transition: width 0.2s ease;
   overflow: hidden;
+}
+
+.sidebar.collapsed {
+  width: 60px;
+}
+
+.sidebar.collapsed .brand {
+  justify-content: center;
+}
+
+.sidebar.collapsed .collapseBtn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 0;
+}
+
+.topSection {
+  flex-shrink: 0;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 18px;
-  padding: 6px;
+  gap: 10px;
+  padding: 4px;
 }
 
 .brandMark {
-  width: clamp(60px, 7vh, 76px);
-  height: clamp(60px, 7vh, 76px);
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 22px;
-  background: linear-gradient(145deg, rgba(193, 240, 255, 0.68), rgba(243, 248, 255, 0.88));
-  box-shadow: 0 18px 40px rgba(126, 185, 255, 0.12);
+  border-radius: 10px;
+  background: linear-gradient(135deg, #e0f0ff, #f0f7ff);
 }
 
 .brandIcon {
-  width: clamp(40px, 4.6vh, 48px);
-  height: clamp(40px, 4.6vh, 48px);
-  color: #1f6fff;
-  border-radius: 16px;
+  width: 24px;
+  height: 24px;
+  color: #2563eb;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(180deg, #3890ff 0%, #1f6fff 100%);
-  box-shadow: 0 14px 28px rgba(31, 111, 255, 0.28);
 }
 
 .brandIcon svg {
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
 }
 
 .brandText {
-  font-size: clamp(24px, 2.8vh, 28px);
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  color: #1f6fff;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.collapseBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.collapseBtn:hover {
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 .nav {
   display: flex;
   flex-direction: column;
-  gap: clamp(8px, 1.2vh, 14px);
+  gap: 2px;
 }
 
 .navItem {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: 16px;
-  min-height: clamp(54px, 6.5vh, 72px);
-  padding: 0 22px;
-  border-radius: 20px;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
   text-decoration: none;
-  color: #55688f;
-  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.sidebar.collapsed .navItem {
+  justify-content: center;
+  padding: 8px;
 }
 
 .navItem:hover {
-  color: #1f6fff;
-  background: rgba(237, 244, 255, 0.86);
-  transform: translateX(2px);
+  background: #f1f5f9;
+  color: #1e293b;
 }
 
 .navItemActive {
-  color: #1f6fff;
-  background: linear-gradient(180deg, rgba(236, 243, 255, 0.95), rgba(223, 235, 255, 0.9));
-  box-shadow: inset 0 0 0 1px rgba(183, 210, 250, 0.65);
-}
-
-.navItemActive::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 16px;
-  bottom: 16px;
-  width: 4px;
-  border-radius: 0 999px 999px 0;
-  background: linear-gradient(180deg, #4aa0ff 0%, #1f6fff 100%);
+  color: #2563eb;
+  background: #eff6ff;
+  font-weight: 600;
 }
 
 .navIcon {
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
 }
 
 .navIcon svg {
-  width: 28px;
-  height: 28px;
+  width: 18px;
+  height: 18px;
 }
 
 .navLabel {
-  font-size: clamp(15px, 1.9vh, 17px);
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.courseCard {
-  margin-top: auto;
-  padding: clamp(16px, 2.2vh, 22px) 24px clamp(18px, 2.4vh, 24px);
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at 18% 20%, rgba(184, 238, 255, 0.55), transparent 34%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(245, 250, 255, 0.94));
-  border: 1px solid rgba(196, 220, 249, 0.85);
-  box-shadow: 0 16px 36px rgba(145, 184, 236, 0.14);
-}
-
-.courseHint {
-  margin: 0 0 10px;
-  font-size: clamp(13px, 1.7vh, 15px);
-  font-weight: 700;
-  color: #7c8bac;
-}
-
-.courseTitle {
-  margin: 0 0 12px;
-  font-size: clamp(18px, 2.5vh, 22px);
-  font-weight: 800;
-  line-height: 1.3;
-  color: #2f4272;
-}
-
-.courseMeta {
-  margin: 0 0 14px;
-  font-size: clamp(13px, 1.7vh, 15px);
-  font-weight: 700;
-  color: #7b88a7;
-}
-
-.courseMeta span {
-  color: #4d7fff;
-}
-
-.progressTrack {
-  width: 100%;
-  height: 10px;
+  white-space: nowrap;
   overflow: hidden;
-  border-radius: 999px;
-  background: rgba(194, 220, 255, 0.5);
+  text-overflow: ellipsis;
 }
 
-.progressFill {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #2e80ff 0%, #2168ff 100%);
+.historySection {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid #e8edf5;
+  overflow: hidden;
 }
 
-.userCardWrapper {
+.historyHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 6px;
+  flex-shrink: 0;
+}
+
+.historyTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.newChatBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.newChatBtn:hover {
+  background: #f1f5f9;
+  color: #2563eb;
+}
+
+.newChatBtnCollapsed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin: 8px auto;
+  border: 1px dashed #d1d5db;
+  border-radius: 8px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.newChatBtnCollapsed:hover {
+  background: #f1f5f9;
+  color: #2563eb;
+  border-color: #2563eb;
+}
+
+.historyList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 6px 8px;
+}
+
+.historyList::-webkit-scrollbar {
+  width: 4px;
+}
+
+.historyList::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+.emptyHistory {
+  padding: 16px 12px;
+  font-size: 12px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.historyItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.historyItem:hover {
+  background: #f1f5f9;
+}
+
+.historyItemActive {
+  background: #eff6ff;
+  color: #2563eb;
+  font-weight: 500;
+}
+
+.historyIcon {
+  flex-shrink: 0;
+  color: #94a3b8;
+}
+
+.historyItemActive .historyIcon {
+  color: #2563eb;
+}
+
+.historyText {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.deleteBtn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: all 0.15s;
+}
+
+.historyItem:hover .deleteBtn {
+  display: flex;
+}
+
+.deleteBtn:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+.userSection {
+  flex-shrink: 0;
+  padding: 8px 12px 12px;
   position: relative;
-  margin-top: 6px;
+}
+
+.sidebar.collapsed .userSection {
+  padding: 8px 12px 12px;
 }
 
 .userCard {
-  width: 100%;
-  padding: clamp(12px, 1.8vh, 18px) 18px clamp(12px, 1.8vh, 18px) 16px;
   display: flex;
   align-items: center;
-  gap: 14px;
-  border: 1px solid rgba(198, 221, 248, 0.8);
-  border-radius: 24px;
-  background:
-    radial-gradient(circle at 14% 18%, rgba(194, 242, 255, 0.42), transparent 26%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(245, 250, 255, 0.94));
-  box-shadow: 0 14px 34px rgba(145, 184, 236, 0.12);
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #e8edf5;
+  border-radius: 10px;
+  background: #fff;
   cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.sidebar.collapsed .userCard {
+  justify-content: center;
+  padding: 8px;
+}
+
+.userCard:hover {
+  border-color: #cbd5e1;
 }
 
 .userCardActive {
-  border-color: #1f6fff;
-  box-shadow: 0 8px 28px rgba(31, 111, 255, 0.18);
+  border-color: #2563eb;
 }
 
 .avatar {
-  width: clamp(48px, 5.8vh, 60px);
-  height: clamp(48px, 5.8vh, 60px);
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   border-radius: 50%;
-  overflow: hidden;
+  background: linear-gradient(135deg, #93c5fd, #3b82f6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.avatar svg {
-  width: 100%;
-  height: 100%;
-  display: block;
+.avatarText {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .userInfo {
@@ -215,163 +370,101 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 1px;
   text-align: left;
 }
 
 .userName {
-  font-size: clamp(15px, 1.9vh, 17px);
-  font-weight: 800;
-  color: #2f4272;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .userRole {
-  font-size: clamp(14px, 1.8vh, 16px);
-  font-weight: 700;
-  color: #5e7195;
+  font-size: 11px;
+  color: #94a3b8;
 }
 
 .userArrow {
-  width: 24px;
-  height: 24px;
-  color: #6177a0;
   flex-shrink: 0;
+  color: #94a3b8;
+  transition: transform 0.15s;
 }
 
-.userArrow svg {
-  width: 100%;
-  height: 100%;
-}
-
-.userArrowUp svg {
+.userArrowUp {
   transform: rotate(180deg);
 }
 
-/* ---------- 用户下拉菜单 ---------- */
-
 .userDropdown {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 8px);
-  padding: 6px;
-  border-radius: 16px;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% + 6px);
+  padding: 4px;
+  border-radius: 10px;
   background: #fff;
-  border: 1px solid rgba(198, 221, 248, 0.85);
-  box-shadow: 0 12px 36px rgba(107, 144, 204, 0.18);
+  border: 1px solid #e8edf5;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   z-index: 20;
-  animation: dropdownIn 0.18s ease;
 }
 
 .userDropdownItem {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   width: 100%;
-  padding: 12px 14px;
+  padding: 8px 10px;
   border: none;
-  border-radius: 12px;
+  border-radius: 6px;
   background: transparent;
-  font-size: clamp(13px, 1.7vh, 15px);
-  font-weight: 700;
-  color: #55688f;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
   cursor: pointer;
   text-align: left;
   font-family: inherit;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background 0.15s, color 0.15s;
 }
 
 .userDropdownItem:hover {
-  background: rgba(237, 244, 255, 0.86);
-  color: #1f6fff;
+  background: #f1f5f9;
+  color: #1e293b;
 }
 
 .userDropdownItem:last-child {
-  color: #e05555;
+  color: #ef4444;
 }
 
 .userDropdownItem:last-child:hover {
-  background: rgba(255, 235, 235, 0.7);
-  color: #d13838;
-}
-
-@keyframes dropdownIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@media (max-width: 960px) {
-  .sidebar {
-    width: 286px;
-    padding: 28px 18px 22px;
-  }
-
-  .brandText {
-    font-size: 24px;
-  }
-
-  .navItem {
-    min-height: 64px;
-    padding: 0 18px;
-  }
-
-  .navLabel {
-    font-size: 16px;
-  }
+  background: #fef2f2;
+  color: #dc2626;
 }
 
 @media (max-width: 768px) {
   .sidebar {
-    width: 94px;
-    padding: 18px 10px 14px;
-    gap: 18px;
-  }
-
-  .brand {
-    justify-content: center;
-    padding: 0;
+    width: 60px;
   }
 
   .brandText,
   .navLabel,
-  .courseCard,
-  .userInfo {
+  .historyHeader,
+  .historyList,
+  .userInfo,
+  .userArrow {
     display: none;
-  }
-
-  .brandMark {
-    width: 64px;
-    height: 64px;
-  }
-
-  .nav {
-    gap: 10px;
   }
 
   .navItem {
-    min-height: 58px;
-    padding: 0;
     justify-content: center;
+    padding: 8px;
   }
 
-  .navItemActive::before {
-    top: 12px;
-    bottom: 12px;
-  }
-
-  .userCard,
-  .userCardWrapper {
+  .userCard {
     justify-content: center;
-    padding: 10px;
-  }
-
-  .userArrow {
-    display: none;
+    padding: 8px;
+    border: none;
   }
 }

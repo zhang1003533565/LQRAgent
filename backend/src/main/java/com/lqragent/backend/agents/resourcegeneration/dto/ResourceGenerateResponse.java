@@ -35,4 +35,7 @@ public class ResourceGenerateResponse {
 
     @Schema(description = "已存在的历史资源数量")
     private int existingCount;
+
+    @Schema(description = "关联知识点ID列表（前置+后置）")
+    private List<String> relatedKpIds;
 }

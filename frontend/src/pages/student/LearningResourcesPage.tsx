@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { usePathStore } from '@/utils/store/pathStore'
 import { getResources, generateResource } from '@/api/student/resources'
+import { getKnowledgePointDetail } from '@/api/student/knowledge'
 import { generateImage, generateVideo, submitVideoTask, getVideoTaskStatus } from '@/api/student/media'
 import { trackBehavior } from '@/utils/tracker'
 import type { LearningResource, ResourceType } from '@/utils/types/media-resource'
@@ -20,7 +22,8 @@ function ResourceIcon({ kind }: { kind: string }) {
 }
 
 export default function LearningResourcesPage() {
-  const { selectedKpId, nodes } = usePathStore()
+  const navigate = useNavigate()
+  const { selectedKpId, nodes, selectNode } = usePathStore()
   const [resources, setResources] = useState<LearningResource[]>([])
   const [activeTab, setActiveTab] = useState<ResourceType | 'ALL'>('ALL')
   const [selectedId, setSelectedId] = useState<number | null>(null)
@@ -29,6 +32,7 @@ export default function LearningResourcesPage() {
   const [genImageLoading, setGenImageLoading] = useState(false)
   const [genVideoLoading, setGenVideoLoading] = useState(false)
   const [genVideoStatus, setGenVideoStatus] = useState<string | null>(null)
+  const [relatedKps, setRelatedKps] = useState<{ kpId: string; title: string }[]>([])
 
   const kpId = selectedKpId || ''
   const currentNode = nodes.find((n) => n.kpId === kpId)
@@ -42,9 +46,32 @@ export default function LearningResourcesPage() {
         if (res.length > 0) {
           setSelectedId(res[0].id)
           trackBehavior({ kpId, action: 'view_resource', extra: res[0].title })
+
+          // Fetch related knowledge points from resource data
+          const allRelatedIds = new Set<string>()
+          for (const r of res) {
+            if (r.relatedKpIds) {
+              r.relatedKpIds.forEach((id) => allRelatedIds.add(id))
+            }
+          }
+          if (allRelatedIds.size > 0) {
+            Promise.all(
+              Array.from(allRelatedIds).slice(0, 6).map((id) =>
+                getKnowledgePointDetail(id).catch(() => null)
+              )
+            ).then((details) => {
+              setRelatedKps(
+                details
+                  .filter((d): d is NonNullable<typeof d> => d !== null)
+                  .map((d) => ({ kpId: d.kpId, title: d.title }))
+              )
+            })
+          } else {
+            setRelatedKps([])
+          }
         }
       })
-      .catch(() => setResources([]))
+      .catch(() => { setResources([]); setRelatedKps([]) })
       .finally(() => setLoading(false))
   }, [kpId])
 
@@ -423,6 +450,28 @@ export default function LearningResourcesPage() {
               ⭳ 一键打包导出
             </button>
           </section>
+
+          {relatedKps.length > 0 && (
+            <section className={styles.panel}>
+              <h2 className={styles.panelTitle}>相关知识点</h2>
+              <div className={styles.relatedList}>
+                {relatedKps.map((kp) => (
+                  <button
+                    key={kp.kpId}
+                    type="button"
+                    className={styles.relatedItem}
+                    onClick={() => {
+                      selectNode(kp.kpId)
+                      navigate('/workspace/resources')
+                    }}
+                  >
+                    <span className={styles.relatedDot} />
+                    <span className={styles.relatedTitle}>{kp.title}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
         </aside>
       </div>
     </section>

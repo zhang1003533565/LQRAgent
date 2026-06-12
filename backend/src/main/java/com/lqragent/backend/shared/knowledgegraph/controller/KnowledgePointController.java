@@ -12,7 +12,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.lqragent.backend.common.dto.ApiResponse;
+import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgeEdge;
 import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
+import com.lqragent.backend.shared.knowledgegraph.repository.KnowledgeEdgeRepository;
 import com.lqragent.backend.shared.knowledgegraph.repository.KnowledgePointRepository;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,6 +29,7 @@ import lombok.RequiredArgsConstructor;
 public class KnowledgePointController {
 
     private final KnowledgePointRepository knowledgePointRepository;
+    private final KnowledgeEdgeRepository knowledgeEdgeRepository;
 
     @Operation(summary = "按 kpId 批量查询知识点")
     @GetMapping
@@ -82,6 +85,57 @@ public class KnowledgePointController {
                 .stream()
                 .map(KnowledgePointController::toDto)
                 .collect(Collectors.toList());
+        return ApiResponse.ok(result);
+    }
+
+    @Operation(summary = "获取完整知识图谱（节点+边）")
+    @GetMapping("/graph")
+    public ApiResponse<Map<String, Object>> getGraph(
+            @Parameter(description = "按科目筛选（可选）")
+            @RequestParam(required = false) String subject) {
+        List<KnowledgePoint> points;
+        if (subject != null && !subject.isBlank()) {
+            points = knowledgePointRepository.findBySubject(subject);
+        } else {
+            points = knowledgePointRepository.findAll();
+        }
+
+        List<String> kpIds = points.stream().map(KnowledgePoint::getKpId).collect(Collectors.toList());
+        List<KnowledgeEdge> edges = knowledgeEdgeRepository.findByFromKpIdInOrToKpIdIn(kpIds, kpIds);
+
+        List<Map<String, Object>> nodeDtos = points.stream().map(kp -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("kpId", kp.getKpId());
+            m.put("title", kp.getTitle());
+            m.put("subject", kp.getSubject());
+            m.put("chapter", kp.getChapter());
+            m.put("description", kp.getDescription());
+            m.put("difficulty", kp.getDifficulty());
+            return m;
+        }).collect(Collectors.toList());
+
+        List<Map<String, Object>> edgeDtos = edges.stream().map(e -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("fromKpId", e.getFromKpId());
+            m.put("toKpId", e.getToKpId());
+            m.put("relationType", e.getRelationType());
+            return m;
+        }).collect(Collectors.toList());
+
+        List<String> subjects = points.stream()
+                .map(KnowledgePoint::getSubject)
+                .filter(s -> s != null && !s.isBlank())
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("nodes", nodeDtos);
+        result.put("edges", edgeDtos);
+        result.put("nodeCount", nodeDtos.size());
+        result.put("edgeCount", edgeDtos.size());
+        result.put("subjects", subjects);
+
         return ApiResponse.ok(result);
     }
 }

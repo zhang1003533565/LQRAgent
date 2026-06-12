@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ChatMessage } from '@/utils/types/chat'
+import { useAgentTraceStore } from '@/utils/store/agentTraceStore'
+import { AGENT_LABELS } from '@/utils/constants/agent-labels'
 import MultiCardMessage from './MultiCardMessage'
 import MermaidRenderer from './MermaidRenderer'
 import RagSourcesCard from './RagSourcesCard'
@@ -25,12 +27,34 @@ function RobotIcon() {
   )
 }
 
+function showStyles(show: boolean): string {
+  return show ? styles.agentChevronUp : styles.agentChevronDown
+}
+
 export default function StreamingMessage({ message }: Props) {
   const isUser = message.role === 'user'
   const isMulti = message.contentType === 'multi_card' && message.cards?.length
   const isLearningPath = message.contentType === 'learning_path'
   const isImage = message.contentType === 'image' && message.imageUrl
   const [liked, setLiked] = useState<boolean | null>(null)
+  const [showAgents, setShowAgents] = useState(false)
+  const agentSteps = useAgentTraceStore((s) => s.steps)
+
+  const involvedAgents = useMemo(() => {
+    if (isUser) return []
+    const seen = new Set<string>()
+    return agentSteps
+      .filter((s) => {
+        if (seen.has(s.agent)) return false
+        seen.add(s.agent)
+        return true
+      })
+      .map((s) => ({
+        agent: s.agent,
+        label: AGENT_LABELS[s.agent] || s.agent,
+        status: s.status,
+      }))
+  }, [agentSteps, isUser])
 
   const timeLabel = new Date(message.createdAt).toLocaleTimeString('zh-CN', {
     hour: '2-digit',
@@ -99,6 +123,38 @@ export default function StreamingMessage({ message }: Props) {
         {/* RAG 引用来源卡片 */}
         {!isUser && message.ragSources && message.ragSources.length > 0 && (
           <RagSourcesCard sources={message.ragSources} />
+        )}
+
+        {/* 参与的智能体 */}
+        {!isUser && involvedAgents.length > 0 && !message.streaming && (
+          <div className={styles.agentTrace}>
+            <button
+              type="button"
+              className={styles.agentToggle}
+              onClick={() => setShowAgents(!showAgents)}
+            >
+              <span className={styles.agentIcon}>🤖</span>
+              <span>{involvedAgents.length} 个智能体参与</span>
+              <span className={showStyles(showAgents)}>{showAgents ? '▴' : '▾'}</span>
+            </button>
+            {showAgents && (
+              <div className={styles.agentList}>
+                {involvedAgents.map((a) => (
+                  <div key={a.agent} className={styles.agentItem}>
+                    <span className={`${styles.agentDot} ${
+                      a.status === 'done' ? styles.agentDone :
+                      a.status === 'running' ? styles.agentRunning :
+                      a.status === 'failed' ? styles.agentFailed : ''
+                    }`} />
+                    <span className={styles.agentLabel}>{a.label}</span>
+                    <span className={styles.agentStatus}>
+                      {a.status === 'done' ? '完成' : a.status === 'running' ? '执行中' : a.status === 'failed' ? '失败' : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {/* 操作按钮 — 仅 AI 消息显示 */}

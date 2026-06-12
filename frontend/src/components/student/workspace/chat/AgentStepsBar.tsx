@@ -1,43 +1,67 @@
 /**
- * 智能体步骤进度条 — 紧凑水平布局，集成在消息区域内
+ * 智能体协作进度条 — 展示 Agent 调用链、耗时、状态
  */
-import { useAgentTraceStore } from '@/utils/store/agentTraceStore'
+import { useMemo } from 'react'
+import { useAgentTraceStore, type AgentTraceStep } from '@/utils/store/agentTraceStore'
 import { AGENT_LABELS } from '@/utils/constants/agent-labels'
+import styles from './AgentStepsBar.module.css'
+
+const STATUS_ICONS: Record<string, string> = {
+  done: '✓',
+  running: '●',
+  failed: '✕',
+  pending: '',
+}
+
+const STATUS_CLASSES: Record<string, string> = {
+  done: styles.statusDone,
+  running: styles.statusRunning,
+  failed: styles.statusFailed,
+  pending: styles.statusPending,
+}
+
+function formatElapsed(step: AgentTraceStep): string {
+  if (step.status !== 'done') return ''
+  const ms = new Date().getTime() - new Date(step.updatedAt).getTime()
+  if (ms < 1000) return '<1s'
+  if (ms < 60000) return `${Math.round(ms / 1000)}s`
+  return `${Math.round(ms / 60000)}m`
+}
 
 export default function AgentStepsBar() {
   const steps = useAgentTraceStore((s) => s.steps)
 
-  if (steps.length === 0) return null
+  const visible = useMemo(() => steps.slice(-8), [steps])
 
-  // 只显示最新的几个步骤（最多 5 个）
-  const visible = steps.slice(-5)
+  if (visible.length === 0) return null
 
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-white/70 px-4 py-2 backdrop-blur-sm">
-      <span className="text-[11px] font-medium text-gray-400">智能体步骤</span>
-      <div className="flex items-center gap-0.5">
+    <div className={styles.bar}>
+      <span className={styles.title}>智能体协作</span>
+      <div className={styles.chain}>
         {visible.map((step, i) => {
-          const isLast = i === visible.length - 1
           const label = AGENT_LABELS[step.agent] || step.agent
+          const icon = STATUS_ICONS[step.status] ?? ''
+          const statusClass = STATUS_CLASSES[step.status] ?? styles.statusPending
+          const elapsed = formatElapsed(step)
+
           return (
-            <div key={step.id} className="flex items-center">
+            <div key={step.id} className={styles.stepWrapper}>
               {i > 0 && (
-                <div className={`mx-0.5 h-px w-3 ${isLast ? 'bg-gray-200' : 'bg-emerald-300'}`} />
-              )}
-              <div className="group relative flex flex-col items-center">
-                <div className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold text-white transition-all ${
-                  step.status === 'done' ? 'bg-emerald-500' :
-                  step.status === 'running' ? 'bg-blue-500 animate-pulse shadow-md shadow-blue-200' :
-                  step.status === 'failed' ? 'bg-red-400' :
-                  'bg-gray-200'
-                }`}>
-                  {step.status === 'done' ? '✓' : step.status === 'running' ? '●' : step.status === 'failed' ? '✕' : ''}
+                <div className={styles.arrow}>
+                  <svg width="16" height="8" viewBox="0 0 16 8" fill="none">
+                    <path d="M0 4h12M10 1l3 3-3 3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                 </div>
-                <span className="mt-0.5 max-w-[56px] truncate text-[9px] text-gray-400">
-                  {label}
-                </span>
+              )}
+              <div className={styles.step}>
+                <div className={`${styles.dot} ${statusClass}`}>
+                  {icon}
+                </div>
+                <span className={styles.label}>{label}</span>
+                {elapsed && <span className={styles.elapsed}>{elapsed}</span>}
                 {step.detail && (
-                  <div className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-gray-800 px-2 py-1 text-[10px] text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 z-10">
+                  <div className={styles.tooltip}>
                     {step.detail}
                   </div>
                 )}
