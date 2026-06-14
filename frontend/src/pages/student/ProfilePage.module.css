@@ -195,13 +195,13 @@
 }
 
 .midGrid {
-  grid-template-columns: minmax(0, 1.56fr) minmax(340px, 0.86fr) minmax(300px, 0.76fr);
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.9fr) minmax(340px, 1.3fr);
   margin-top: 14px;
   align-items: stretch;
 }
 
 .bottomGrid {
-  grid-template-columns: minmax(0, 1.7fr) minmax(420px, 0.78fr);
+  grid-template-columns: minmax(380px, 1fr) minmax(0, 1.2fr);
   margin-top: 14px;
   align-items: stretch;
 }
@@ -226,93 +226,264 @@
   font-weight: 900;
 }
 
+.radarHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.radarInfoIcon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid #b9c8e3;
+  color: #92a4c2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .radarArea {
   margin-top: 14px;
-  display: grid;
-  grid-template-columns: minmax(300px, 1.12fr) minmax(0, 208px);
-  gap: 12px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
 }
 
 .radarChartBlock {
   min-width: 0;
-}
-
-.radarSvg {
   width: 100%;
-  height: auto;
-  display: block;
-  margin-top: 4px;
+  max-width: 440px;
 }
 
-.radarValueLabel {
-  fill: #8ca0bf;
-  font-size: 9px;
-  font-weight: 700;
-}
-
+/* 雷达图下方图例 */
 .radarLegend {
-  margin-top: 10px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
-.radarLegendItem {
+.radarLegendLine {
+  display: inline-block;
+  width: 24px;
+  height: 3px;
+  border-radius: 2px;
+  background: #2f78ff;
+}
+
+.radarLegendText {
+  font-size: 13px;
+  color: #536988;
+  font-weight: 800;
+}
+
+/* 雷达图总结描述文字 */
+.radarDesc {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #637594;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* ==================== 知识点掌握 ==================== */
+.kpSection {
+  margin-top: 14px;
+}
+
+.kpEmpty {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: #8b9db9;
+  text-align: center;
+  font-weight: 600;
+}
+
+/* 统计头部 */
+.kpStats {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(216,228,248,0.85);
+}
+
+.kpStatItem {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
-  color: #5e7192;
-  font-weight: 700;
 }
 
-.radarLegendDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #2f78ff;
-  flex-shrink: 0;
+.kpStatLabel {
+  font-size: 12px;
+  color: #637594;
+  font-weight: 800;
 }
 
-.radarSummary {
-  min-width: 0;
-}
-
-.summaryTitle {
-  margin: 0;
-  font-size: 15px;
-  color: #536988;
+.kpStatNum {
+  font-size: 18px;
   font-weight: 900;
+  background: transparent !important;
 }
 
-.summaryPill {
-  margin-top: 14px;
-  min-width: 112px;
-  height: 38px;
-  padding: 0 16px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(235, 243, 255, 0.94), rgba(223, 235, 255, 0.94));
-  color: #2f78ff;
+.toneGray {
+  color: #a0aabf;
+}
+
+/* 表头 */
+.kpTableHead {
+  display: grid;
+  grid-template-columns: 1fr 180px 80px;
+  gap: 8px 16px;
+  align-items: center;
+  margin-top: 12px;
+  padding: 6px 0;
+}
+
+.kpTableHead span {
+  font-size: 11px;
+  color: #92a4c2;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* 行 */
+.kpRow {
+  display: grid;
+  grid-template-columns: 1fr 180px 80px;
+  gap: 8px 16px;
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid rgba(232,239,250,0.9);
+}
+
+.kpColName {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #3a4e73;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 圆点 */
+.kpDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
-  font-weight: 900;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.94);
+  flex-shrink: 0;
+  border-style: solid;
 }
 
-.summaryText {
-  margin: 16px 0 0;
+.kpDotSolid {
+  border-width: 0;
+}
+
+.kpDotHollow {
+  border-width: 2px;
+}
+
+/* 掌握度列 */
+.kpColMastery {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.kpPct {
   font-size: 12px;
-  line-height: 1.7;
-  color: #5b6d8d;
-  font-weight: 600;
-  word-break: break-word;
+  color: #536988;
+  font-weight: 900;
+  min-width: 34px;
+  text-align: right;
+}
+
+/* 进度条轨道 */
+.kpTrack {
+  flex: 1;
+  height: 7px;
+  border-radius: 999px;
+  background: #edf1f8;
+  overflow: hidden;
+}
+
+/* 进度条填充 - 从零动画 */
+.kpFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  width: 0%;
+}
+
+.kpAnimated {
+  transition: width 0.9s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* 状态 */
+.kpColStatus {
+  font-size: 11.5px;
+  font-weight: 900;
+  text-align: right;
+}
+
+.masteredList {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.masteredLabel {
+  font-size: 11px;
+  color: #26b56e;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.masteredTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(232, 250, 240, 1), rgba(218, 242, 229, 1));
+  color: #1a9e5e;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.masteredMore {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(232, 245, 255, 1);
+  color: #4a79d8;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.completionSection {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid rgba(216,228,248,0.85);
 }
 
 .completionHead {
-  margin-top: 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -382,52 +553,60 @@
   line-height: 1;
 }
 
-.insightBlock + .insightBlock {
-  margin-top: 18px;
+/* ===== 画像解读卡片（核心洞察） ===== */
+.insightCard {
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-top: 14px;
+  transition: box-shadow .2s ease;
 }
 
-.insightHead,
-.timelineHead,
-.bottomHead {
+.insightCard:first-of-type {
+  margin-top: 0;
+}
+
+/* 卡片背景色调 */
+.insightCard.toneOrange { background: rgba(255, 158, 63, 0.07); }
+.insightCard.toneGreen  { background: rgba(54, 191, 117, 0.07); }
+.insightCard.toneBlue   { background: rgba(65, 124, 243, 0.07); }
+
+.insightCardHead {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
-.insightHead {
-  justify-content: flex-start;
-}
-
-.insightIcon,
-.dimensionIcon {
-  width: 32px;
-  height: 32px;
-  border-radius: 11px;
+.insightCardIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
-  font-weight: 900;
+  font-size: 13px;
   flex-shrink: 0;
+  color: #fff;
 }
 
-.insightHead h3,
-.timelineTitle,
-.pathCard h3 {
+/* 图标圆实心背景 */
+.insightCardIcon.toneOrange { background: #f58e21; }
+.insightCardIcon.toneGreen  { background: #26b56e; }
+.insightCardIcon.toneBlue   { background: #2f78ff; }
+
+.insightCardHead h3 {
   margin: 0;
   font-size: 14px;
   color: #274272;
   font-weight: 800;
 }
 
-.insightList {
-  margin: 8px 0 0;
-  padding-left: 22px;
+.insightCardBody {
+  margin: 0;
   color: #637492;
-  font-size: 12px;
-  line-height: 1.65;
-  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.7;
+  font-weight: 500;
 }
 
 .timelineStatus,
@@ -448,6 +627,158 @@
   color: #7c8fb2;
   font-weight: 800;
 }
+
+/* ===== 历史学习路径 ===== */
+.historyHead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.historyMeta {
+  font-size: 12px;
+  color: #7c8fb2;
+  font-weight: 700;
+}
+
+.historyList {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.historyItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+}
+
+.historyItem + .historyItem {
+  border-top: 1px solid rgba(216,228,248,0.6);
+}
+
+.historyDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid #c4ccdb;
+  background: white;
+  flex-shrink: 0;
+}
+
+.historyDotDone {
+  background: #2f78ff;
+  border-color: #2f78ff;
+}
+
+.historyTitle {
+  flex: 1;
+  font-size: 13.5px;
+  color: #274272;
+  font-weight: 700;
+  min-width: 0;
+}
+
+.historyDate {
+  font-size: 11.5px;
+  color: #94a3b8;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.historyBadge {
+  font-size: 11.5px;
+  color: #2db86f;
+  font-weight: 700;
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(45,184,111,0.08);
+}
+
+.historyMore {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: #2f78ff;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.historyMore:hover {
+  color: #1a5ed4;
+}
+
+/* ===== 六维度概览（右侧） ===== */
+.dimensionPanel {
+  height: 100%;
+  padding: 18px 22px;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid rgba(216,228,248,0.9);
+  background: #fff;
+}
+
+.dimensionBody {
+  display: block;
+  margin-top: 16px;
+}
+
+.dimList {
+  width: 100%;
+}
+
+.dimRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.dimLabel {
+  width: 80px;
+  flex-shrink: 0;
+  font-size: 13.5px;
+  color: #3b4e70;
+  font-weight: 700;
+}
+
+.dimTrack {
+  flex: 1;
+  height: 7px;
+  border-radius: 999px;
+  background: #e7edf8;
+  overflow: hidden;
+  min-width: 80px;
+}
+
+.dimFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2f78ff, #4c8cff);
+  transition: width .6s ease;
+}
+
+.dimFill.toneBlue   { background: linear-gradient(90deg, #2f78ff, #4c8cff); }
+.dimFill.toneViolet { background: linear-gradient(90deg, #7b63ff, #9580ff); }
+.dimFill.toneTeal   { background: linear-gradient(90deg, #18a9a1, #3cc5bf); }
+.dimFill.toneGreen  { background: linear-gradient(90deg, #26b56e, #4dd08e); }
+.dimFill.toneOrange { background: linear-gradient(90deg, #f58e21, #f7ab54); }
+.dimFill.toneAmber  { background: linear-gradient(90deg, #f3aa1a, #f6c24a); }
+
+.dimScore {
+  font-size: 13px;
+  color: #5a6c88;
+  font-weight: 700;
+  width: 48px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+
 
 .timeline {
   position: relative;
@@ -753,6 +1084,14 @@
   .pathGrid {
     grid-template-columns: 1fr;
   }
+
+  .kpTableHead,
+  .kpRow {
+    grid-template-columns: 1fr auto;
+    gap: 4px 12px;
+  }
+
+  .kpColMastery { grid-column: span 2; }
 
   .topActions,
   .timelineHead,
