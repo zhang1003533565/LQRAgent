@@ -82,6 +82,18 @@ public class KbUploadTask {
     @Comment("映射到的知识点 ID 列表")
     private String mappedKpIds;
 
+    @Column(name = "vector_chunk_count")
+    @Comment("向量化切分后的块数量")
+    private Integer vectorChunkCount;
+
+    @Column(name = "vector_total_tokens")
+    @Comment("向量化总 token 数")
+    private Long vectorTotalTokens;
+
+    @Column(name = "vector_index_name", length = 256)
+    @Comment("向量索引名称")
+    private String vectorIndexName;
+
     @CreationTimestamp
     @Comment("任务创建时间")
     private LocalDateTime createdAt;

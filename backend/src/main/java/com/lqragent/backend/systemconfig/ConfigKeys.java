@@ -58,6 +58,13 @@ public final class ConfigKeys {
     public static final String IMAGE_API_KEY = "image.api-key";
     public static final String IMAGE_HOST = "image.host";
 
+    /** 视觉识别/OCR API（对应 ai-server .env 中 OCR_*） */
+    public static final String OCR_BINDING = "ocr.binding";
+    public static final String OCR_MODEL = "ocr.model";
+    public static final String OCR_API_KEY = "ocr.api-key";
+    public static final String OCR_SECRET_KEY = "ocr.secret-key";
+    public static final String OCR_HOST = "ocr.host";
+
     /** ai-server WebSocket 超时配置 */
     public static final String AI_SERVER_WS_CONNECT_TIMEOUT_SEC = "ai-server.ws.connect-timeout-sec";
     public static final String AI_SERVER_WS_RESPONSE_TIMEOUT_SEC = "ai-server.ws.response-timeout-sec";

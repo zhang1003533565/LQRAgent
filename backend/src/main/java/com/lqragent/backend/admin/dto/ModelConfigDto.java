@@ -71,4 +71,25 @@ public class ModelConfigDto {
 
     @Schema(description = "图片生成 API 地址")
     private final String imageHost;
+
+    @Schema(description = "视觉识别/OCR 提供商")
+    private final String ocrBinding;
+
+    @Schema(description = "视觉识别/OCR 模型")
+    private final String ocrModel;
+
+    @Schema(description = "OCR API Key 掩码")
+    private final String ocrApiKeyMasked;
+
+    @Schema(description = "是否已配置 OCR API Key")
+    private final boolean ocrApiKeySet;
+
+    @Schema(description = "OCR Secret Key 掩码（讯飞等需要）")
+    private final String ocrSecretKeyMasked;
+
+    @Schema(description = "是否已配置 OCR Secret Key")
+    private final boolean ocrSecretKeySet;
+
+    @Schema(description = "OCR API 地址")
+    private final String ocrHost;
 }

@@ -9,6 +9,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.http.converter.StringHttpMessageConverter;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -19,6 +20,8 @@ import org.springframework.web.util.UriUtils;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Slf4j
 @Component
@@ -90,6 +93,85 @@ public class AiServerClient {
                 .uri("/api/v1/knowledge/" + encodedKbName + "/progress")
                 .retrieve()
                 .body(new ParameterizedTypeReference<>() {});
+    }
+    
+    /**
+     * 删除知识库
+     */
+    public boolean deleteKnowledgeBase(String kbName) {
+        log.info("[AiServerClient] deleteKnowledgeBase: name={}", kbName);
+        try {
+            String encodedKbName = UriUtils.encodePathSegment(kbName, StandardCharsets.UTF_8);
+            client().delete()
+                    .uri("/api/v1/knowledge/" + encodedKbName)
+                    .retrieve()
+                    .toBodilessEntity();
+            return true;
+        } catch (Exception e) {
+            log.warn("[AiServerClient] deleteKnowledgeBase failed: {}", e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * 列出知识库中的文档
+     */
+    public List<Map<String, Object>> listDocuments(String kbName) {
+        String encodedKbName = UriUtils.encodePathSegment(kbName, StandardCharsets.UTF_8);
+        Object body = client().get()
+                .uri("/api/v1/knowledge/" + encodedKbName + "/documents")
+                .retrieve()
+                .body(Object.class);
+        if (body instanceof List<?> list) {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> result = (List<Map<String, Object>>) list;
+            return result;
+        }
+        if (body instanceof Map<?, ?> map) {
+            Object list = map.get("documents");
+            if (list instanceof List<?> docList) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> result = (List<Map<String, Object>>) docList;
+                return result;
+            }
+        }
+        return List.of();
+    }
+    
+    /**
+     * 获取文档的切分块内容
+     */
+    public List<Map<String, Object>> getDocumentChunks(String kbName, String fileName) {
+        String encodedKbName = UriUtils.encodePathSegment(kbName, StandardCharsets.UTF_8);
+        String encodedFileName = UriUtils.encodePathSegment(fileName, StandardCharsets.UTF_8);
+        String url = runtimeConfig.getAiServerBaseUrl()
+                + "/api/v1/knowledge/" + encodedKbName + "/document/" + encodedFileName + "/chunks";
+        RestTemplate restTemplate = new RestTemplate();
+        restTemplate.getMessageConverters().removeIf(StringHttpMessageConverter.class::isInstance);
+        restTemplate.getMessageConverters().add(0, new StringHttpMessageConverter(StandardCharsets.UTF_8));
+        String json = restTemplate.getForObject(url, String.class);
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            Object body = new ObjectMapper().readValue(json, Object.class);
+            if (body instanceof List<?> list) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> result = (List<Map<String, Object>>) list;
+                return result;
+            }
+            if (body instanceof Map<?, ?> map) {
+                Object list = map.get("chunks");
+                if (list instanceof List<?> chunkList) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> result = (List<Map<String, Object>>) chunkList;
+                    return result;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[AiServerClient] parse chunks response failed: {}", e.getMessage());
+        }
+        return List.of();
     }
 
     public Map<?, ?> getMemory(Long userId) {

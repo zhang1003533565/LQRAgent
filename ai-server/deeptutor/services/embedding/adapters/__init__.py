@@ -12,6 +12,7 @@ from .jina import JinaEmbeddingAdapter
 from .ollama import OllamaEmbeddingAdapter
 from .openai_compatible import OpenAICompatibleEmbeddingAdapter
 from .openai_sdk import OpenAISDKEmbeddingAdapter
+from .xfyun_maas import XfyunMaasEmbeddingAdapter
 
 ADAPTER_BACKENDS: dict[str, type[BaseEmbeddingAdapter]] = {
     "openai_compat": OpenAICompatibleEmbeddingAdapter,
@@ -20,6 +21,7 @@ ADAPTER_BACKENDS: dict[str, type[BaseEmbeddingAdapter]] = {
     "jina": JinaEmbeddingAdapter,
     "ollama": OllamaEmbeddingAdapter,
     "dashscope_native": DashScopeMultiModalEmbeddingAdapter,
+    "xfyun_maas": XfyunMaasEmbeddingAdapter,
 }
 
 __all__ = [
@@ -34,4 +36,5 @@ __all__ = [
     "JinaEmbeddingAdapter",
     "CohereEmbeddingAdapter",
     "OllamaEmbeddingAdapter",
+    "XfyunMaasEmbeddingAdapter",
 ]

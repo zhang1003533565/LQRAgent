@@ -58,6 +58,21 @@ public class ModelConfigSaveRequest {
     @Schema(description = "图片生成 API 地址")
     private String imageHost;
 
+    @Schema(description = "视觉识别/OCR 提供商")
+    private String ocrBinding;
+
+    @Schema(description = "视觉识别/OCR 模型")
+    private String ocrModel;
+
+    @Schema(description = "OCR API Key（留空表示不修改）")
+    private String ocrApiKey;
+
+    @Schema(description = "OCR Secret Key（讯飞等需要，留空表示不修改）")
+    private String ocrSecretKey;
+
+    @Schema(description = "OCR API 地址")
+    private String ocrHost;
+
     @Schema(description = "是否同步写入 ai-server/.env 文件")
     private boolean syncToAiServer = true;
 }

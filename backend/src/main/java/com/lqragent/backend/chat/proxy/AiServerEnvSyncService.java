@@ -92,6 +92,11 @@ public class AiServerEnvSyncService {
         putIfPresent(updates, "IMAGE_MODEL", runtimeConfig.get(ConfigKeys.IMAGE_MODEL));
         putIfPresent(updates, "IMAGE_API_KEY", runtimeConfig.get(ConfigKeys.IMAGE_API_KEY));
         putIfPresent(updates, "IMAGE_HOST", runtimeConfig.get(ConfigKeys.IMAGE_HOST));
+        putIfPresent(updates, "OCR_BINDING", runtimeConfig.get(ConfigKeys.OCR_BINDING));
+        putIfPresent(updates, "OCR_MODEL", runtimeConfig.get(ConfigKeys.OCR_MODEL));
+        putIfPresent(updates, "OCR_API_KEY", runtimeConfig.get(ConfigKeys.OCR_API_KEY));
+        putIfPresent(updates, "OCR_SECRET_KEY", runtimeConfig.get(ConfigKeys.OCR_SECRET_KEY));
+        putIfPresent(updates, "OCR_HOST", runtimeConfig.get(ConfigKeys.OCR_HOST));
         return updates;
     }
 

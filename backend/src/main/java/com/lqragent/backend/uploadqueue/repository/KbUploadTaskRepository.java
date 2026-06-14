@@ -21,4 +21,14 @@ public interface KbUploadTaskRepository extends JpaRepository<KbUploadTask, Long
     Optional<KbUploadTask> findFirstByStatusOrderByPriorityDescCreatedAtAsc(TaskStatus status);
 
     List<KbUploadTask> findTopNByStatusOrderByPriorityDescCreatedAtAsc(TaskStatus status, Pageable pageable);
+
+    /**
+     * 检查用户是否已经上传过同名文件
+     */
+    boolean existsByUserIdAndFileName(Long userId, String fileName);
+
+    /**
+     * 检查用户是否已经上传过同名文件且状态为已完成
+     */
+    boolean existsByUserIdAndFileNameAndStatus(Long userId, String fileName, TaskStatus status);
 }

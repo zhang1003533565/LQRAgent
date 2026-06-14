@@ -14,6 +14,9 @@ export interface UploadTask {
   progressPercent?: number
   analysisResult?: string
   mappedKpIds?: string
+  vectorChunkCount?: number
+  vectorTotalTokens?: number
+  vectorIndexName?: string
   createdAt: string
   startedAt?: string
   finishedAt?: string

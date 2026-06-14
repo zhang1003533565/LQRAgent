@@ -85,6 +85,8 @@ class LlamaIndexPipeline:
             f"Initializing KB '{kb_name}' with {len(file_paths)} files using LlamaIndex"
         )
 
+        storage_dir = None
+        signature = None
         try:
             await self._verify_embedding_connectivity()
             documents = await self.document_loader.load(file_paths)
@@ -136,7 +138,8 @@ class LlamaIndexPipeline:
         except Exception as exc:
             self.logger.error(f"Failed to initialize KB: {exc}")
             self.logger.error(traceback.format_exc())
-            self._cleanup_failed_version_dir(storage_dir, signature)
+            if storage_dir is not None:
+                self._cleanup_failed_version_dir(storage_dir, signature)
             raise
         finally:
             set_progress_callback(None)

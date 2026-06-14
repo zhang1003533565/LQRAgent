@@ -34,6 +34,8 @@ public class ModelConfigService {
         String embKey = runtimeConfig.get(ConfigKeys.EMBEDDING_API_KEY);
         String videoKey = runtimeConfig.get(ConfigKeys.VIDEO_API_KEY);
         String imageKey = runtimeConfig.get(ConfigKeys.IMAGE_API_KEY);
+        String ocrKey = runtimeConfig.get(ConfigKeys.OCR_API_KEY);
+        String ocrSecret = runtimeConfig.get(ConfigKeys.OCR_SECRET_KEY);
         return ModelConfigDto.builder()
                 .llmBinding(runtimeConfig.get(ConfigKeys.LLM_BINDING, "openai"))
                 .llmModel(runtimeConfig.get(ConfigKeys.LLM_MODEL, "gpt-4o-mini"))
@@ -41,12 +43,12 @@ public class ModelConfigService {
                 .llmApiKeySet(llmKey != null && !llmKey.isBlank())
                 .llmHost(runtimeConfig.get(ConfigKeys.LLM_HOST, "https://api.openai.com/v1"))
                 .llmApiVersion(runtimeConfig.get(ConfigKeys.LLM_API_VERSION))
-                .embeddingBinding(runtimeConfig.get(ConfigKeys.EMBEDDING_BINDING, "openai"))
-                .embeddingModel(runtimeConfig.get(ConfigKeys.EMBEDDING_MODEL, "text-embedding-3-large"))
+                .embeddingBinding(runtimeConfig.get(ConfigKeys.EMBEDDING_BINDING, "xfyun"))
+                .embeddingModel(runtimeConfig.get(ConfigKeys.EMBEDDING_MODEL, "xop3qwen8bembedding"))
                 .embeddingApiKeyMasked(mask(embKey))
                 .embeddingApiKeySet(embKey != null && !embKey.isBlank())
                 .embeddingHost(runtimeConfig.get(ConfigKeys.EMBEDDING_HOST,
-                        "https://api.openai.com/v1/embeddings"))
+                        "https://maas-api.cn-huabei-1.xf-yun.com/v2/embeddings"))
                 .videoBinding(runtimeConfig.get(ConfigKeys.VIDEO_BINDING, "agnes"))
                 .videoModel(runtimeConfig.get(ConfigKeys.VIDEO_MODEL, "agnes-video-v2.0"))
                 .videoApiKeyMasked(mask(videoKey))
@@ -57,6 +59,13 @@ public class ModelConfigService {
                 .imageApiKeyMasked(mask(imageKey))
                 .imageApiKeySet(imageKey != null && !imageKey.isBlank())
                 .imageHost(runtimeConfig.get(ConfigKeys.IMAGE_HOST, "https://apihub.agnes-ai.com/v1"))
+                .ocrBinding(runtimeConfig.get(ConfigKeys.OCR_BINDING, "xfyun"))
+                .ocrModel(runtimeConfig.get(ConfigKeys.OCR_MODEL, "xppaddleocrv16"))
+                .ocrApiKeyMasked(mask(ocrKey))
+                .ocrApiKeySet(ocrKey != null && !ocrKey.isBlank())
+                .ocrSecretKeyMasked(mask(ocrSecret))
+                .ocrSecretKeySet(ocrSecret != null && !ocrSecret.isBlank())
+                .ocrHost(runtimeConfig.get(ConfigKeys.OCR_HOST, "https://maas-api.cn-huabei-1.xf-yun.com/v2"))
                 .build();
     }
 
@@ -81,6 +90,12 @@ public class ModelConfigService {
         upsert(ConfigKeys.IMAGE_MODEL, req.getImageModel(), "图片生成模型");
         upsertIfNotBlank(ConfigKeys.IMAGE_API_KEY, req.getImageApiKey(), "图片生成 API Key");
         upsert(ConfigKeys.IMAGE_HOST, req.getImageHost(), "图片生成 API 地址");
+
+        upsert(ConfigKeys.OCR_BINDING, req.getOcrBinding(), "视觉识别/OCR 提供商");
+        upsert(ConfigKeys.OCR_MODEL, req.getOcrModel(), "视觉识别/OCR 模型");
+        upsertIfNotBlank(ConfigKeys.OCR_API_KEY, req.getOcrApiKey(), "OCR API Key");
+        upsertIfNotBlank(ConfigKeys.OCR_SECRET_KEY, req.getOcrSecretKey(), "OCR Secret Key");
+        upsert(ConfigKeys.OCR_HOST, req.getOcrHost(), "OCR API 地址");
 
         if (req.isSyncToAiServer()) {
             try {

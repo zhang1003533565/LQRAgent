@@ -161,6 +161,17 @@ EMBEDDING_PROVIDERS: dict[str, EmbeddingProviderSpec] = {
         max_batch_items=32,
         multimodal=True,
     ),
+    "xfyun": EmbeddingProviderSpec(
+        label="iFlytek Spark MaaS",
+        adapter="xfyun_maas",
+        default_api_base=EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS["xfyun"],
+        keywords=("xfyun", "iflytek", "spark", "qwen0b6embedding", "embedding"),
+        is_local=False,
+        api_key_envs=("XFYUN_API_KEY", "SPARK_API_KEY"),
+        default_model="xop3qwen8bembedding",
+        default_dim=0,
+        max_batch_items=20,
+    ),
     "aliyun": EmbeddingProviderSpec(
         label="Aliyun DashScope",
         adapter="dashscope_native",

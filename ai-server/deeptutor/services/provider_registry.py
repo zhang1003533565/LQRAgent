@@ -178,6 +178,17 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         thinking_style="thinking_type",
     ),
     ProviderSpec(
+        name="xfyun",
+        keywords=("xfyun", "iflytek", "spark", "paddleocr", "imageturbo"),
+        env_key="OPENAI_API_KEY",
+        display_name="iFlytek Spark MaaS",
+        backend="openai_compat",
+        is_gateway=True,
+        detect_by_base_keyword="xf-yun",
+        default_api_base="https://maas-api.cn-huabei-1.xf-yun.com/v2",
+        supports_stream_options=False,
+    ),
+    ProviderSpec(
         name="volcengine_coding_plan",
         keywords=("volcengine-plan",),
         env_key="OPENAI_API_KEY",

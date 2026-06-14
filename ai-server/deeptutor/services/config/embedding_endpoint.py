@@ -14,6 +14,9 @@ EMBEDDING_PROVIDER_ALIASES = {
     "lm_studio": "vllm",
     "llama_cpp": "vllm",
     "openai_compatible": "custom",
+    "iflytek": "xfyun",
+    "spark": "xfyun",
+    "xunfei": "xfyun",
 }
 
 EMBEDDING_PROVIDER_LABELS = {
@@ -25,6 +28,7 @@ EMBEDDING_PROVIDER_LABELS = {
     "siliconflow": "SiliconFlow",
     "ollama": "Ollama",
     "cohere": "Cohere",
+    "xfyun": "iFlytek Spark MaaS",
 }
 
 EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
@@ -40,6 +44,7 @@ EMBEDDING_PROVIDER_DEFAULT_ENDPOINTS = {
         "https://dashscope.aliyuncs.com/api/v1/services/embeddings/"
         "multimodal-embedding/multimodal-embedding"
     ),
+    "xfyun": "https://maas-api.cn-huabei-1.xf-yun.com/v2/embeddings",
 }
 
 EMBEDDING_PROVIDERS_REQUIRING_EMBEDDINGS_PATH = {
@@ -49,6 +54,7 @@ EMBEDDING_PROVIDERS_REQUIRING_EMBEDDINGS_PATH = {
     "jina",
     "vllm",
     "siliconflow",
+    "xfyun",
 }
 
 
@@ -75,7 +81,7 @@ def normalize_embedding_endpoint_for_display(provider: str | None, base_url: str
     if provider_name in EMBEDDING_PROVIDERS_REQUIRING_EMBEDDINGS_PATH:
         if trimmed.endswith("/embeddings"):
             return trimmed
-        if trimmed.endswith("/v1"):
+        if trimmed.endswith("/v1") or trimmed.endswith("/v2"):
             return f"{trimmed}/embeddings"
     if provider_name == "ollama":
         if trimmed.endswith("/api/embed"):

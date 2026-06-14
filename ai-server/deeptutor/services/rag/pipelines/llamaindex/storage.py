@@ -195,6 +195,7 @@ def create_chroma_index(documents: list[Document], kb_name: str, *,
                          show_progress: bool = True) -> int:
     """使用 Chroma 向量数据库创建索引。"""
     client = get_chroma_client()
+    delete_collection(client, kb_name)
     collection = get_or_create_collection(client, kb_name)
     vector_store = ChromaVectorStore(chroma_collection=collection)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)

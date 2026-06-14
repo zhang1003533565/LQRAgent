@@ -34,9 +34,9 @@ public class SysConfigSeeder implements ApplicationRunner {
         seedDefault(ConfigKeys.LLM_BINDING, "openai", "大模型提供商：openai/deepseek/dashscope 等");
         seedDefault(ConfigKeys.LLM_MODEL, "gpt-4o-mini", "大模型名称");
         seedDefault(ConfigKeys.LLM_HOST, "https://api.openai.com/v1", "大模型 API 根地址");
-        seedDefault(ConfigKeys.EMBEDDING_BINDING, "openai", "嵌入模型提供商");
-        seedDefault(ConfigKeys.EMBEDDING_MODEL, "text-embedding-3-large", "嵌入模型名称");
-        seedDefault(ConfigKeys.EMBEDDING_HOST, "https://api.openai.com/v1/embeddings", "嵌入 API 完整 URL");
+        seedDefault(ConfigKeys.EMBEDDING_BINDING, "xfyun", "嵌入模型提供商");
+        seedDefault(ConfigKeys.EMBEDDING_MODEL, "xop3qwen8bembedding", "嵌入模型名称");
+        seedDefault(ConfigKeys.EMBEDDING_HOST, "https://maas-api.cn-huabei-1.xf-yun.com/v2/embeddings", "嵌入 API 完整 URL");
 
         seedDefault(ConfigKeys.VIDEO_BINDING, "agnes", "视频生成提供商");
         seedDefault(ConfigKeys.VIDEO_MODEL, "agnes-video-v2.0", "视频生成模型");

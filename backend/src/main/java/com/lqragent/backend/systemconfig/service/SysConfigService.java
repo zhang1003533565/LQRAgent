@@ -31,6 +31,9 @@ public class SysConfigService {
 
     @Transactional
     public SysConfig upsert(String key, String value, String remark) {
+        if (value == null || value.isBlank()) {
+            return repository.findByConfigKey(key).orElse(null);
+        }
         SysConfig config = repository.findByConfigKey(key).orElseGet(() -> SysConfig.builder()
                 .configKey(key)
                 .build());

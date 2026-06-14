@@ -50,6 +50,13 @@ export interface ModelConfig {
   imageApiKeyMasked: string
   imageApiKeySet: boolean
   imageHost: string
+  ocrBinding: string
+  ocrModel: string
+  ocrApiKeyMasked: string
+  ocrApiKeySet: boolean
+  ocrSecretKeyMasked: string
+  ocrSecretKeySet: boolean
+  ocrHost: string
 }
 
 export interface ModelConfigSaveRequest {
@@ -70,6 +77,11 @@ export interface ModelConfigSaveRequest {
   imageModel: string
   imageApiKey?: string
   imageHost: string
+  ocrBinding: string
+  ocrModel: string
+  ocrApiKey?: string
+  ocrSecretKey?: string
+  ocrHost: string
   syncToAiServer?: boolean
 }
 
@@ -350,6 +362,48 @@ export async function retryUploadTask(taskId: number): Promise<{ message: string
 /** 删除一条上传任务 */
 export async function deleteAdminUploadTask(taskId: number): Promise<void> {
   await http.delete(`/admin/upload/tasks/${taskId}`)
+}
+
+// ===== 向量块管理 =====
+
+export interface VectorChunk {
+  id: number
+  taskId: number
+  indexName?: string
+  chunkIndex: number
+  content: string
+  tokenCount: number
+  startPos?: number
+  endPos?: number
+  kpId?: string
+  metadata?: string
+  createdAt: string
+}
+
+export interface VectorChunkPageResponse {
+  content: VectorChunk[]
+  totalElements: number
+  totalPages: number
+  size: number
+  number: number
+}
+
+export async function listVectorChunksByTask(taskId: number): Promise<VectorChunk[]> {
+  const res = await http.get<{ data: VectorChunk[] }>(`/vector-chunks/task/${taskId}`)
+  return res.data.data
+}
+
+export async function getVectorChunkById(chunkId: number): Promise<VectorChunk> {
+  const res = await http.get<{ data: VectorChunk }>(`/vector-chunks/${chunkId}`)
+  return res.data.data
+}
+
+export async function deleteVectorChunk(chunkId: number): Promise<void> {
+  await http.delete(`/vector-chunks/${chunkId}`)
+}
+
+export async function deleteVectorChunksByTask(taskId: number): Promise<void> {
+  await http.delete(`/vector-chunks/task/${taskId}`)
 }
 
 /** 上传文件到公共知识库 */

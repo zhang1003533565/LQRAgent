@@ -7,6 +7,7 @@ Handles knowledge base CRUD operations, file uploads, and initialization.
 
 import asyncio
 from datetime import datetime
+import httpx
 import json
 import logging
 import mimetypes
@@ -1060,6 +1061,193 @@ async def stream_task_logs(task_id: str):
     )
 
 
+def _filename_variants(filename: str) -> set[str]:
+    from urllib.parse import unquote
+
+    names = {filename, Path(filename).name}
+    for name in list(names):
+        unquoted = name
+        for _ in range(2):
+            decoded_url = unquote(unquoted)
+            if decoded_url == unquoted:
+                break
+            names.add(decoded_url)
+            names.add(Path(decoded_url).name)
+            unquoted = decoded_url
+    for name in list(names):
+        for encoding in ("latin1", "cp1252"):
+            try:
+                decoded = name.encode(encoding).decode("utf-8")
+                names.add(decoded)
+                names.add(Path(decoded).name)
+            except UnicodeError:
+                pass
+    return {name for name in names if name}
+
+
+def _filename_matches(actual: str | None, expected: str) -> bool:
+    if not actual:
+        return False
+    actual_names = _filename_variants(actual)
+    expected_names = _filename_variants(expected)
+    return bool(actual_names & expected_names)
+
+
+def _extract_chroma_document_chunks(kb_name: str, filename: str) -> list[dict]:
+    try:
+        from deeptutor.services.rag.pipelines.llamaindex.chroma_client import get_chroma_client
+
+        client = get_chroma_client()
+        collection = client.get_collection(kb_name)
+        result = collection.get(include=["documents", "metadatas"])
+    except Exception as exc:
+        logger.warning(f"Failed to read Chroma chunks for KB '{kb_name}': {exc}")
+        return []
+
+    ids = result.get("ids") or []
+    documents = result.get("documents") or []
+    metadatas = result.get("metadatas") or []
+    chunks = []
+    for node_id, content, metadata in zip(ids, documents, metadatas):
+        metadata = metadata or {}
+        file_name = metadata.get("file_name") or Path(str(metadata.get("file_path") or "")).name
+        if not _filename_matches(file_name, filename):
+            continue
+        if not content or not str(content).strip():
+            continue
+        chunks.append(
+            {
+                "chunk_index": len(chunks),
+                "content": content,
+                "token_count": len(str(content).split()),
+                "metadata": metadata,
+                "node_id": node_id,
+                "ref_doc_id": metadata.get("ref_doc_id") or metadata.get("doc_id") or metadata.get("document_id"),
+                "index_name": kb_name,
+            }
+        )
+    return chunks
+
+
+def _extract_raw_document_chunks(kb_path: Path, filename: str) -> list[dict]:
+    raw_dir = kb_path / "raw"
+    if not raw_dir.is_dir():
+        return []
+
+    target = None
+    candidates = [path for path in raw_dir.iterdir() if path.is_file()]
+    for path in candidates:
+        if _filename_matches(path.name, filename):
+            target = path
+            break
+    if target is None:
+        return []
+
+    try:
+        from deeptutor.utils.document_extractor import extract_text_from_path
+
+        text = extract_text_from_path(target, max_bytes=None, max_chars=None)
+    except Exception as exc:
+        logger.warning(f"Failed to extract raw chunks from {target}: {exc}")
+        return []
+
+    chunk_size = 800
+    overlap = 120
+    chunks = []
+    start = 0
+    index = 0
+    while start < len(text):
+        content = text[start : start + chunk_size].strip()
+        if content:
+            chunks.append(
+                {
+                    "chunk_index": index,
+                    "content": content,
+                    "token_count": len(content.split()),
+                    "metadata": {"file_name": target.name, "source": "raw_fallback"},
+                    "node_id": f"raw-{target.name}-{index}",
+                    "ref_doc_id": target.name,
+                }
+            )
+            index += 1
+        next_start = start + chunk_size - overlap
+        if next_start <= start:
+            break
+        start = next_start
+    return chunks
+
+
+@router.get("/{kb_name}/document/{filename:path}/chunks")
+async def get_document_chunks(kb_name: str, filename: str):
+    """Get all vector chunks for a specific document in the knowledge base."""
+    try:
+        resource = resolve_kb(kb_name)
+        manager = manager_for_resource(resource)
+        
+        # Get storage path for the KB
+        kb_path = manager.get_knowledge_base_path(resource.name)
+        
+        chroma_chunks = _extract_chroma_document_chunks(resource.name, filename)
+        if chroma_chunks:
+            return {"chunks": chroma_chunks}
+
+        # Find the version directory (e.g., version-1)
+        storage_dir = None
+        for item in kb_path.iterdir():
+            if item.is_dir() and item.name.startswith("version-"):
+                storage_dir = item
+                break
+        
+        if storage_dir is None or not storage_dir.exists():
+            fallback_chunks = _extract_raw_document_chunks(kb_path, filename)
+            return {"chunks": fallback_chunks}
+        
+        # Load the index and retrieve all nodes
+        try:
+            from llama_index.core import StorageContext, load_index_from_storage
+            
+            storage_context = StorageContext.from_defaults(persist_dir=str(storage_dir))
+            index = load_index_from_storage(storage_context)
+            
+            # Get all nodes from the index
+            all_nodes = []
+            if hasattr(index, 'docstore') and index.docstore is not None:
+                ref_doc_info = index.docstore.get_all_ref_doc_info()
+                for ref_id, info in ref_doc_info.items():
+                    # Check if this document matches the requested filename
+                    metadata = info.metadata or {}
+                    file_name_in_metadata = metadata.get('file_name')
+                    if _filename_matches(file_name_in_metadata, filename):
+                        # Get all nodes for this document
+                        nodes = index.docstore.get_nodes(list(info.node_ids))
+                        for i, node in enumerate(nodes):
+                            chunk_info = {
+                                "chunk_index": i,
+                                "content": node.text,
+                                "token_count": len(node.text.split()),
+                                "metadata": node.metadata,
+                                "node_id": node.node_id,
+                                "ref_doc_id": ref_id,
+                            }
+                            all_nodes.append(chunk_info)
+            
+            if all_nodes:
+                return {"chunks": all_nodes}
+
+            fallback_chunks = _extract_raw_document_chunks(kb_path, filename)
+            return {"chunks": fallback_chunks}
+            
+        except Exception as e:
+            logger.warning(f"Error loading index for KB '{kb_name}', falling back to raw document chunks: {e}")
+            fallback_chunks = _extract_raw_document_chunks(kb_path, filename)
+            return {"chunks": fallback_chunks}
+            
+    except ValueError:
+        raise HTTPException(status_code=404, detail=f"Knowledge base '{kb_name}' not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{kb_name}/upload")
 async def upload_files(
     kb_name: str,
@@ -1079,7 +1267,7 @@ async def upload_files(
             requested_provider = _validate_registered_provider(rag_provider)
 
         kb_entry = _load_kb_entry_or_404(manager, kb_name)
-        _assert_kb_writable_or_409(kb_name, kb_entry)
+        needs_reindex = bool(kb_entry.get("needs_reindex", False))
         kb_provider = _validate_registered_provider(
             kb_entry.get("rag_provider") or DEFAULT_PROVIDER
         )
@@ -1096,6 +1284,47 @@ async def upload_files(
         uploaded_files, uploaded_file_paths = _save_uploaded_files(
             files, raw_dir, allowed_extensions=allowed_extensions
         )
+        if needs_reindex:
+            from deeptutor.services.rag.embedding_signature import signature_from_embedding_config
+
+            signature = signature_from_embedding_config()
+            if signature is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="No embedding model is configured. Set up embedding before re-indexing.",
+                )
+            task_id = _build_unique_task_id("kb_reindex", kb_name)
+            get_task_stream_manager().ensure_task(task_id)
+            manager.update_kb_status(
+                name=kb_name,
+                status="initializing",
+                progress={
+                    "stage": "starting",
+                    "message": "Legacy knowledge base detected; re-indexing after upload...",
+                    "percent": 0,
+                    "task_id": task_id,
+                    "timestamp": datetime.now().isoformat(),
+                },
+            )
+            logger.info(
+                "KB '%s' needs reindex; saved %s uploaded files and queued full reindex",
+                kb_name,
+                len(uploaded_files),
+            )
+            background_tasks.add_task(
+                run_reindex_task,
+                kb_name=kb_name,
+                base_dir=str(kb_base_dir),
+                task_id=task_id,
+                signature_hash=signature.hash(),
+            )
+            return {
+                "message": f"Uploaded {len(uploaded_files)} files. Legacy KB re-indexing in background.",
+                "files": uploaded_files,
+                "task_id": task_id,
+                "reindex": True,
+            }
+
         task_id = _build_unique_task_id("kb_upload", kb_name)
         get_task_stream_manager().ensure_task(task_id)
 

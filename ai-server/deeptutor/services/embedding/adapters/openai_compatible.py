@@ -183,8 +183,13 @@ class OpenAICompatibleEmbeddingAdapter(BaseEmbeddingAdapter):
         payload = {
             "input": input_payload,
             "model": request.model or self.model,
-            "encoding_format": request.encoding_format or "float",
         }
+
+        # `encoding_format` is only supported by some providers (like OpenAI).
+        # SiliconFlow and many other providers don't accept this parameter.
+        # Only add it if explicitly requested.
+        if request.encoding_format and request.encoding_format != "float":
+            payload["encoding_format"] = request.encoding_format
 
         # `dimensions` is opt-in. The user's `send_dimensions` flag wins when set
         # explicitly (True/False); otherwise we fall back to a model-family

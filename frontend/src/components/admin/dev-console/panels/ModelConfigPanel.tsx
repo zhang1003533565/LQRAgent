@@ -12,48 +12,123 @@ import { panel } from './panelStyles'
 
 /** LLM 供应商预设 */
 const LLM_PROVIDERS: Record<string, {
-  label: string; host: string; model: string;
-  embeddingHost: string; embeddingModel: string;
+  label: string; host: string; models: { value: string; label: string }[];
+  embeddingHost: string; embeddingModels: { value: string; label: string }[];
 }> = {
   openai: {
     label: 'OpenAI 兼容',
-    host: 'https://api.openai.com/v1', model: 'gpt-4o-mini',
-    embeddingHost: 'https://api.openai.com/v1/embeddings', embeddingModel: 'text-embedding-3-large',
+    host: 'https://api.openai.com/v1',
+    models: [
+      { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+      { value: 'gpt-4o', label: 'GPT-4o' },
+      { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+    ],
+    embeddingHost: 'https://api.openai.com/v1/embeddings',
+    embeddingModels: [
+      { value: 'text-embedding-3-large', label: 'text-embedding-3-large' },
+      { value: 'text-embedding-3-small', label: 'text-embedding-3-small' },
+      { value: 'text-embedding-ada-002', label: 'text-embedding-ada-002' },
+    ],
   },
   deepseek: {
     label: 'DeepSeek',
-    host: 'https://api.deepseek.com', model: 'deepseek-chat',
-    embeddingHost: 'https://api.deepseek.com', embeddingModel: 'deepseek-embedding',
+    host: 'https://api.deepseek.com',
+    models: [
+      { value: 'deepseek-chat', label: 'DeepSeek-V3 (Chat)' },
+      { value: 'deepseek-reasoner', label: 'DeepSeek-R1 (Reasoner)' },
+    ],
+    embeddingHost: 'https://api.deepseek.com',
+    embeddingModels: [
+      { value: 'deepseek-embedding', label: 'DeepSeek Embedding' },
+    ],
   },
   dashscope: {
     label: '通义千问 (DashScope)',
-    host: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus',
-    embeddingHost: 'https://dashscope.aliyuncs.com/compatible-mode/v1', embeddingModel: 'text-embedding-v3',
+    host: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    models: [
+      { value: 'qwen-plus', label: 'Qwen-Plus' },
+      { value: 'qwen-max', label: 'Qwen-Max' },
+      { value: 'qwen-turbo', label: 'Qwen-Turbo' },
+    ],
+    embeddingHost: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    embeddingModels: [
+      { value: 'text-embedding-v3', label: 'text-embedding-v3' },
+      { value: 'text-embedding-v2', label: 'text-embedding-v2' },
+    ],
   },
   siliconflow: {
     label: 'SiliconFlow',
-    host: 'https://api.siliconflow.cn/v1', model: 'deepseek-ai/DeepSeek-V2.5',
-    embeddingHost: 'https://api.siliconflow.cn/v1/embeddings', embeddingModel: 'BAAI/bge-large-zh-v1.5',
+    host: 'https://api.siliconflow.cn/v1',
+    models: [
+      { value: 'deepseek-ai/DeepSeek-V2.5', label: 'DeepSeek-V2.5' },
+      { value: 'deepseek-ai/DeepSeek-V3', label: 'DeepSeek-V3' },
+      { value: 'Qwen/Qwen2.5-72B-Instruct', label: 'Qwen2.5-72B' },
+    ],
+    embeddingHost: 'https://api.siliconflow.cn/v1/embeddings',
+    embeddingModels: [
+      { value: 'BAAI/bge-large-zh-v1.5', label: 'BAAI/bge-large-zh-v1.5' },
+      { value: 'BAAI/bge-m3', label: 'BAAI/bge-m3' },
+    ],
   },
   openrouter: {
     label: 'OpenRouter',
-    host: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4o-mini',
-    embeddingHost: 'https://openrouter.ai/api/v1', embeddingModel: 'openai/text-embedding-3-large',
+    host: 'https://openrouter.ai/api/v1',
+    models: [
+      { value: 'openai/gpt-4o-mini', label: 'GPT-4o Mini' },
+      { value: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
+    ],
+    embeddingHost: 'https://openrouter.ai/api/v1',
+    embeddingModels: [
+      { value: 'openai/text-embedding-3-large', label: 'text-embedding-3-large' },
+    ],
   },
   ollama: {
     label: 'Ollama 本地',
-    host: 'http://localhost:11434/v1', model: 'llama3.1',
-    embeddingHost: 'http://localhost:11434/v1', embeddingModel: 'nomic-embed-text',
+    host: 'http://localhost:11434/v1',
+    models: [
+      { value: 'llama3.1', label: 'Llama 3.1' },
+      { value: 'qwen2.5', label: 'Qwen 2.5' },
+    ],
+    embeddingHost: 'http://localhost:11434/v1',
+    embeddingModels: [
+      { value: 'nomic-embed-text', label: 'nomic-embed-text' },
+    ],
   },
   azure_openai: {
     label: 'Azure OpenAI',
-    host: 'https://<your-resource>.openai.azure.com', model: 'gpt-4o-mini',
-    embeddingHost: 'https://<your-resource>.openai.azure.com', embeddingModel: 'text-embedding-3-large',
+    host: 'https://<your-resource>.openai.azure.com',
+    models: [
+      { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+      { value: 'gpt-4o', label: 'GPT-4o' },
+    ],
+    embeddingHost: 'https://<your-resource>.openai.azure.com',
+    embeddingModels: [
+      { value: 'text-embedding-3-large', label: 'text-embedding-3-large' },
+    ],
   },
   agnes: {
     label: 'Agnes AI',
-    host: 'https://apihub.agnes-ai.com/v1', model: 'agnes-2.0-flash',
-    embeddingHost: 'https://apihub.agnes-ai.com/v1', embeddingModel: 'text-embedding-3-large',
+    host: 'https://apihub.agnes-ai.com/v1',
+    models: [
+      { value: 'agnes-2.0-flash', label: 'Agnes 2.0 Flash' },
+      { value: 'agnes-2.0-pro', label: 'Agnes 2.0 Pro' },
+    ],
+    embeddingHost: 'https://apihub.agnes-ai.com/v1',
+    embeddingModels: [
+      { value: 'text-embedding-3-large', label: 'text-embedding-3-large' },
+    ],
+  },
+  xfyun: {
+    label: '讯飞星火 MaaS',
+    host: 'https://maas-api.cn-huabei-1.xf-yun.com/v2',
+    models: [
+      { value: 'xopzimageturbo', label: 'Z Image Turbo' },
+      { value: 'xppaddleocrv16', label: 'PaddleOCR-VL 1.6' },
+    ],
+    embeddingHost: 'https://maas-api.cn-huabei-1.xf-yun.com/v2/embeddings',
+    embeddingModels: [
+      { value: 'xop3qwen8bembedding', label: 'Qwen3-Embedding-8B' },
+    ],
   },
 }
 
@@ -105,6 +180,34 @@ const VIDEO_PROVIDERS: Record<string, {
   },
 }
 
+/** OCR/视觉识别供应商 → 模型列表 */
+const OCR_PROVIDERS: Record<string, {
+  label: string; host: string; models: { value: string; label: string }[];
+  hasSecretKey: boolean;
+}> = {
+  mock: {
+    label: 'Mock（占位符）', host: '',
+    models: [{ value: 'mock', label: '占位符' }],
+    hasSecretKey: false,
+  },
+  xfyun: {
+    label: '讯飞星火 MaaS', host: 'https://maas-api.cn-huabei-1.xf-yun.com/v2',
+    models: [
+      { value: 'xppaddleocrv16', label: 'PaddleOCR-VL 1.6' },
+      { value: 'xopzimageturbo', label: 'Z Image Turbo' },
+    ],
+    hasSecretKey: false,
+  },
+  paddle: {
+    label: 'PaddleOCR（本地）', host: '',
+    models: [
+      { value: 'chinese', label: '中文通用' },
+      { value: 'english', label: '英文识别' },
+    ],
+    hasSecretKey: false,
+  },
+}
+
 function ConfiguredBadge({ configured }: { configured: boolean }) {
   if (!configured) return null
   return (
@@ -124,6 +227,7 @@ export default function ModelConfigPanel() {
   const [llmConfigured, setLlmConfigured] = useState(false)
   const [embeddingConfigured, setEmbeddingConfigured] = useState(false)
   const [videoConfigured, setVideoConfigured] = useState(false)
+  const [ocrConfigured, setOcrConfigured] = useState(false)
 
   const [form, setForm] = useState({
     llmBinding: 'openai',
@@ -143,6 +247,11 @@ export default function ModelConfigPanel() {
     videoModel: 'agnes-video-v2.0',
     videoApiKey: '',
     videoHost: 'https://apihub.agnes-ai.com/v1',
+    ocrProvider: 'xfyun',
+    ocrModel: 'general',
+    ocrApiKey: '',
+    ocrSecretKey: '',
+    ocrHost: 'https://maas.xfyun.cn/v1',
     syncToAiServer: true,
   })
 
@@ -153,6 +262,7 @@ export default function ModelConfigPanel() {
       setLlmConfigured(data.llmApiKeySet)
       setEmbeddingConfigured(data.embeddingApiKeySet)
       setVideoConfigured(data.videoApiKeySet)
+      setOcrConfigured(data.ocrApiKeySet)
       setForm((f) => ({
         ...f,
         llmBinding: data.llmBinding,
@@ -172,6 +282,11 @@ export default function ModelConfigPanel() {
         imageModel: data.imageModel,
         imageApiKey: data.imageApiKeySet ? '********' : '',
         imageHost: data.imageHost,
+        ocrProvider: data.ocrBinding,
+        ocrModel: data.ocrModel,
+        ocrApiKey: data.ocrApiKeySet ? '********' : '',
+        ocrSecretKey: data.ocrSecretKeySet ? '********' : '',
+        ocrHost: data.ocrHost,
       }))
     } finally {
       setLoading(false)
@@ -207,6 +322,11 @@ export default function ModelConfigPanel() {
         imageModel: form.imageModel,
         imageApiKey: form.imageApiKey === '********' ? undefined : form.imageApiKey,
         imageHost: form.imageHost,
+        ocrBinding: form.ocrProvider,
+        ocrModel: form.ocrModel,
+        ocrApiKey: form.ocrApiKey === '********' ? undefined : form.ocrApiKey,
+        ocrSecretKey: form.ocrSecretKey === '********' ? undefined : form.ocrSecretKey,
+        ocrHost: form.ocrHost,
         syncToAiServer: form.syncToAiServer,
       }
       await saveModelConfig(payload)
@@ -235,13 +355,23 @@ export default function ModelConfigPanel() {
   function handleLlmBindingChange(binding: string) {
     const preset = LLM_PROVIDERS[binding]
     if (!preset) return
-    setForm(f => ({ ...f, llmBinding: binding, llmHost: preset.host, llmModel: preset.model }))
+    setForm(f => ({
+      ...f,
+      llmBinding: binding,
+      llmHost: preset.host,
+      llmModel: preset.models[0]?.value || '',
+    }))
   }
 
   function handleEmbeddingBindingChange(binding: string) {
     const preset = LLM_PROVIDERS[binding]
     if (!preset) return
-    setForm(f => ({ ...f, embeddingBinding: binding, embeddingHost: preset.embeddingHost, embeddingModel: preset.embeddingModel }))
+    setForm(f => ({
+      ...f,
+      embeddingBinding: binding,
+      embeddingHost: preset.embeddingHost,
+      embeddingModel: preset.embeddingModels[0]?.value || '',
+    }))
   }
 
   function handleImageProviderChange(provider: string) {
@@ -263,6 +393,17 @@ export default function ModelConfigPanel() {
       videoProvider: provider,
       videoModel: spec.models[0]?.value || '',
       videoHost: spec.host,
+    }))
+  }
+
+  function handleOcrProviderChange(provider: string) {
+    const spec = OCR_PROVIDERS[provider]
+    if (!spec) return
+    setForm(f => ({
+      ...f,
+      ocrProvider: provider,
+      ocrModel: spec.models[0]?.value || '',
+      ocrHost: spec.host,
     }))
   }
 
@@ -320,6 +461,18 @@ export default function ModelConfigPanel() {
             <ConfiguredBadge configured={videoConfigured} />
           </CardContent>
         </Card>
+        <Card className={`border transition-colors ${ocrConfigured ? 'border-cyan-500/30 bg-cyan-500/5' : ''}`}>
+          <CardContent className="flex items-center gap-3 py-3">
+            <span className={`h-3 w-3 rounded-full ${ocrConfigured ? 'bg-cyan-500' : 'bg-gray-400'}`} />
+            <div>
+              <p className="text-sm font-medium text-console-text">视觉识别 (OCR)</p>
+              <p className="text-xs text-console-muted">
+                {ocrConfigured ? `${form.ocrProvider} · ${form.ocrModel}` : '未配置'}
+              </p>
+            </div>
+            <ConfiguredBadge configured={ocrConfigured} />
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
@@ -353,8 +506,10 @@ export default function ModelConfigPanel() {
                 </label>
                 <label className={panel.label}>
                   模型名称
-                  <input className={panel.input} value={form.llmModel}
-                    onChange={(e) => setForm({ ...form, llmModel: e.target.value })} />
+                  <select className={panel.select} value={form.llmModel}
+                    onChange={(e) => setForm({ ...form, llmModel: e.target.value })}>
+                    {(LLM_PROVIDERS[form.llmBinding]?.models || []).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  </select>
                 </label>
                 <label className={panel.label}>
                   API Key
@@ -399,8 +554,10 @@ export default function ModelConfigPanel() {
                 </label>
                 <label className={panel.label}>
                   模型名称
-                  <input className={panel.input} value={form.embeddingModel}
-                    onChange={(e) => setForm({ ...form, embeddingModel: e.target.value })} />
+                  <select className={panel.select} value={form.embeddingModel}
+                    onChange={(e) => setForm({ ...form, embeddingModel: e.target.value })}>
+                    {(LLM_PROVIDERS[form.embeddingBinding]?.embeddingModels || []).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  </select>
                 </label>
                 <label className={panel.label}>
                   API Key
@@ -491,6 +648,55 @@ export default function ModelConfigPanel() {
                   API 地址
                   <input className={panel.input} value={form.videoHost}
                     onChange={(e) => setForm({ ...form, videoHost: e.target.value })} />
+                </label>
+              </div>
+            </fieldset>
+
+            {/* ===== 视觉识别 (OCR) ===== */}
+            <fieldset className="rounded-lg border border-console-border p-4">
+              <legend className="flex items-center gap-2 px-2 text-sm font-medium text-console-text">
+                <span className="h-2.5 w-2.5 rounded-full bg-cyan-500" />
+                视觉识别（OCR）
+                <ConfiguredBadge configured={ocrConfigured} />
+              </legend>
+              <p className="mb-3 text-xs text-console-muted">
+                用于图片文字识别，支持图片向量化。推荐使用讯飞星火 MaaS，需配置 API Key 和 Secret Key。
+              </p>
+              <div className={`${panel.grid} mt-3`}>
+                <label className={panel.label}>
+                  OCR 提供商
+                  <select className={panel.select} value={form.ocrProvider}
+                    onChange={(e) => handleOcrProviderChange(e.target.value)}>
+                    {Object.entries(OCR_PROVIDERS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                </label>
+                <label className={panel.label}>
+                  OCR 模型
+                  <select className={panel.select} value={form.ocrModel}
+                    onChange={(e) => setForm({ ...form, ocrModel: e.target.value })}>
+                    {(OCR_PROVIDERS[form.ocrProvider]?.models || []).map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  </select>
+                </label>
+                <label className={panel.label}>
+                  API Key
+                  <input type="password" className={panel.input} value={form.ocrApiKey}
+                    onChange={(e) => setForm({ ...form, ocrApiKey: e.target.value })}
+                    autoComplete="off"
+                    placeholder={form.ocrApiKey === '********' ? '已配置，留空不修改' : 'API Key'} />
+                </label>
+                {(OCR_PROVIDERS[form.ocrProvider]?.hasSecretKey) && (
+                  <label className={panel.label}>
+                    Secret Key
+                    <input type="password" className={panel.input} value={form.ocrSecretKey}
+                      onChange={(e) => setForm({ ...form, ocrSecretKey: e.target.value })}
+                      autoComplete="off"
+                      placeholder={form.ocrSecretKey === '********' ? '已配置，留空不修改' : 'Secret Key'} />
+                  </label>
+                )}
+                <label className={panel.label}>
+                  API 地址
+                  <input className={panel.input} value={form.ocrHost}
+                    onChange={(e) => setForm({ ...form, ocrHost: e.target.value })} />
                 </label>
               </div>
             </fieldset>

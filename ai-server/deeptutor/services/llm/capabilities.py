@@ -97,6 +97,14 @@ PROVIDER_CAPABILITIES: dict[str, dict[str, object]] = {
         "supports_vision": True,
         "system_in_messages": True,
     },
+    "xfyun": {
+        "supports_response_format": False,
+        "supports_streaming": True,
+        "supports_tools": False,
+        "supports_vision": True,
+        "vision_url_supported": True,
+        "system_in_messages": True,
+    },
     # Mistral
     "mistral": {
         "supports_response_format": True,
@@ -173,6 +181,16 @@ MODEL_OVERRIDES: dict[str, dict[str, object]] = {
         "supports_response_format": False,
         "has_thinking_tags": True,
         "supports_vision": False,
+    },
+    "xppaddleocrv16": {
+        "supports_response_format": False,
+        "supports_vision": True,
+        "vision_url_supported": True,
+    },
+    "xopzimageturbo": {
+        "supports_response_format": False,
+        "supports_vision": True,
+        "vision_url_supported": True,
     },
     "qwen": {
         "has_thinking_tags": True,
