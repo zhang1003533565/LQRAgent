@@ -2,224 +2,25 @@ import { useEffect, useRef, useCallback } from 'react'
 import { useChatStore } from '@/utils/store/chatStore'
 import { useAuthStore } from '@/utils/store/authStore'
 import { useAgentTraceStore } from '@/utils/store/agentTraceStore'
-import { useArtifactStore } from '@/utils/store/artifactStore'
-import { usePathStore } from '@/utils/store/pathStore'
-import { useProfileStore } from '@/utils/store/profileStore'
-import { chatApi } from '@/utils/api/chat'
-import type { AgentId, AgentStepStatus } from '@/utils/types/agent-events'
-import type { ArtifactKind, MediaImagePayload, RagSource } from '@/utils/types/artifact'
+import { dispatchWsMessage } from '@/utils/hooks/wsMessageDispatcher'
 import type { WsRawMessage } from '@/utils/types/agent-events'
-import type { LearningPathArtifactPayload } from '@/utils/types/artifact'
-import type { MultiCardBlock } from '@/utils/types/multi-card'
-import type { ProfileSummary } from '@/utils/types/profile'
 
 const MAX_RETRY = 8
 const BASE_DELAY = 1000
 
 /**
- * 保存消息 metadata 到后端（fire-and-forget）
- */
-function saveMessageMetadata(messageId: string, metadata: Record<string, unknown>) {
-  chatApi.updateMessageMetadata(messageId, metadata).catch(() => {})
-}
-
-function handleArtifact(kind: ArtifactKind, payload: unknown) {
-  const artifact = useArtifactStore.getState()
-  artifact.setLastKind(kind)
-
-  if (kind === 'learning_path') {
-    const p = payload as LearningPathArtifactPayload
-    if (p?.nodes) {
-      usePathStore.getState().setPath({
-        goal: p.goal ?? '',
-        nodes: p.nodes,
-        planDescription: p.planDescription ?? '',
-      })
-      // 更新最后一条助手消息为学习路径类型
-      const msgs = useChatStore.getState().messages
-      const last = [...msgs].reverse().find((m) => m.role === 'assistant')
-      if (last) {
-        useChatStore.getState().updateMessage(last.id, {
-          contentType: 'learning_path',
-          streaming: false,
-        })
-        // 保存到后端
-        saveMessageMetadata(last.id, { contentType: 'learning_path' })
-      }
-    }
-    return
-  }
-
-  if (kind === 'diagram' && payload) {
-    // 处理图表数据
-    const p = payload as { topic?: string; diagram?: string; format?: string }
-    if (p.diagram) {
-      // 将图表添加到聊天消息中
-      const msgs = useChatStore.getState().messages
-      const last = [...msgs].reverse().find((m) => m.role === 'assistant')
-      if (last) {
-        useChatStore.getState().updateMessage(last.id, {
-          contentType: 'diagram',
-          diagramCode: p.diagram,
-          diagramFormat: p.format || 'mermaid',
-          streaming: false,
-        })
-        // 保存到后端
-        saveMessageMetadata(last.id, {
-          contentType: 'diagram',
-          diagramCode: p.diagram,
-          diagramFormat: p.format || 'mermaid',
-        })
-      }
-    }
-    return
-  }
-
-  if (kind === 'multi_card' && Array.isArray(payload)) {
-    artifact.setMultiCardBlocks(payload as MultiCardBlock[])
-    const msgs = useChatStore.getState().messages
-    const last = [...msgs].reverse().find((m) => m.role === 'assistant')
-    if (last) {
-      useChatStore.getState().updateMessage(last.id, {
-        contentType: 'multi_card',
-        cards: payload as MultiCardBlock[],
-        streaming: false,
-      })
-      // 保存到后端
-      saveMessageMetadata(last.id, {
-        contentType: 'multi_card',
-        cards: payload,
-      })
-    }
-  }
-
-  if (kind === 'rag_sources' && Array.isArray(payload)) {
-    const sources = payload as RagSource[]
-    // Attach sources to the last assistant message
-    const msgs = useChatStore.getState().messages
-    const last = [...msgs].reverse().find((m) => m.role === 'assistant')
-    if (last) {
-      useChatStore.getState().updateMessage(last.id, {
-        ragSources: sources,
-      })
-      // 保存到后端
-      saveMessageMetadata(last.id, { ragSources: sources })
-    }
-  }
-
-  if (kind === 'media_image' && payload) {
-    const p = payload as MediaImagePayload
-    if (p.url) {
-      const msgs = useChatStore.getState().messages
-      const last = [...msgs].reverse().find((m) => m.role === 'assistant')
-      if (last) {
-        useChatStore.getState().updateMessage(last.id, {
-          contentType: 'image',
-          imageUrl: p.url,
-          streaming: false,
-        })
-        // 保存到后端
-        saveMessageMetadata(last.id, {
-          contentType: 'image',
-          imageUrl: p.url,
-        })
-      }
-    }
-    return
-  }
-}
-
-/**
- * WebSocket：chunk / agent_step / artifact / profile_patch / session_created / done / error
- * 自动重连（指数退避，最多 8 次）
+ * WebSocket 连接管理 hook
+ * 只负责：连接、重连、发送、断开
+ * 消息分发由 wsMessageDispatcher.ts 处理
  */
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const retryRef = useRef(0)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mountedRef = useRef(true)
-  const {
-    appendToLastMessage,
-    setStreaming,
-    setConnected,
-    setSessionId,
-    addMessage,
-    updateMessage,
-  } = useChatStore()
-  const upsertStep = useAgentTraceStore((s) => s.upsertStep)
+  const setConnected = useChatStore((s) => s.setConnected)
   const clearSteps = useAgentTraceStore((s) => s.clearSteps)
-  const patchSummary = useProfileStore((s) => s.patchSummary)
   const token = useAuthStore((s) => s.user?.token)
-
-  const dispatch = useCallback(
-    (data: WsRawMessage) => {
-      if (data.session_id) setSessionId(data.session_id)
-
-      switch (data.type) {
-        case 'session_created':
-          if (data.session_id) setSessionId(data.session_id)
-          break
-        case 'chunk':
-          appendToLastMessage(data.content ?? '')
-          break
-        case 'agent_step':
-          if (data.agent && data.label && data.status) {
-            upsertStep({
-              agent: data.agent as AgentId,
-              label: data.label,
-              status: data.status as AgentStepStatus,
-              detail: data.detail,
-            })
-          }
-          break
-        case 'artifact':
-          if (data.kind) {
-            handleArtifact(data.kind as ArtifactKind, data.payload)
-          }
-          break
-        case 'profile_patch':
-          if (data.payload && typeof data.payload === 'object') {
-            patchSummary(data.payload as Partial<ProfileSummary>)
-          }
-          break
-        case 'done': {
-          const msgs = useChatStore.getState().messages
-          const last = [...msgs].reverse().find((m) => m.role === 'assistant')
-          if (last) setStreaming(last.id, false)
-          break
-        }
-        case 'error': {
-          const msgs = useChatStore.getState().messages
-          const last = [...msgs].reverse().find((m) => m.role === 'assistant')
-          if (last) {
-            updateMessage(last.id, {
-              content: (last.content || '') + `\n\n⚠️ ${data.content ?? '发生错误'}`,
-              streaming: false,
-            })
-          } else {
-            addMessage({
-              id: crypto.randomUUID(),
-              role: 'assistant',
-              content: data.content ?? '发生错误',
-              createdAt: new Date(),
-            })
-          }
-          break
-        }
-        default:
-          break
-      }
-    },
-    [
-      appendToLastMessage,
-      setStreaming,
-      setSessionId,
-      upsertStep,
-      patchSummary,
-      addMessage,
-      updateMessage,
-    ],
-  )
 
   const cleanup = useCallback(() => {
     if (timerRef.current) {
@@ -241,7 +42,6 @@ export function useWebSocket() {
     cleanup()
 
     const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    // 开发环境直接连后端 8080，生产环境走同域代理
     const wsHost = window.location.port === '5173' ? 'localhost:8080' : window.location.host
     const url = `${protocol}://${wsHost}/ws/chat?token=${token}`
     const ws = new WebSocket(url)
@@ -269,12 +69,12 @@ export function useWebSocket() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data as string) as WsRawMessage
-        dispatch(data)
+        dispatchWsMessage(data)
       } catch {
-        // non-JSON frame — ignore silently
+        // non-JSON frame — ignore
       }
     }
-  }, [token, dispatch, setConnected, cleanup])
+  }, [token, setConnected, cleanup])
 
   const send = useCallback((content: string) => {
     if (wsRef.current?.readyState !== WebSocket.OPEN) {
@@ -295,7 +95,6 @@ export function useWebSocket() {
 
   useEffect(() => {
     mountedRef.current = true
-    // 延迟连接，避免 React Strict Mode 双重渲染导致立即断开
     const timer = setTimeout(() => {
       if (mountedRef.current && token) connect()
     }, 100)

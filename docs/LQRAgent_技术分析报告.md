@@ -1,11 +1,11 @@
 # LQRAgent 下一步优化计划书
 
-> 更新日期：2026-06-15（第二轮更新，已完成的标记 ✅）
+> 更新日期：2026-06-15（第三轮更新，已完成的标记 ✅）
 > 目标：解决痛点、改善体验、提升代码可维护性
 
 ---
 
-## 已完成的优化（本轮地基整理）
+## 已完成的优化
 
 ### ✅ 痛点1：两个 BaseAgent 合并
 - 删除了旧版 `agents/base/BaseAgent.java`，只保留 `orchestrator/agents/BaseAgent.java`
@@ -31,24 +31,25 @@
 - 从 `return false` 改为读取数据库配置 `ai-server.use-agentic-pipeline`
 - 管理后台改配置即可切换，不用改代码重新编译
 
+### ✅ 痛点4：Agent目录组织统一
+- 去掉了5个分组层（`check/`、`content/`、`learn/`、`serve/`、`user/`）
+- 所有Agent平铺在 `agents/` 下，按模块名组织
+- 17个模块完成迁移，45个Java文件的包名和import全部更新
+- 迁移映射：`serve/qa/` → `qa/`、`learn/path/` → `path/`、`content/diagram/` → `diagram/` 等
+
+### ✅ 痛点9：useWebSocket 拆分
+- `useWebSocket.ts` 从 310行 精简到 109行，只管连接/重连/发送/断开
+- 消息分发和artifact处理逻辑拆到 `wsMessageDispatcher.ts`
+- 改一个artifact类型不再需要动连接管理代码
+
+### ✅ 痛点10：前端API调用统一
+- 删除 `utils/api/chat.ts`（原生fetch风格）
+- 新建 `api/student/chat.ts`（统一用axios，自动带token、自动401处理）
+- 5个引用文件全部更新
+
 ---
 
 ## 待完成的优化
-
-### 痛点4：Agent目录组织不一致
-
-**现状：** Agent的目录结构不统一：
-- 有的按"功能域"组织：`learn/`、`content/`、`serve/`、`check/`
-- 有的按"模块"组织：`mediageneration/`、`resourcegeneration/`、`learnerprofile/`、`qualityassessment/`
-- `effectassessment/` 放在 `agents/` 下但只有service没有Agent类
-
-**问题：** 找代码靠猜。比如"质量评估"是 `check/QualityAgent` 还是 `qualityassessment/QualityAssessmentService`？两个都有，干的还不完全是一件事。
-
-**建议：** 统一目录组织原则，要么全按功能域分，要么全按模块分。推荐按模块分（每个模块自己的Agent+Service+Controller+Entity都在一个包下），因为现在大部分新代码已经是这个模式了。
-
-**优先级：** P2 — 不影响运行，但越往后越难改
-
----
 
 ### 痛点5：新用户第一次进来什么都看不到
 
@@ -107,42 +108,6 @@
 
 ---
 
-### 痛点9：useWebSocket 的 hook 写在 utils 里但包含了大量业务逻辑
-
-**现状：** `useWebSocket.ts` 有310行，里面包含了：
-- WebSocket连接管理
-- 消息分发（chunk/agent_step/artifact/profile_patch/done/error）
-- artifact处理逻辑（学习路径/图表/多卡片/RAG来源/图片）
-- 自动重连
-- 消息发送
-
-**问题：** 这个hook既管连接又管业务，改一个artifact类型就要动这个文件。
-
-**建议：** 把消息分发和artifact处理抽出来：
-- `useWebSocket` 只管连接/重连/发送
-- `useChatMessageDispatcher` 管消息分发
-- artifact处理逻辑移到各自的store或单独的handler里
-
-**优先级：** P2 — 前端可维护性
-
----
-
-### 痛点10：前端API层和聊天WebSocket的调用方式不统一
-
-**现状：**
-- REST API调用走 `api/student/*.ts`（axios）
-- 聊天走 `utils/api/chat.ts`（也是axios）
-- 但WebSocket通信走 `utils/hooks/useWebSocket.ts`（原生WebSocket）
-- 学习路径走 `utils/hooks/useOrchestrator.ts`（另一个WebSocket）
-
-**问题：** 三个不同的通信方式，状态管理也分散在不同store里。
-
-**建议：** 至少把 `utils/api/chat.ts` 和 `api/student/` 下的API调用统一到 `api/` 目录下。
-
-**优先级：** P2 — 前端一致性
-
----
-
 ### 痛点11：AI服务连不上时没有友好提示
 
 **现状：** 如果ai-server没启动或LLM API Key配错，用户在聊天里只会看到"处理异常"或"无法连接AI服务"。
@@ -164,21 +129,21 @@
 | P0 | 痛点6 | 路径生成进度反馈 | 待做 | 等60秒没反馈 = 用户以为坏了 |
 | P0 | 痛点11 | AI服务断连友好提示 | 待做 | 演示时最怕的就是报错看不懂 |
 | P1 | 痛点7 | 改进意图识别 | 待做 | 聊天是用户第一入口，识别不准很烦 |
-| P2 | 痛点4 | 统一Agent目录组织 | 待做 | 不急但不做的话越往后越难改 |
 | P2 | 痛点8 | 答题体验优化 | 待做 | 功能可用但体验粗糙 |
-| P2 | 痛点9 | 拆分useWebSocket | 待做 | 前端可维护性 |
-| P2 | 痛点10 | 统一API调用方式 | 待做 | 前端一致性 |
 | ~~P1~~ | ~~痛点1~~ | ~~合并两个BaseAgent~~ | ✅ 已完成 | |
 | ~~P1~~ | ~~痛点2~~ | ~~拆分ChatWebSocketHandler~~ | ✅ 已完成 | |
 | ~~P1~~ | ~~痛点3~~ | ~~清理死代码和残留文件~~ | ✅ 已完成 | |
 | ~~P1~~ | ~~痛点12~~ | ~~配置项从硬编码改数据库读~~ | ✅ 已完成 | |
+| ~~P2~~ | ~~痛点4~~ | ~~统一Agent目录组织~~ | ✅ 已完成 | |
+| ~~P2~~ | ~~痛点9~~ | ~~拆分useWebSocket~~ | ✅ 已完成 | |
+| ~~P2~~ | ~~痛点10~~ | ~~统一API调用方式~~ | ✅ 已完成 | |
 
 ---
 
 ## 下一步行动建议
 
-地基已经打好，接下来进入**用户可感知的功能优化**：
+12个痛点已解决7个，剩余5个。地基和代码结构类问题全部搞完了，剩下的都是**用户可感知的体验优化**：
 
-1. **P0 三件事**（先做）：空状态引导、路径生成进度、AI断连提示 — 这些只改前端，不动后端逻辑，风险低
+1. **P0 三件事**（先做）：空状态引导、路径生成进度、AI断连提示 — 只改前端，不动后端逻辑，风险低
 2. **P1 意图识别**：改进PlanningAgent的prompt，让聊天路由更准确
-3. **P2 有时间再搞**：Agent目录整理、答题体验、前端代码优化
+3. **P2 答题体验**：格式容错、错题回顾，有时间再搞

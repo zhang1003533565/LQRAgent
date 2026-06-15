@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { ChatMessage, MessageContentType } from '@/utils/types/chat'
 import type { MultiCardBlock } from '@/utils/types/multi-card'
 import type { RagSource } from '@/utils/types/artifact'
-import { chatApi } from '@/utils/api/chat'
+import { chatApi } from '@/api/student/chat'
 
 interface ChatState {
   messages: ChatMessage[]

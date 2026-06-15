@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import type { UserMemory, MemoryType } from '@/utils/types/memory'
-import { memoryApi } from '@/utils/api/chat'
+import { memoryApi } from '@/api/student/chat'
 import { MemoryList } from './MemoryList'
 import { MemoryEditor } from './MemoryEditor'
 

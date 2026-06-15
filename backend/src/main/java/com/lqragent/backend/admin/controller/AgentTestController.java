@@ -13,10 +13,10 @@ import com.lqragent.backend.orchestrator.message.Performative;
 import com.lqragent.backend.agents.resourcegeneration.dto.ResourceGenerateRequest;
 import com.lqragent.backend.agents.resourcegeneration.dto.ResourceGenerateResponse;
 import com.lqragent.backend.agents.effectassessment.service.EffectAssessmentService;
-import com.lqragent.backend.agents.learn.path.dto.LearningPathDto;
-import com.lqragent.backend.agents.learn.path.service.LearningPathService;
+import com.lqragent.backend.agents.path.dto.LearningPathDto;
+import com.lqragent.backend.agents.path.service.LearningPathService;
 import com.lqragent.backend.agents.resourcegeneration.service.ResourceGenerationService;
-import com.lqragent.backend.agents.serve.qa.QaAgent;
+import com.lqragent.backend.agents.qa.QaAgent;
 import com.lqragent.backend.core.session.RequestContext;
 import com.lqragent.backend.orchestrator.OrchestratorCore;
 

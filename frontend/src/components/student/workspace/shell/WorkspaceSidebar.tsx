@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { STUDENT_NAV_ITEMS } from '@/components/student/studentNavItems'
 import { useAuthStore } from '@/utils/store/authStore'
 import { useChatStore } from '@/utils/store/chatStore'
-import { chatApi } from '@/utils/api/chat'
+import { chatApi } from '@/api/student/chat'
 import styles from './WorkspaceSidebar.module.css'
 
 export default function WorkspaceSidebar() {

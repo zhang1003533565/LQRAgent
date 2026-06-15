@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import type { ChatSession } from '@/utils/types/chat'
-import { chatApi } from '@/utils/api/chat'
+import { chatApi } from '@/api/student/chat'
 import { useAuthStore } from '@/utils/store/authStore'
 import { SessionList } from './SessionList'
 import { SessionSearch } from './SessionSearch'

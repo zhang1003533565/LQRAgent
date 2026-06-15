@@ -9,10 +9,10 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.lqragent.backend.agents.learn.path.entity.LearningPath;
-import com.lqragent.backend.agents.learn.path.entity.LearningPathStep;
-import com.lqragent.backend.agents.learn.path.repository.LearningPathRepository;
-import com.lqragent.backend.agents.learn.path.repository.LearningPathStepRepository;
+import com.lqragent.backend.agents.path.entity.LearningPath;
+import com.lqragent.backend.agents.path.entity.LearningPathStep;
+import com.lqragent.backend.agents.path.repository.LearningPathRepository;
+import com.lqragent.backend.agents.path.repository.LearningPathStepRepository;
 import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import com.lqragent.backend.quiz.entity.StudyBehavior;
 import com.lqragent.backend.quiz.repository.StudyBehaviorRepository;
