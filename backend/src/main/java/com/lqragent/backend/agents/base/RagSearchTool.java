@@ -2,6 +2,7 @@ package com.lqragent.backend.agents.base;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
+import com.lqragent.backend.systemconfig.ConfigKeys;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -54,7 +55,13 @@ public class RagSearchTool implements AgentTool {
             String result = searchKnowledgeBase(query, topK);
             
             if (result != null && !result.isBlank()) {
-                return ToolResult.success(result);
+                // 提取 sources 信息放入 metadata，供前端展示引用来源
+                List<Map<String, Object>> sources = extractSources(result);
+                Map<String, Object> metadata = new HashMap<>();
+                if (!sources.isEmpty()) {
+                    metadata.put("ragSources", sources);
+                }
+                return ToolResult.success(result, metadata);
             }
             
             // 降级：使用 LLM 通用知识
@@ -74,12 +81,36 @@ public class RagSearchTool implements AgentTool {
     }
     
     /**
+     * 从搜索结果 JSON 中提取 sources 列表
+     */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> extractSources(String resultJson) {
+        try {
+            Map<String, Object> result = mapper.readValue(resultJson, Map.class);
+            Object sourcesObj = result.get("sources");
+            if (sourcesObj instanceof List<?> list) {
+                List<Map<String, Object>> sources = new ArrayList<>();
+                for (Object item : list) {
+                    if (item instanceof Map<?, ?> map) {
+                        sources.add((Map<String, Object>) map);
+                    }
+                }
+                return sources;
+            }
+        } catch (Exception e) {
+            log.debug("[RagSearchTool] extractSources failed: {}", e.getMessage());
+        }
+        return List.of();
+    }
+    
+    /**
      * 通过 ai-server REST API 搜索知识库
      */
     private String searchKnowledgeBase(String query, int topK) {
         try {
             String baseUrl = runtimeConfig.getAiServerBaseUrl();
-            String searchUrl = baseUrl + "/api/v1/knowledge/kb-public/search";
+            String kbName = runtimeConfig.get(ConfigKeys.KB_PUBLIC, "kb-public");
+            String searchUrl = baseUrl + "/api/v1/knowledge/" + kbName + "/search";
             
             String requestBody = "query=" + java.net.URLEncoder.encode(query, "UTF-8") + "&top_k=" + topK;
             

@@ -302,14 +302,21 @@ public abstract class BaseAgent implements AgentInterface {
             boolean success,
             String content,
             List<ToolExecution> executions,
-            String error
+            String error,
+            Map<String, Object> metadata
     ) {
         public static AgentResponse success(String content, List<ToolExecution> executions) {
-            return new AgentResponse(true, content, executions, null);
+            return new AgentResponse(true, content, executions, null, Map.of());
+        }
+
+        public static AgentResponse success(String content, List<ToolExecution> executions,
+                                             Map<String, Object> metadata) {
+            return new AgentResponse(true, content, executions, null,
+                    metadata != null ? metadata : Map.of());
         }
         
         public static AgentResponse failure(String error) {
-            return new AgentResponse(false, null, List.of(), error);
+            return new AgentResponse(false, null, List.of(), error, Map.of());
         }
     }
     

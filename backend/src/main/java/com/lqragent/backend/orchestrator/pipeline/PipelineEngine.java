@@ -219,6 +219,10 @@ public class PipelineEngine {
                 if (response.error() != null) {
                     result.put("error", response.error());
                 }
+                // 传递 metadata（如 ragSources）
+                if (response.metadata() != null && !response.metadata().isEmpty()) {
+                    result.putAll(response.metadata());
+                }
 
                 // 存储步骤结果到上下文（供下游步骤的 resultMapping 使用）
                 context.setResult(step.getStepId(), result);

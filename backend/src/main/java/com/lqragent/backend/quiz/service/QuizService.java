@@ -9,8 +9,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.lqragent.backend.agents.content.summary.lessongeneration.entity.ResourceItem;
-import com.lqragent.backend.agents.content.summary.lessongeneration.repository.ResourceItemRepository;
+import com.lqragent.backend.agents.resourcegeneration.entity.ResourceItem;
+import com.lqragent.backend.agents.resourcegeneration.repository.ResourceItemRepository;
 import com.lqragent.backend.agents.effectassessment.service.EffectAssessmentService;
 import com.lqragent.backend.agents.learn.difficulty.tools.AdjustDifficultyTool;
 import com.lqragent.backend.agents.learn.learningstyle.tools.DetectLearningStyleTool;

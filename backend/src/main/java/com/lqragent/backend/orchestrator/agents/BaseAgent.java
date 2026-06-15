@@ -132,7 +132,13 @@ public abstract class BaseAgent implements AgentInterface {
             boolean success = result.getPerformative() == Performative.INFORM;
             String content = success ? String.valueOf(result.getContent().getOrDefault("content", "")) : null;
             String error = success ? null : String.valueOf(result.getContent().getOrDefault("error", "Unknown error"));
-            return com.lqragent.backend.agents.base.BaseAgent.AgentResponse.success(content, List.of());
+            // 传递 metadata（如 ragSources）
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            Object ragSources = result.getContent().get("ragSources");
+            if (ragSources != null) {
+                metadata.put("ragSources", ragSources);
+            }
+            return com.lqragent.backend.agents.base.BaseAgent.AgentResponse.success(content, List.of(), metadata);
         } catch (Exception e) {
             log.error("[{}] adapter process failed: {}", agentId, e.getMessage());
             return com.lqragent.backend.agents.base.BaseAgent.AgentResponse.failure(e.getMessage());
@@ -235,6 +241,9 @@ public abstract class BaseAgent implements AgentInterface {
         List<Map<String, Object>> toolSchemas = toolRegistry.getToolSchemas();
         String systemPrompt = getSystemPrompt();
 
+        // 收集工具执行过程中产生的 RAG 引用来源
+        List<Map<String, Object>> collectedRagSources = new ArrayList<>();
+
         for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
             log.debug("[{}] LLM iteration {}/{}", agentId, iteration + 1, MAX_ITERATIONS);
 
@@ -250,6 +259,9 @@ public abstract class BaseAgent implements AgentInterface {
                 Map<String, Object> resultContent = new LinkedHashMap<>();
                 resultContent.put("content", llmResponse.content());
                 resultContent.put("status", "completed");
+                if (!collectedRagSources.isEmpty()) {
+                    resultContent.put("ragSources", collectedRagSources);
+                }
                 log.info("[{}] LLM completed after {} iterations", agentId, iteration + 1);
                 return AgentMessage.inform(taskId, agentId, "pipeline", resultContent);
             }
@@ -272,6 +284,19 @@ public abstract class BaseAgent implements AgentInterface {
                     AgentTool.ToolResult result = toolRegistry.execute(tc.name(), args);
                     messages.add(Map.of("role", "tool", "tool_call_id", (Object) tc.id(),
                             "content", (Object) (result.success() ? result.content() : "Error: " + result.content())));
+                    // 收集 RAG 引用来源
+                    if (result.success() && result.metadata() != null) {
+                        Object ragSources = result.metadata().get("ragSources");
+                        if (ragSources instanceof List<?> list) {
+                            for (Object item : list) {
+                                if (item instanceof Map<?, ?> map) {
+                                    @SuppressWarnings("unchecked")
+                                    Map<String, Object> source = (Map<String, Object>) map;
+                                    collectedRagSources.add(source);
+                                }
+                            }
+                        }
+                    }
                 } catch (Exception e) {
                     log.error("[{}] tool {} error: {}", agentId, tc.name(), e.getMessage());
                     messages.add(Map.of("role", "tool", "tool_call_id", (Object) tc.id(),

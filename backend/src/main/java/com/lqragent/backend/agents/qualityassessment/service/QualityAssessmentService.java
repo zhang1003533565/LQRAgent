@@ -1,6 +1,6 @@
-package com.lqragent.backend.agents.check.contentassessment.service;
+package com.lqragent.backend.agents.qualityassessment.service;
 
-import com.lqragent.backend.agents.content.summary.lessongeneration.entity.ResourceItem;
+import com.lqragent.backend.agents.resourcegeneration.entity.ResourceItem;
 import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import com.lqragent.backend.systemconfig.ConfigKeys;

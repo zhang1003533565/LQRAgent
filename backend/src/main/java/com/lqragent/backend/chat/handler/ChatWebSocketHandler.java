@@ -314,6 +314,20 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                                                             .toString());
                                                 }
                                             }
+
+                                            // RAG 引用来源：发送 rag_sources artifact
+                                            Object ragSourcesObj = stepData.get("ragSources");
+                                            if (ragSourcesObj instanceof java.util.List<?> sourcesList && !sourcesList.isEmpty()) {
+                                                try {
+                                                    var sourcesArray = objectMapper.valueToTree(sourcesList);
+                                                    sendEvent(wsSession, "artifact", objectMapper.createObjectNode()
+                                                            .put("kind", "rag_sources")
+                                                            .set("payload", sourcesArray)
+                                                            .toString());
+                                                } catch (Exception e) {
+                                                    log.warn("[WS] async: failed to send rag_sources artifact: {}", e.getMessage());
+                                                }
+                                            }
                                         }
 
                                         // 再发送步骤文本内容
@@ -641,6 +655,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             final Long currentUserId = userInfo.userId();
             String qaResponse = null;
             boolean pipelineSucceeded = false;
+            List<Map<String, Object>> ragSources = List.of();
 
             // 优先尝试 PipelineEngine
             try {
@@ -652,6 +667,8 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 if (pipelineResult.isSuccess()) {
                     qaResponse = orchestratorCore.aggregateResults(qaConfig, pipelineResult);
                     pipelineSucceeded = true;
+                    // 从 Pipeline 步骤结果中提取 ragSources
+                    ragSources = extractRagSourcesFromPipeline(pipelineResult);
                 } else {
                     log.warn("[WS] QA pipeline failed: {}, falling back",
                             pipelineResult.getErrorMessage());
@@ -678,6 +695,18 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     if (agentResponse.getPerformative() == Performative.INFORM) {
                         Object respContent = agentResponse.getContent().get("content");
                         qaResponse = respContent != null ? respContent.toString() : "";
+                        // 从 AgentMessage 中提取 ragSources
+                        Object sourcesObj = agentResponse.getContent().get("ragSources");
+                        if (sourcesObj instanceof List<?> list) {
+                            ragSources = list.stream()
+                                    .filter(item -> item instanceof Map<?, ?>)
+                                    .map(item -> {
+                                        @SuppressWarnings("unchecked")
+                                        Map<String, Object> m = (Map<String, Object>) item;
+                                        return m;
+                                    })
+                                    .toList();
+                        }
                     } else {
                         log.warn("[WS] QA agent failed: {}", agentResponse.getContent().get("error"));
                         qaResponse = "抱歉，处理问题时出现异常。请稍后再试。";
@@ -694,6 +723,20 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                     .put("status", "done")
                     .toString());
             sendEvent(session, "chunk", qaResponse);
+
+            // 发送 RAG 引用来源 artifact（如果有）
+            if (!ragSources.isEmpty()) {
+                try {
+                    var sourcesArray = objectMapper.valueToTree(ragSources);
+                    sendEvent(session, "artifact", objectMapper.createObjectNode()
+                            .put("kind", "rag_sources")
+                            .set("payload", sourcesArray)
+                            .toString());
+                } catch (Exception e) {
+                    log.warn("[WS] failed to send rag_sources artifact: {}", e.getMessage());
+                }
+            }
+
             sendEvent(session, "done", objectMapper.createObjectNode()
                     .put("session_id", finalSessionId)
                     .toString());
@@ -795,6 +838,27 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return "学习路径已生成，包含 " + data.get("nodeCount") + " 个节点。";
         }
         return null;
+    }
+
+    /**
+     * 从 PipelineResult 的步骤结果中提取所有 ragSources
+     */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> extractRagSourcesFromPipeline(PipelineResult pipelineResult) {
+        List<Map<String, Object>> allSources = new java.util.ArrayList<>();
+        if (pipelineResult.getStepResults() == null) return allSources;
+        for (StepResult sr : pipelineResult.getStepResults()) {
+            if (!sr.isSuccess() || sr.getData() == null) continue;
+            Object sourcesObj = sr.getData().get("ragSources");
+            if (sourcesObj instanceof List<?> list) {
+                for (Object item : list) {
+                    if (item instanceof Map<?, ?> map) {
+                        allSources.add((Map<String, Object>) map);
+                    }
+                }
+            }
+        }
+        return allSources;
     }
 
     private void triggerProfileExtractionAsync(Long userId, String chatSessionId, WebSocketSession ws) {

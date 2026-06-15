@@ -14,8 +14,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
 
-import com.lqragent.backend.agents.content.summary.lessongeneration.entity.ResourceItem;
-import com.lqragent.backend.agents.content.summary.lessongeneration.repository.ResourceItemRepository;
+import com.lqragent.backend.agents.resourcegeneration.entity.ResourceItem;
+import com.lqragent.backend.agents.resourcegeneration.repository.ResourceItemRepository;
 import com.lqragent.backend.agents.mediageneration.dto.MediaResult;
 import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
 import com.lqragent.backend.shared.knowledgegraph.service.KnowledgeGraphService;

@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import com.lqragent.backend.agents.base.AgentTool;
 import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.LlmClient;
-import com.lqragent.backend.agents.serve.qa.tools.SearchKnowledgeTool;
+import com.lqragent.backend.agents.base.RagSearchTool;
 import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.orchestrator.agents.BaseAgent;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
@@ -18,13 +18,13 @@ import com.lqragent.backend.prompt.service.PromptService;
 @Component
 public class QaAgent extends BaseAgent {
 
-    private final SearchKnowledgeTool searchKnowledgeTool;
+    private final RagSearchTool ragSearchTool;
 
     public QaAgent(RedisStreamsService streams, LlmClient llmClient,
-                    AgentToolRegistry toolRegistry, SearchKnowledgeTool searchKnowledgeTool,
+                    AgentToolRegistry toolRegistry, RagSearchTool ragSearchTool,
                     PromptService promptService) {
         super(AgentIds.QA, streams, llmClient, toolRegistry, promptService);
-        this.searchKnowledgeTool = searchKnowledgeTool;
+        this.ragSearchTool = ragSearchTool;
     }
 
     @Override
@@ -34,7 +34,7 @@ public class QaAgent extends BaseAgent {
 
     @Override
     protected List<AgentTool> getTools() {
-        return List.of(searchKnowledgeTool);
+        return List.of(ragSearchTool);
     }
 
     @Override

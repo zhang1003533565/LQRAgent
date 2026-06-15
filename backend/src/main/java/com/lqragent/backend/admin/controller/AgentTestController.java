@@ -10,8 +10,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.orchestrator.message.Performative;
-import com.lqragent.backend.agents.content.summary.lessongeneration.dto.ResourceGenerateRequest;
-import com.lqragent.backend.agents.content.summary.lessongeneration.dto.ResourceGenerateResponse;
+import com.lqragent.backend.agents.resourcegeneration.dto.ResourceGenerateRequest;
+import com.lqragent.backend.agents.resourcegeneration.dto.ResourceGenerateResponse;
 import com.lqragent.backend.agents.effectassessment.service.EffectAssessmentService;
 import com.lqragent.backend.agents.learn.path.dto.LearningPathDto;
 import com.lqragent.backend.agents.learn.path.service.LearningPathService;
