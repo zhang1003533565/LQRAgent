@@ -1,49 +1,79 @@
 package com.lqragent.backend.agents.base;
 
+import java.util.List;
+import java.util.Map;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Builder;
 import lombok.Data;
 
 /**
  * Agent 统一响应格式
- * 所有 Agent 工具都应返回此格式
+ * <p>
+ * 同时支持：
+ * 1. PipelineEngine / BaseAgent 使用的 record 风格（success/content/error/metadata）
+ * 2. Agent 工具使用的 DTO 风格（type/title/summary/content/data）
+ * </p>
  */
 @Data
 @Builder
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class AgentResponse {
-    /** 内容类型：recommendation, knowledge_state, summary, etc. */
-    private String type;
-    
-    /** 标题 */
-    private String title;
-    
-    /** 一句话摘要 */
-    private String summary;
-    
-    /** 主要内容（Markdown 格式） */
+
+    // ===== Pipeline 风格字段 =====
+    private boolean success;
     private String content;
-    
-    /** 结构化数据（可选） */
+    private String error;
+    private List<ToolExecution> executions;
+    private Map<String, Object> metadata;
+
+    // ===== DTO 风格字段 =====
+    private String type;
+    private String title;
+    private String summary;
     private Object data;
-    
+
     /**
-     * 创建成功响应
+     * 创建成功响应（Pipeline 风格）
+     */
+    public static AgentResponse success(String content, List<ToolExecution> executions, Map<String, Object> metadata) {
+        return AgentResponse.builder()
+                .success(true)
+                .content(content)
+                .executions(executions)
+                .metadata(metadata)
+                .build();
+    }
+
+    /**
+     * 创建失败响应（Pipeline 风格）
+     */
+    public static AgentResponse failure(String error) {
+        return AgentResponse.builder()
+                .success(false)
+                .error(error)
+                .build();
+    }
+
+    /**
+     * 创建成功响应（DTO 风格，Agent 工具使用）
      */
     public static AgentResponse success(String type, String title, String content) {
         return AgentResponse.builder()
+                .success(true)
                 .type(type)
                 .title(title)
                 .summary(title)
                 .content(content)
                 .build();
     }
-    
+
     /**
-     * 创建带数据的响应
+     * 创建带数据的响应（DTO 风格）
      */
     public static AgentResponse withData(String type, String title, String summary, String content, Object data) {
         return AgentResponse.builder()
+                .success(true)
                 .type(type)
                 .title(title)
                 .summary(summary)
@@ -51,7 +81,7 @@ public class AgentResponse {
                 .data(data)
                 .build();
     }
-    
+
     /**
      * 转换为 JSON 字符串
      */
@@ -59,7 +89,7 @@ public class AgentResponse {
         try {
             return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(this);
         } catch (Exception e) {
-            return "{\"type\":\"" + type + "\",\"title\":\"" + title + "\",\"content\":\"" + content + "\"}";
+            return "{\"success\":" + success + ",\"content\":\"" + content + "\"}";
         }
     }
 }

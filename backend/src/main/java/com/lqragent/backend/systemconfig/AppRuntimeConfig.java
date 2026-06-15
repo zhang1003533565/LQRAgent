@@ -71,8 +71,6 @@ public class AppRuntimeConfig {
 
     /** 是否使用 ai-server Agentic Pipeline（false=走旧方案，Java 自己做 AI） */
     public boolean isUseAgenticPipeline() {
-        // 强制 false — 走 Java 本地 LLM 路径（优化后更快、无 missing field type 问题）
-        // 如需切回 ai-server，手动改此处为 true
-        return false;
+        return Boolean.parseBoolean(get(ConfigKeys.AI_SERVER_USE_AGENTIC_PIPELINE, "false"));
     }
 }

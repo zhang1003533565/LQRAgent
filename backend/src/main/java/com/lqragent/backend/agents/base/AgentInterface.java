@@ -19,16 +19,16 @@ public interface AgentInterface {
     /**
      * 处理请求（无上下文）
      */
-    BaseAgent.AgentResponse process(BaseAgent.AgentRequest request);
+    AgentResponse process(AgentRequest request);
     
     /**
      * 处理请求（带对话历史）
      */
-    BaseAgent.AgentResponse process(BaseAgent.AgentRequest request, List<Map<String, Object>> history);
+    AgentResponse process(AgentRequest request, List<Map<String, Object>> history);
     
     /**
      * 处理请求（带 TaskContext，支持 Agent 间通信）
      * Agent 内部可以通过 TaskContext 共享数据，或通过 requestPeer() 调用其他 Agent
      */
-    BaseAgent.AgentResponse process(BaseAgent.AgentRequest request, TaskContext context);
+    AgentResponse process(AgentRequest request, TaskContext context);
 }

@@ -5,6 +5,8 @@ import com.lqragent.backend.agents.base.AgentTool;
 import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.AgentRegistry;
 import com.lqragent.backend.agents.base.AgentInterface;
+import com.lqragent.backend.agents.base.AgentRequest;
+import com.lqragent.backend.agents.base.AgentResponse;
 import com.lqragent.backend.orchestrator.capability.AgentCapability;
 import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
@@ -103,22 +105,18 @@ public abstract class BaseAgent implements AgentInterface {
      * 适配 AgentInterface：将 AgentRequest 转换为 AgentMessage 并调用 process
      */
     @Override
-    public com.lqragent.backend.agents.base.BaseAgent.AgentResponse process(
-            com.lqragent.backend.agents.base.BaseAgent.AgentRequest request) {
+    public AgentResponse process(AgentRequest request) {
         return process(request, (TaskContext) null);
     }
 
     @Override
-    public com.lqragent.backend.agents.base.BaseAgent.AgentResponse process(
-            com.lqragent.backend.agents.base.BaseAgent.AgentRequest request,
+    public AgentResponse process(AgentRequest request,
             List<Map<String, Object>> history) {
         return process(request, (TaskContext) null);
     }
 
     @Override
-    public com.lqragent.backend.agents.base.BaseAgent.AgentResponse process(
-            com.lqragent.backend.agents.base.BaseAgent.AgentRequest request,
-            TaskContext context) {
+    public AgentResponse process(AgentRequest request, TaskContext context) {
         try {
             // 将 AgentRequest 转换为 AgentMessage
             AgentMessage msg = AgentMessage.request(
@@ -138,10 +136,10 @@ public abstract class BaseAgent implements AgentInterface {
             if (ragSources != null) {
                 metadata.put("ragSources", ragSources);
             }
-            return com.lqragent.backend.agents.base.BaseAgent.AgentResponse.success(content, List.of(), metadata);
+            return AgentResponse.success(content, List.of(), metadata);
         } catch (Exception e) {
             log.error("[{}] adapter process failed: {}", agentId, e.getMessage());
-            return com.lqragent.backend.agents.base.BaseAgent.AgentResponse.failure(e.getMessage());
+            return AgentResponse.failure(e.getMessage());
         }
     }
 

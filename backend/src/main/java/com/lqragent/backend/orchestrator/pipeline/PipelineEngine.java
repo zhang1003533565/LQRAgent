@@ -19,7 +19,8 @@ import org.springframework.stereotype.Service;
 
 import com.lqragent.backend.agents.base.AgentInterface;
 import com.lqragent.backend.agents.base.AgentRegistry;
-import com.lqragent.backend.agents.base.BaseAgent;
+import com.lqragent.backend.agents.base.AgentRequest;
+import com.lqragent.backend.agents.base.AgentResponse;
 import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.orchestrator.context.TraceSpan;
 
@@ -201,27 +202,27 @@ public class PipelineEngine {
                 Map<String, Object> payload = buildPayload(step, context);
 
                 // 构建 AgentRequest 并同步调用
-                BaseAgent.AgentRequest request = new BaseAgent.AgentRequest(
+                AgentRequest request = new AgentRequest(
                         step.getAction(),
                         context.getGoal(),
                         payload
                 );
 
-                BaseAgent.AgentResponse response = agent.process(request, context);
+                AgentResponse response = agent.process(request, context);
 
                 // 将 AgentResponse 转为 Map，存入上下文供后续步骤使用
                 Map<String, Object> result = new LinkedHashMap<>();
-                result.put("success", response.success());
-                result.put("content", response.content());
-                if (response.executions() != null && !response.executions().isEmpty()) {
-                    result.put("toolCalls", response.executions().size());
+                result.put("success", response.isSuccess());
+                result.put("content", response.getContent());
+                if (response.getExecutions() != null && !response.getExecutions().isEmpty()) {
+                    result.put("toolCalls", response.getExecutions().size());
                 }
-                if (response.error() != null) {
-                    result.put("error", response.error());
+                if (response.getError() != null) {
+                    result.put("error", response.getError());
                 }
                 // 传递 metadata（如 ragSources）
-                if (response.metadata() != null && !response.metadata().isEmpty()) {
-                    result.putAll(response.metadata());
+                if (response.getMetadata() != null && !response.getMetadata().isEmpty()) {
+                    result.putAll(response.getMetadata());
                 }
 
                 // 存储步骤结果到上下文（供下游步骤的 resultMapping 使用）
@@ -229,9 +230,9 @@ public class PipelineEngine {
 
                 long duration = System.currentTimeMillis() - stepStart;
                 span.complete(truncate(
-                        response.success() ? response.content() : response.error(), 200));
+                        response.isSuccess() ? response.getContent() : response.getError(), 200));
 
-                if (response.success()) {
+                if (response.isSuccess()) {
                     StepResult stepResult = StepResult.success(
                             step.getStepId(), step.getAgentId(), result, duration);
                     stepResult.setRetryCount(retryCount);
@@ -239,7 +240,7 @@ public class PipelineEngine {
                     return stepResult;
                 } else {
                     // Agent 返回了失败结果，作为异常处理以触发重试
-                    throw new RuntimeException("Agent returned failure: " + response.error());
+                    throw new RuntimeException("Agent returned failure: " + response.getError());
                 }
 
             } catch (Exception e) {
