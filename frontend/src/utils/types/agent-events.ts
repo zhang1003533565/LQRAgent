@@ -5,6 +5,9 @@ export type WsInboundType =
   | 'agent_step'
   | 'artifact'
   | 'profile_patch'
+  | 'pipeline_start'
+  | 'pipeline_complete'
+  | 'pipeline_error'
   | 'done'
   | 'error'
 
@@ -86,4 +89,12 @@ export interface WsRawMessage {
   detail?: string
   kind?: string
   payload?: unknown
+  stepId?: string
+  stepCount?: number
+  pipelineName?: string
+  taskId?: string
+  success?: boolean
+  durationMs?: number
+  steps?: { stepId: string; agentId: string; action: string }[]
+  error?: string
 }

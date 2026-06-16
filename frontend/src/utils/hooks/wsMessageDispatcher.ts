@@ -4,6 +4,7 @@ import { useArtifactStore } from '@/utils/store/artifactStore'
 import { usePathStore } from '@/utils/store/pathStore'
 import { useProfileStore } from '@/utils/store/profileStore'
 import { chatApi } from '@/api/student/chat'
+import { STEP_LABELS, AGENT_LABELS } from '@/utils/constants/agent-labels'
 import type { AgentId, AgentStepStatus, WsRawMessage } from '@/utils/types/agent-events'
 import type { ArtifactKind, MediaImagePayload, RagSource } from '@/utils/types/artifact'
 import type { LearningPathArtifactPayload } from '@/utils/types/artifact'
@@ -131,7 +132,35 @@ export function dispatchWsMessage(data: WsRawMessage) {
           status: data.status as AgentStepStatus,
           detail: data.detail,
         })
+      } else if (data.stepId && data.agentId) {
+        // 来自 OrchestratorCore 的 Pipeline 步骤回调
+        const stepLabel = STEP_LABELS[data.stepId] || AGENT_LABELS[data.agentId as AgentId] || data.stepId
+        upsertStep({
+          id: `pipeline-${data.stepId}`,
+          agent: data.agentId as AgentId,
+          label: stepLabel,
+          status: data.success === true ? 'done' : data.success === false ? 'failed' : 'running',
+          detail: data.taskId,
+        })
       }
+      break
+    case 'pipeline_start':
+      if (data.steps && Array.isArray(data.steps)) {
+        for (const s of data.steps) {
+          const stepLabel = STEP_LABELS[s.stepId] || AGENT_LABELS[s.agentId as AgentId] || s.stepId
+          upsertStep({
+            id: `pipeline-${s.stepId}`,
+            agent: s.agentId as AgentId,
+            label: stepLabel,
+            status: 'pending' as AgentStepStatus,
+            detail: data.taskId,
+          })
+        }
+      }
+      break
+    case 'pipeline_complete':
+      break
+    case 'pipeline_error':
       break
     case 'artifact':
       if (data.kind) {

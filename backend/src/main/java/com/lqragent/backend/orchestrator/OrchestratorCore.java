@@ -31,6 +31,7 @@ import com.lqragent.backend.orchestrator.pipeline.PipelineEngine;
 import com.lqragent.backend.orchestrator.pipeline.PipelineResult;
 import com.lqragent.backend.orchestrator.pipeline.PipelineTemplates;
 import com.lqragent.backend.orchestrator.pipeline.StepResult;
+import com.lqragent.backend.orchestrator.pipeline.service.PipelineTaskService;
 import com.lqragent.backend.orchestrator.planning.PlanIntent;
 import com.lqragent.backend.orchestrator.planning.PlanResult;
 import com.lqragent.backend.orchestrator.planning.PlanningAgent;
@@ -56,6 +57,7 @@ public class OrchestratorCore {
     private final PipelineEngine pipelineEngine;
     private final CapabilityRegistry capabilityRegistry;
     private final LearningPathService learningPathService;
+    private final PipelineTaskService pipelineTaskService;
     private final ObjectMapper mapper = new ObjectMapper();
 
     // 任务状态跟踪（用于 learn 流程的 WebSocket 推送）
@@ -65,7 +67,8 @@ public class OrchestratorCore {
                            LlmClient llmClient, AgentMemory agentMemory,
                            PlanningAgent planningAgent, PipelineEngine pipelineEngine,
                            CapabilityRegistry capabilityRegistry,
-                           LearningPathService learningPathService) {
+                           LearningPathService learningPathService,
+                           PipelineTaskService pipelineTaskService) {
         this.streams = streams;
         this.runLogService = runLogService;
         this.llmClient = llmClient;
@@ -74,6 +77,7 @@ public class OrchestratorCore {
         this.pipelineEngine = pipelineEngine;
         this.capabilityRegistry = capabilityRegistry;
         this.learningPathService = learningPathService;
+        this.pipelineTaskService = pipelineTaskService;
     }
 
     @PostConstruct
@@ -375,11 +379,19 @@ public class OrchestratorCore {
 
         log.info("[Orchestrator] pipeline execute: {}, steps={}", config.getName(), config.getSteps().size());
 
+        // 持久化任务记录
+        final Long uid = parseUserId(userId);
+        if (uid != null) {
+            pipelineTaskService.createTask(taskId, uid, config.getPipelineId(),
+                    config.getName(), message, config.getSteps().size());
+        }
+
         // 推送进度：准备开始
         eventCallback.accept(Map.of(
                 "type", "pipeline_start",
                 "pipelineName", config.getName(),
                 "stepCount", config.getSteps().size(),
+                "taskId", taskId,
                 "steps", config.getSteps().stream()
                         .map(s -> Map.of("stepId", s.getStepId(), "agentId", s.getAgentId(), "action", s.getAction()))
                         .toList()
@@ -390,9 +402,27 @@ public class OrchestratorCore {
         // 在后台线程执行 Pipeline，不阻塞 WebSocket 线程
         Thread executor = new Thread(() -> {
             try {
-                PipelineResult result = pipelineEngine.execute(config, context);
+                // 使用带回调的 execute，每步完成时更新 DB + 推送事件
+                PipelineResult result = pipelineEngine.execute(config, context, (stepId, agentId, success, data) -> {
+                    // 1. 持久化步骤结果
+                    if (uid != null) {
+                        pipelineTaskService.updateCurrentStep(taskId, stepId, stepId);
+                        pipelineTaskService.recordStepResult(taskId, stepId, agentId, success, data, 0);
+                    }
+                    // 2. 推送 WebSocket 进度事件
+                    eventCallback.accept(Map.of(
+                            "type", "agent_step",
+                            "stepId", stepId,
+                            "agentId", agentId,
+                            "success", success,
+                            "taskId", taskId
+                    ));
+                });
 
                 if (result.isSuccess()) {
+                    if (uid != null) {
+                        pipelineTaskService.markCompleted(taskId);
+                    }
                     String aggregated = aggregateResults(config, result);
                     eventCallback.accept(Map.of(
                             "type", "pipeline_complete",
@@ -402,6 +432,9 @@ public class OrchestratorCore {
                             "durationMs", result.getTotalDurationMs()
                     ));
                 } else {
+                    if (uid != null) {
+                        pipelineTaskService.markFailed(taskId, result.getErrorMessage());
+                    }
                     eventCallback.accept(Map.of(
                             "type", "pipeline_error",
                             "error", result.getErrorMessage()
@@ -409,6 +442,9 @@ public class OrchestratorCore {
                 }
             } catch (Exception e) {
                 log.error("[Orchestrator] pipeline execution failed: {}", e.getMessage(), e);
+                if (uid != null) {
+                    pipelineTaskService.markFailed(taskId, e.getMessage());
+                }
                 eventCallback.accept(Map.of(
                         "type", "pipeline_error",
                         "error", e.getMessage()
@@ -626,6 +662,11 @@ public class OrchestratorCore {
         } catch (Exception e) {
             log.error("[Orchestrator] send to frontend failed: {}", e.getMessage());
         }
+    }
+
+    private static Long parseUserId(String userId) {
+        if (userId == null || userId.isBlank()) return null;
+        try { return Long.parseLong(userId); } catch (NumberFormatException e) { return null; }
     }
 
     /**

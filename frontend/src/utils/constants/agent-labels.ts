@@ -1,5 +1,21 @@
 import type { AgentId } from '@/utils/types/agent-events'
 
+/** Pipeline 步骤 ID → 中文展示名 */
+export const STEP_LABELS: Record<string, string> = {
+  profile: '获取画像',
+  path_gen: '生成路径',
+  resources: '生成资源',
+  effect: '效果评估',
+  quality: '质量检查',
+  resource: '资源生成',
+  diagram: '图表生成',
+  media_gen: '媒体生成',
+  assessment: '评估批改',
+  summary: '总结生成',
+  recommendation: '推荐',
+  intervention: '学习干预',
+}
+
 export const AGENT_LABELS: Record<AgentId, string> = {
   // 调度
   orchestrator: '协调调度',
