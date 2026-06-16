@@ -94,7 +94,6 @@ public class ChatRouteDispatcher {
                 .put("label", "正在分析...")
                 .put("status", "running")
                 .toString());
-        sender.sendEvent(session, "chunk", "正在处理，请稍候...");
 
         CompletableFuture.runAsync(() -> {
             try {
@@ -131,7 +130,12 @@ public class ChatRouteDispatcher {
         return (stepId, agentId, success, stepData) -> {
             try {
                 if (!success) {
-                    log.debug("[WS] step {} ({}) failed, skipped in UI", stepId, agentId);
+                    log.debug("[WS] step {} ({}) failed", stepId, agentId);
+                    sender.sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
+                            .put("agent", agentId)
+                            .put("label", "执行失败")
+                            .put("status", "failed")
+                            .toString());
                     return;
                 }
                 sender.sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
@@ -144,7 +148,14 @@ public class ChatRouteDispatcher {
                     sendStepArtifacts(wsSession, agentId, stepData, userId, sender);
                 }
 
-                if (success && stepData != null && !agentId.contains("profile")) {
+                // 只把最终产出步骤的内容发给用户，中间分析步骤（画像/内容分析等）不发
+                if (success && stepData != null
+                        && !agentId.contains("profile")
+                        && !agentId.contains("content_analysis")
+                        && !agentId.contains("quality")
+                        && !agentId.contains("knowledge_state")
+                        && !agentId.contains("difficulty")
+                        && !agentId.contains("learning_style")) {
                     String stepContent = extractStepContent(agentId, stepData);
                     if (stepContent != null && !stepContent.isBlank()) {
                         sender.sendEvent(wsSession, "chunk", stepContent);
@@ -219,6 +230,8 @@ public class ChatRouteDispatcher {
 
     private void handlePipelineSuccess(WebSocketSession session, PipelineResult pipelineResult,
                                        Long userId, String sessionId, String agent, WsSender sender) {
+        // 步骤回调已逐步发送了 chunk + agent_step + artifact，这里只发 done 结束消息
+        // 拼合所有步骤内容仅用于记忆存储，不再重复发给前端
         StringBuilder allContent = new StringBuilder();
         List<StepResult> stepResults = pipelineResult.getStepResults();
         if (stepResults != null) {
@@ -234,6 +247,11 @@ public class ChatRouteDispatcher {
         }
         String finalContent = allContent.isEmpty() ? "任务执行完成。" : allContent.toString();
 
+        sender.sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                .put("agent", "orchestrator")
+                .put("label", "全部完成")
+                .put("status", "done")
+                .toString());
         sender.sendEvent(session, "done", objectMapper.createObjectNode()
                 .put("session_id", sessionId)
                 .toString());
@@ -533,16 +551,71 @@ public class ChatRouteDispatcher {
         boolean pipelineSucceeded = false;
         List<Map<String, Object>> ragSources = List.of();
 
-        // 优先 PipelineEngine
+        // 优先 PipelineEngine（带步骤回调，逐步推送内容）
         try {
             PipelineConfig qaConfig = PipelineTemplates.questionAnswer();
             TaskContext context = new TaskContext("qa-" + System.currentTimeMillis(),
                     String.valueOf(userId), sessionId, content);
-            PipelineResult pipelineResult = pipelineEngine.execute(qaConfig, context);
+
+            // 使用带回调的执行，每步完成即时推送 chunk + agent_step
+            StringBuilder streamedContent = new StringBuilder();
+            PipelineResult pipelineResult = pipelineEngine.execute(qaConfig, context, (stepId, agentId, success, stepData) -> {
+                try {
+                    if (!success) {
+                        sender.sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                                .put("agent", agentId)
+                                .put("label", "执行失败")
+                                .put("status", "failed")
+                                .toString());
+                        return;
+                    }
+                    sender.sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                            .put("agent", agentId)
+                            .put("label", "已完成")
+                            .put("status", "done")
+                            .toString());
+
+                    if (stepData != null) {
+                        Object ragObj = stepData.get("ragSources");
+                        if (ragObj instanceof java.util.List<?> list && !list.isEmpty()) {
+                            try {
+                                var sourcesArray = objectMapper.valueToTree(list);
+                                sender.sendEvent(session, "artifact", objectMapper.createObjectNode()
+                                        .put("kind", "rag_sources")
+                                        .set("payload", sourcesArray)
+                                        .toString());
+                            } catch (Exception e) {
+                                log.warn("[WS] QA step: failed to send rag_sources: {}", e.getMessage());
+                            }
+                        }
+
+                        // 只把最终产出步骤的内容发给用户，中间分析步骤不发
+                        if (!agentId.contains("profile")
+                                && !agentId.contains("content_analysis")
+                                && !agentId.contains("quality")
+                                && !agentId.contains("knowledge_state")
+                                && !agentId.contains("difficulty")
+                                && !agentId.contains("learning_style")) {
+                            String stepContent = extractStepContent(agentId, stepData);
+                            if (stepContent != null && !stepContent.isBlank()) {
+                                sender.sendEvent(session, "chunk", stepContent);
+                                synchronized (streamedContent) {
+                                    if (streamedContent.length() > 0) streamedContent.append("\n\n");
+                                    streamedContent.append(stepContent);
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    log.error("[WS] QA step callback error: {}", e.getMessage(), e);
+                }
+            });
 
             if (pipelineResult.isSuccess()) {
-                qaResponse = orchestratorCore.aggregateResults(qaConfig, pipelineResult);
                 pipelineSucceeded = true;
+                synchronized (streamedContent) {
+                    qaResponse = streamedContent.isEmpty() ? null : streamedContent.toString();
+                }
                 ragSources = extractRagSourcesFromPipeline(pipelineResult);
             } else {
                 log.warn("[WS] QA pipeline failed: {}, falling back", pipelineResult.getErrorMessage());
@@ -593,7 +666,12 @@ public class ChatRouteDispatcher {
                     .put("label", "回答完成")
                     .put("status", "done")
                     .toString());
-            sender.sendEvent(session, "chunk", qaResponse);
+
+            // Pipeline 成功时已在回调中逐步发了 chunk，不需要重复发
+            // 只有 QaAgent 回退时才需要在这里一次性发
+            if (!pipelineSucceeded) {
+                sender.sendEvent(session, "chunk", qaResponse);
+            }
 
             // RAG 引用来源
             if (!ragSources.isEmpty()) {

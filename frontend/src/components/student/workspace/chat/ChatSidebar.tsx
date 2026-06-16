@@ -85,7 +85,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       await chatApi.deleteSession(sessionId)
       setSessions((prev) => prev.filter((s) => s.id !== sessionId))
       // 如果删除的是当前会话，触发新建
-      if (sessionId === currentSessionId) {
+      if (String(sessionId) === String(currentSessionId)) {
         onNewSession()
       }
     } catch (error) {

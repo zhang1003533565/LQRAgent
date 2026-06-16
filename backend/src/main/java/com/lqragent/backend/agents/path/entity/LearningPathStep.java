@@ -33,6 +33,14 @@ public class LearningPathStep {
     @Comment("步骤顺序号")
     private Integer stepOrder;
 
+    @Column(name = "title", length = 128)
+    @Comment("步骤标题（动态生成路径时保存）")
+    private String title;
+
+    @Column(name = "description", length = 512)
+    @Comment("步骤描述（动态生成路径时保存）")
+    private String description;
+
     @Column(nullable = false)
     @Comment("是否完成：1是 0否")
     @Builder.Default

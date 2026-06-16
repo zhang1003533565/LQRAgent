@@ -80,7 +80,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   clearMessages: () => set({ messages: [] }),
 
   loadMessages: async (sessionId: string) => {
-    set({ loadingMessages: true, sessionId, messages: [] })
+    set({ loadingMessages: true, sessionId: String(sessionId), messages: [] })
     try {
       const messages = await chatApi.getMessages(sessionId, 50)
       const reversed = [...messages].reverse()

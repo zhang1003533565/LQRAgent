@@ -90,6 +90,7 @@ export interface WsRawMessage {
   kind?: string
   payload?: unknown
   stepId?: string
+  agentId?: string
   stepCount?: number
   pipelineName?: string
   taskId?: string

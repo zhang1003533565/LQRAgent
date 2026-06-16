@@ -18,6 +18,7 @@ export default function WorkspaceSidebar() {
   const setSessionId = useChatStore((s) => s.setSessionId)
   const clearMessages = useChatStore((s) => s.clearMessages)
   const loadMessages = useChatStore((s) => s.loadMessages)
+  const setAutoLoaded = useChatStore((s) => s.setAutoLoaded)
 
   const loadSessions = useCallback(async () => {
     if (!user?.userId) return
@@ -47,6 +48,7 @@ export default function WorkspaceSidebar() {
   const handleNewChat = () => {
     setSessionId(null)
     clearMessages()
+    setAutoLoaded(true)
     navigate('/workspace')
   }
 
@@ -62,9 +64,10 @@ export default function WorkspaceSidebar() {
     try {
       await chatApi.deleteSession(id)
       setSessions((prev) => prev.filter((s) => s.id !== id))
-      if (currentSessionId === id) {
+      if (String(currentSessionId) === String(id)) {
         setSessionId(null)
         clearMessages()
+        setAutoLoaded(true)
       }
     } catch {}
   }

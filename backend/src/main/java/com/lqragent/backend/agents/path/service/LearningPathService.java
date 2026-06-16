@@ -170,12 +170,22 @@ public class LearningPathService {
                     List<LearningPathStep> steps = stepRepo.findByPathIdOrderByStepOrder(path.getId());
                     List<LearningPathDto.PathNode> nodes = steps.stream()
                             .map(s -> {
-                                String title = kgService.getByKpId(s.getKpId())
-                                        .map(KnowledgePoint::getTitle)
-                                        .orElse(s.getKpId());
+                                // 优先用步骤保存的 title（动态生成路径时有值）
+                                // 其次查知识图谱（真实知识点）
+                                // 最后 fallback 到 kpId
+                                String title = s.getTitle();
+                                if (title == null || title.isBlank()) {
+                                    title = kgService.getByKpId(s.getKpId())
+                                            .map(KnowledgePoint::getTitle)
+                                            .orElse(null);
+                                }
+                                if (title == null || title.isBlank()) {
+                                    title = "学习阶段 " + (s.getStepOrder() + 1);
+                                }
                                 return LearningPathDto.PathNode.builder()
                                         .kpId(s.getKpId())
                                         .title(title)
+                                        .description(s.getDescription())
                                         .order(s.getStepOrder())
                                         .completed(s.getCompleted())
                                         .status(s.getStatus())
@@ -697,6 +707,8 @@ private List<String> resolveAllKpIds(String goal) {
                             .pathId(pathId)
                             .kpId(node.getKpId())
                             .stepOrder(node.getOrder())
+                            .title(node.getTitle())
+                            .description(node.getDescription())
                             .completed(false)
                             .status("PENDING")
                             .build());

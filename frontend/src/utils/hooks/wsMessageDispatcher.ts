@@ -115,11 +115,11 @@ export function dispatchWsMessage(data: WsRawMessage) {
   const upsertStep = useAgentTraceStore.getState().upsertStep
   const patchSummary = useProfileStore.getState().patchSummary
 
-  if (data.session_id) setSessionId(data.session_id)
+  if (data.session_id) setSessionId(String(data.session_id))
 
   switch (data.type) {
     case 'session_created':
-      if (data.session_id) setSessionId(data.session_id)
+      if (data.session_id) setSessionId(String(data.session_id))
       break
     case 'chunk':
       appendToLastMessage(data.content ?? '')

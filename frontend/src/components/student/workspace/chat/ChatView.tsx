@@ -33,7 +33,7 @@ export default function ChatView() {
       try {
         const sessions = await chatApi.getSessions(userId)
         if (sessions.length > 0) {
-          await loadMessages(sessions[0].id)
+          await loadMessages(String(sessions[0].id))
         }
       } catch (err) {
         console.error('Failed to auto-load recent session:', err)
