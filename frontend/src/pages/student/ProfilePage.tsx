@@ -1,209 +1,229 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import ReactECharts from 'echarts-for-react'
 import { getProfileDetail, patchProfile } from '@/api/student/profile'
-import { getCurrentPath } from '@/api/student/learningPath'
 import type { ProfileDetail } from '@/utils/types/profile'
-import type { LearningPathDto } from '@/utils/types/learning-path'
-import styles from './ProfilePage.module.css'
+import {
+  RefreshCw,
+  Download,
+  User,
+  Lightbulb,
+  AlertTriangle,
+  ArrowRight,
+  MoreHorizontal,
+  Target,
+  Brain,
+  Zap,
+  BookOpen,
+  Clock,
+  BarChart3,
+} from 'lucide-react'
 
-const LEVEL_LABEL: Record<string, string> = {
-  BEGINNER: '初学者',
-  INTERMEDIATE: '进阶者',
-  ADVANCED: '高级',
+/* ===== 数据清洗 ===== */
+
+/** 将 kp_xxx 技术 ID 转译为中文名称 */
+function sanitizeKpTitle(raw: string): string {
+  // 已知映射表
+  const KNOWN_MAP: Record<string, string> = {
+    kp_python_function: 'Python 函数定义与调用',
+    kp_python_closure: '闭包机制与作用域',
+    kp_python_decorator: 'Python 装饰器',
+    kp_python_variable: 'Python 变量与数据类型',
+    kp_python_control_flow: 'Python 控制流',
+    kp_python_class: 'Python 类与面向对象',
+    kp_python_module: 'Python 模块与包管理',
+    kp_python_exception: 'Python 异常处理',
+    kp_python_file_io: 'Python 文件读写',
+    kp_python_list: 'Python 列表与元组',
+    kp_python_dict: 'Python 字典与集合',
+    kp_python_generator: 'Python 生成器与迭代器',
+    kp_python_lambda: 'Python Lambda 表达式',
+    kp_python_regex: 'Python 正则表达式',
+    kp_python_threading: 'Python 多线程与并发',
+    kp_python_async: 'Python 异步编程',
+    kp_math_linear_algebra: '线性代数基础',
+    kp_math_probability: '概率论基础',
+    kp_math_statistics: '统计学基础',
+    kp_ml_supervised: '监督学习',
+    kp_ml_unsupervised: '无监督学习',
+    kp_ml_neural_network: '神经网络基础',
+    kp_ml_deep_learning: '深度学习入门',
+    kp_data_pandas: 'Pandas 数据分析',
+    kp_data_numpy: 'NumPy 数值计算',
+    kp_data_matplotlib: 'Matplotlib 数据可视化',
+    kp_data_sklearn: 'Scikit-learn 机器学习',
+    kp_placeholder_1: '示例知识点',
+  }
+
+  if (KNOWN_MAP[raw]) return KNOWN_MAP[raw]
+
+  // 通用清洗：去前缀、下划线转空格、首字母大写
+  return raw
+    .replace(/^kp_/, '')
+    .replace(/dynamic_\d+/g, '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .trim()
 }
 
-const PACE_LABEL: Record<string, string> = {
-  SLOW: '慢节奏',
-  NORMAL: '正常',
-  FAST: '快节奏',
+/* ===== 维度评分计算 ===== */
+
+interface DimensionScores {
+  knowledge: number
+  application: number
+  efficiency: number
+  thinking: number
+  habit: number
+  attitude: number
 }
 
-const STYLE_LABEL: Record<string, string> = {
-  visual: '视觉型',
-  reading: '阅读型',
-  practice: '实践型',
-}
-
-function computeDimensionScores(profile: ProfileDetail) {
+function computeScores(profile: ProfileDetail): DimensionScores {
   const km = profile.knowledgeMap ?? []
-  const mastered = km.filter((k) => k.status === 'MASTERED').length
   const total = km.length || 1
-  const masteryPct = Math.round((mastered / total) * 100)
+  const mastered = km.filter((k) => k.status === 'MASTERED').length
+  const avgMastery =
+    km.length > 0
+      ? Math.round(km.reduce((s, k) => s + (k.mastery ?? 0), 0) / km.length)
+      : 0
 
-  const avgMastery = km.length > 0
-    ? Math.round(km.reduce((s, k) => s + (k.mastery ?? 0), 0) / km.length)
-    : 0
-
-  const knowledge = Math.max(10, avgMastery)
-  const application = Math.max(10, Math.min(100, avgMastery + 5))
-  const efficiency = profile.learningPace === 'FAST' ? 85 : profile.learningPace === 'SLOW' ? 55 : 70
-  const thinking = Math.max(10, Math.min(100, masteryPct + 10))
-  const habit = profile.cognitiveStyle ? 70 : 45
-  const attitude = profile.streakDays ? Math.min(100, 50 + (profile.streakDays ?? 0) * 3) : 50
-
-  return { knowledge, application, efficiency, thinking, habit, attitude }
+  return {
+    knowledge: Math.max(10, avgMastery),
+    application: Math.max(10, Math.min(100, avgMastery + 5)),
+    efficiency: profile.learningPace === 'FAST' ? 85 : profile.learningPace === 'SLOW' ? 55 : 70,
+    thinking: Math.max(10, Math.min(100, Math.round((mastered / total) * 100) + 10)),
+    habit: profile.cognitiveStyle ? 70 : 45,
+    attitude: profile.streakDays ? Math.min(100, 50 + (profile.streakDays ?? 0) * 3) : 50,
+  }
 }
 
+/* ===== 洞察生成 ===== */
 
-function extractWeakTopicNames(weakTopics: any): string[] {
-  if (!weakTopics) return []
-  // 如果整体就是 JSON 字符串 → 解析
-  let arr: any[] = []
-  if (typeof weakTopics === 'string') {
-    try { arr = JSON.parse(weakTopics) } catch { return [weakTopics] }
-  } else if (Array.isArray(weakTopics)) {
-    arr = weakTopics
-  } else {
-    return []
-  }
-  if (!Array.isArray(arr)) return []
-  const result: string[] = []
-  for (const t of arr) {
-    if (typeof t === 'string') {
-      // 字符串元素可能是 JSON（如整串被兜底包进数组），尝试解析
-      try {
-        const parsed = JSON.parse(t)
-        if (Array.isArray(parsed)) {
-          for (const p of parsed) {
-            result.push(typeof p === 'string' ? p : p?.kpId ?? p?.kpld ?? p?.name ?? p?.title ?? String(p))
-          }
-        } else if (typeof parsed === 'object' && parsed !== null) {
-          result.push(parsed?.kpId ?? parsed?.kpld ?? parsed?.name ?? parsed?.title ?? String(parsed))
-        } else {
-          result.push(t)
-        }
-      } catch {
-        result.push(t)
-      }
-    } else if (typeof t === 'object' && t !== null) {
-      result.push(t?.kpId ?? t?.kpld ?? t?.name ?? t?.title ?? String(t))
-    }
-  }
-  return result.filter(Boolean)
+interface Insights {
+  strengths: string[]
+  weaknesses: string[]
+  nextSteps: string[]
 }
 
-function generateInsights(profile: ProfileDetail, scores: ReturnType<typeof computeDimensionScores>) {
+function generateInsights(profile: ProfileDetail, scores: DimensionScores): Insights {
   const strengths: string[] = []
   const weaknesses: string[] = []
-  const suggestions: string[] = []
   const nextSteps: string[] = []
 
-  if (scores.knowledge >= 70) strengths.push('知识掌握扎实，基础概念理解较好')
+  if (scores.knowledge >= 70) strengths.push('知识掌握扎实，基础概念理解透彻')
   if (scores.attitude >= 70) strengths.push('学习态度积极，持续性强')
   if (scores.application >= 70) strengths.push('应用能力良好，能将知识用于实践')
+  if (scores.efficiency >= 70) strengths.push('学习效率高，时间利用率优秀')
+  if (strengths.length === 0) strengths.push('各维度均有提升空间，持续学习是关键')
 
-  if (scores.knowledge < 50) weaknesses.push('知识掌握不足，需要加强基础学习')
-  if (scores.efficiency < 60) weaknesses.push('学习效率有提升空间')
-  if (scores.habit < 55) weaknesses.push('学习习惯需要优化')
-  const weakNames = extractWeakTopicNames(profile.weakTopics ?? [])
-  if (weakNames.length > 0) {
-    weaknesses.push(`薄弱知识点：${weakNames.slice(0, 3).join('、')}`)
+  if (scores.knowledge < 50) weaknesses.push('知识掌握不足，需加强基础概念学习')
+  if (scores.efficiency < 60) weaknesses.push('学习效率偏低，建议优化学习方法')
+  if (scores.habit < 55) weaknesses.push('学习习惯尚未形成，建议制定固定学习计划')
+  if (scores.thinking < 50) weaknesses.push('思维能力有待提升，建议多做综合练习')
+
+  // 从 knowledgeMap 提取薄弱点
+  const weakKps = (profile.knowledgeMap ?? [])
+    .filter((k) => (k.mastery ?? 0) < 40)
+    .map((k) => sanitizeKpTitle(k.kpId || k.title))
+    .slice(0, 4)
+  if (weakKps.length > 0) {
+    weaknesses.push(`薄弱知识点：${weakKps.join('、')}`)
   }
 
-  if (scores.efficiency < 70) suggestions.push('建议制定固定学习计划，提升学习效率')
-  if (scores.habit < 60) suggestions.push('建议采用番茄学习法，培养良好学习习惯')
-  if (weakNames.length > 0) suggestions.push('建议优先复习薄弱知识点')
+  if (weakKps.length > 0) {
+    nextSteps.push(`针对「${weakKps[0]}」进行专项突破练习`)
+  }
+  if (scores.efficiency < 70) {
+    nextSteps.push('采用番茄工作法，每天固定 2 个 25 分钟学习块')
+  }
+  if (scores.habit < 60) {
+    nextSteps.push('建立每日学习打卡习惯，连续 7 天可形成初步惯性')
+  }
+  nextSteps.push('完成当前学习路径的下一个阶段节点')
 
-  if (profile.learningGoal) nextSteps.push(`继续推进学习目标：${profile.learningGoal}`)
-  if (weakNames.length > 0) nextSteps.push(`针对薄弱点 "${weakNames[0]}" 进行专项练习`)
-  nextSteps.push('完成当前学习路径的下一个节点')
-
-  return { strengths, weaknesses, suggestions, nextSteps }
+  return { strengths, weaknesses, nextSteps }
 }
 
-/* ==================== 知识点掌握列表 ==================== */
-const STATUS_CONFIG: Record<string, { label: string; color: string; barColor: string }> = {
-  MASTERED:  { label: '已掌握', color: '#26b56e',  barColor: '#26b56e' },
-  PENDING:   { label: '学习中', color: '#2f78ff',  barColor: '#2f78ff' },
-}
+/* ===== 维度定义 ===== */
 
-function KnowledgeMasteryList({ knowledgeMap }: { knowledgeMap: { kpId: string; title: string; mastery: number; status?: string }[] }) {
-  const [animated, setAnimated] = useState(false)
+const DIMENSION_DEFS = [
+  { key: 'knowledge', label: '知识掌握', icon: BookOpen, color: '#3b82f6', bg: '#eff6ff' },
+  { key: 'application', label: '应用能力', icon: Zap, color: '#8b5cf6', bg: '#f5f3ff' },
+  { key: 'efficiency', label: '学习效率', icon: Clock, color: '#10b981', bg: '#ecfdf5' },
+  { key: 'thinking', label: '思维能力', icon: Brain, color: '#f59e0b', bg: '#fffbeb' },
+  { key: 'habit', label: '学习习惯', icon: Target, color: '#ef4444', bg: '#fef2f2' },
+  { key: 'attitude', label: '学习态度', icon: BarChart3, color: '#06b6d4', bg: '#ecfeff' },
+] as const
 
-  useEffect(() => {
-    // 首帧后触发动画
-    const raf = requestAnimationFrame(() => requestAnimationFrame(() => setAnimated(true)))
-    return () => cancelAnimationFrame(raf)
-  }, [])
+/* ===== 子组件 ===== */
 
-  if (knowledgeMap.length === 0) return <p className={styles.kpEmpty}>暂无知识点数据</p>
-
-  const mastered = knowledgeMap.filter((k) => k.status === 'MASTERED').length
-  const learning = knowledgeMap.filter((k) => k.status !== 'MASTERED').length
+function KnowledgeProgressBar({
+  title,
+  mastery,
+  animated,
+  delay,
+}: {
+  title: string
+  mastery: number
+  animated: boolean
+  delay: number
+}) {
+  const isMastered = mastery >= 80
+  const color = isMastered ? '#22c55e' : mastery >= 40 ? '#3b82f6' : '#ef4444'
 
   return (
-    <div className={styles.kpSection}>
-      {/* 统计头部 */}
-      <div className={styles.kpStats}>
-        <span className={styles.kpStatItem}>
-          <span className={styles.kpStatLabel}>已掌握</span>
-          <strong className={`${styles.kpStatNum} ${styles.toneGreen}`}>{mastered}</strong>
-        </span>
-        <span className={styles.kpStatItem}>
-          <span className={styles.kpStatLabel}>学习中</span>
-          <strong className={`${styles.kpStatNum} ${styles.toneBlue}`}>{learning}</strong>
+    <div className="flex items-center gap-3 py-2">
+      <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-slate-700">
+        {title}
+      </span>
+      <div className="flex w-[120px] items-center gap-2">
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
+          <div
+            className="h-full rounded-full transition-all duration-700 ease-out"
+            style={{
+              width: animated ? `${mastery}%` : '0%',
+              background: `linear-gradient(90deg, ${color}dd, ${color})`,
+              transitionDelay: `${delay}ms`,
+            }}
+          />
+        </div>
+        <span className="w-9 text-right text-[11px] font-semibold text-slate-500">
+          {mastery}%
         </span>
       </div>
-
-      {/* 表头 */}
-      <div className={styles.kpTableHead}>
-        <span className={styles.kpColName}>知识点</span>
-        <span className={styles.kpColMastery}>掌握度</span>
-        <span className={styles.kpColStatus}>状态</span>
-      </div>
-
-      {/* 列表 */}
-      {knowledgeMap.map((kp) => {
-        const mastery = kp.mastery ?? 0
-        const isMastered = kp.status === 'MASTERED'
-        const cfg = STATUS_CONFIG[kp.status ?? ''] ?? STATUS_CONFIG.PENDING
-        return (
-          <div key={kp.kpId} className={styles.kpRow}>
-            <span className={styles.kpColName}>
-              <span className={`${styles.kpDot} ${isMastered ? styles.kpDotSolid : styles.kpDotHollow}`} style={{ background: isMastered ? cfg.color : 'transparent', borderColor: cfg.color }} />
-              {kp.title}
-            </span>
-            <span className={styles.kpColMastery}>
-              <span className={styles.kpPct}>{mastery}%</span>
-              <div className={styles.kpTrack}>
-                <span
-                  className={`${styles.kpFill} ${animated ? styles.kpAnimated : ''}`}
-                  style={{ width: animated ? `${mastery}%` : '0%', background: cfg.barColor, transitionDelay: `${knowledgeMap.indexOf(kp) * 80}ms` }}
-                />
-              </div>
-            </span>
-            <span className={styles.kpColStatus} style={{ color: cfg.color }}>{cfg.label}</span>
-          </div>
-        )
-      })}
     </div>
   )
 }
 
+/* ===== 主组件 ===== */
+
 export default function ProfilePage() {
-  const navigate = useNavigate()
   const [profile, setProfile] = useState<ProfileDetail | null>(null)
-  const [currentPath, setCurrentPath] = useState<LearningPathDto | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [animated, setAnimated] = useState(false)
 
   const fetchData = useCallback(async () => {
     try {
-      const [detail, path] = await Promise.all([
-        getProfileDetail(),
-        getCurrentPath(),
-      ])
+      const detail = await getProfileDetail()
       setProfile(detail)
-      setCurrentPath(path)
-    } catch (e) {
-      console.error('Failed to fetch profile', e)
+    } catch {
+      // ignore
     } finally {
       setLoading(false)
     }
   }, [])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
+
+  useEffect(() => {
+    if (!loading && profile) {
+      const raf = requestAnimationFrame(() =>
+        requestAnimationFrame(() => setAnimated(true)),
+      )
+      return () => cancelAnimationFrame(raf)
+    }
+  }, [loading, profile])
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -217,29 +237,24 @@ export default function ProfilePage() {
 
   const handleExport = () => {
     if (!profile) return
-    const scores = computeDimensionScores(profile)
+    const scores = computeScores(profile)
+    const insights = generateInsights(profile, scores)
     const lines = [
       '# 学习画像报告',
       '',
-      `## 基本信息`,
-      `- 知识水平：${LEVEL_LABEL[profile.knowledgeLevel ?? ''] ?? profile.knowledgeLevel ?? '未知'}`,
-      `- 学习目标：${profile.learningGoal || '未设置'}`,
-      `- 认知风格：${STYLE_LABEL[profile.cognitiveStyle ?? ''] ?? profile.cognitiveStyle ?? '未知'}`,
-      `- 学习节奏：${PACE_LABEL[profile.learningPace ?? ''] ?? profile.learningPace ?? '未知'}`,
-      '',
       '## 六维度评分',
-      `- 知识掌握：${scores.knowledge}`,
-      `- 应用能力：${scores.application}`,
-      `- 学习效率：${scores.efficiency}`,
-      `- 思维能力：${scores.thinking}`,
-      `- 学习习惯：${scores.habit}`,
-      `- 学习态度：${scores.attitude}`,
+      ...DIMENSION_DEFS.map(
+        (d) => `- ${d.label}：${scores[d.key as keyof DimensionScores]}`,
+      ),
       '',
-      '## 薄弱知识点',
-      ...extractWeakTopicNames(profile.weakTopics ?? []).map((t) => `- ${t}`),
+      '## 优势',
+      ...insights.strengths.map((s) => `- ${s}`),
       '',
-      '## 知识点掌握',
-      ...(profile.knowledgeMap ?? []).map((k) => `- ${k.title}：${k.status ?? '学习中'} (${k.mastery ?? 0}%)`),
+      '## 短板',
+      ...insights.weaknesses.map((w) => `- ${w}`),
+      '',
+      '## 下一步',
+      ...insights.nextSteps.map((n) => `- ${n}`),
     ]
     const blob = new Blob([lines.join('\n')], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
@@ -250,284 +265,240 @@ export default function ProfilePage() {
     URL.revokeObjectURL(url)
   }
 
-  if (loading) return <div className={styles.page}><p>加载中...</p></div>
-  if (!profile) return <div className={styles.page}><p>暂无数据</p></div>
-
-  const scores = computeDimensionScores(profile)
-  const insights = generateInsights(profile, scores)
-  const overallScore = Math.round(
-    scores.knowledge * 0.25 + scores.application * 0.2 + scores.efficiency * 0.15 +
-    scores.thinking * 0.15 + scores.habit * 0.1 + scores.attitude * 0.15
-  )
-
-  const masteredCount = (profile.knowledgeMap ?? []).filter((k) => k.status === 'MASTERED').length
-  const totalKp = (profile.knowledgeMap ?? []).length
-
-  const dimensionDefs = [
-    { label: '知识掌握', value: scores.knowledge, tone: 'blue', icon: '🎓' },
-    { label: '应用能力', value: scores.application, tone: 'violet', icon: '◔' },
-    { label: '学习效率', value: scores.efficiency, tone: 'teal', icon: '◷' },
-    { label: '思维能力', value: scores.thinking, tone: 'green', icon: '⌘' },
-    { label: '学习习惯', value: scores.habit, tone: 'orange', icon: '🗓' },
-    { label: '学习态度', value: scores.attitude, tone: 'amber', icon: '☆' },
-  ]
-
-  const scoreCards = dimensionDefs.map((d) => ({
-    ...d,
-    status: d.value >= 70 ? '上升' : d.value >= 50 ? '稳定' : '待提升',
-  }))
-
-  function toneClass(tone: string) {
-    const map: Record<string, string> = {
-      blue: styles.toneBlue, violet: styles.toneViolet, teal: styles.toneTeal,
-      green: styles.toneGreen, orange: styles.toneOrange, amber: styles.toneAmber,
-    }
-    return map[tone] ?? ''
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center bg-[#f8fafc]">
+        <div className="flex items-center gap-2 text-sm text-slate-400">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-blue-400" />
+          加载中…
+        </div>
+      </div>
+    )
   }
 
-  const pathProgress = currentPath?.nodes
-    ? Math.round(
-        currentPath.nodes.filter((n: any) => n.completed).length /
-        Math.max(1, currentPath.nodes.length) * 100
-      )
-    : 0
+  if (!profile) {
+    return (
+      <div className="flex h-full items-center justify-center bg-[#f8fafc]">
+        <div className="text-center">
+          <User size={32} className="mx-auto mb-2 text-slate-300" />
+          <p className="text-sm text-slate-400">暂无画像数据</p>
+        </div>
+      </div>
+    )
+  }
+
+  const scores = computeScores(profile)
+  const insights = generateInsights(profile, scores)
+  const knowledgeMap = (profile.knowledgeMap ?? []).map((k) => ({
+    ...k,
+    displayTitle: sanitizeKpTitle(k.kpId || k.title),
+  }))
+
+  const dimensionCards = DIMENSION_DEFS.map((d) => ({
+    ...d,
+    value: scores[d.key as keyof DimensionScores],
+  }))
 
   return (
-    <section className={styles.page}>
-      <div className={styles.glow} />
-
-      <header className={styles.topbar}>
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-[#f8fafc]">
+      {/* 页面头部 */}
+      <div className="flex items-center justify-between border-b border-slate-100 bg-white px-6 py-4">
         <div>
-          <h1 className={styles.title}>学习画像</h1>
-          <p className={styles.subtitle}>基于你的学习数据，生成多维度能力画像与动态分析</p>
+          <h1 className="text-lg font-bold text-slate-800">学习画像</h1>
+          <p className="mt-0.5 text-[12px] text-slate-400">
+            基于学习数据生成的多维度能力画像与动态分析
+          </p>
         </div>
-        <div className={styles.topMeta}>
-          {LEVEL_LABEL[profile.knowledgeLevel ?? ''] ?? '学习者'}
-        </div>
-        <div className={styles.topActions}>
-          <button type="button" className={styles.secondaryBtn} onClick={handleRefresh} disabled={refreshing}>
-            <span className={styles.btnIcon}>↻</span>
-            {refreshing ? '刷新中...' : '刷新画像'}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+            {refreshing ? '刷新中…' : '刷新画像'}
           </button>
-          <button type="button" className={styles.secondaryBtn} onClick={handleExport}>
-            <span className={styles.btnIcon}>⇩</span>
+          <button
+            type="button"
+            onClick={handleExport}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
+          >
+            <Download size={12} />
             导出画像
           </button>
         </div>
-      </header>
+      </div>
 
-      <section className={styles.metricsRow}>
-        <article className={`${styles.metricCard} ${styles.scoreCard}`}>
-          <h2 className={styles.metricTitle}>综合评分</h2>
-          <div className={styles.scoreWrap}>
-            <strong className={styles.scoreValue}>{overallScore}</strong>
-            <span className={styles.scoreUnit}>/100</span>
-          </div>
-          <p className={styles.metricTrend}>
-            已掌握 {masteredCount}/{totalKp} 个知识点
-          </p>
-        </article>
-
-        {scoreCards.map((card) => (
-          <article key={card.label} className={styles.metricCard}>
-            <div className={styles.metricHead}>
-              <span className={`${styles.metricIcon} ${toneClass(card.tone)}`}>{card.icon}</span>
-              <h2 className={styles.metricTitle}>{card.label}</h2>
-            </div>
-            <strong className={styles.metricValue}>{card.value}</strong>
-            <p
-              className={
-                card.status === '待提升' ? styles.metricWarn
-                  : card.status === '稳定' ? styles.metricStable
-                    : styles.metricUp
-              }
-            >
-              {card.status === '稳定' ? '→ ' : card.status === '待提升' ? '↓ ' : '↑ '}
-              {card.status}
-            </p>
-          </article>
-        ))}
-      </section>
-
-      <div className={styles.midGrid}>
-        {/* 左栏：雷达图 */}
-        <section className={styles.panel}>
-          <div className={styles.radarHead}>
-            <h2 className={styles.panelTitle}>能力雷达图</h2>
-            <span className={styles.radarInfoIcon}>ⓘ</span>
-          </div>
-          <div className={styles.radarArea}>
-            <div className={styles.radarChartBlock}>
-              <ReactECharts
-                option={{
-                  radar: {
-                    center: ['50%', '52%'],
-                    radius: '68%',
-                    indicator: [
-                      { name: '知识掌握', max: 100 },
-                      { name: '应用能力', max: 100 },
-                      { name: '学习效率', max: 100 },
-                      { name: '思维能力', max: 100 },
-                      { name: '学习习惯', max: 100 },
-                      { name: '学习态度', max: 100 },
-                    ],
-                    axisName: { color: '#637594', fontSize: 13, fontWeight: 700, padding: [4, 6] },
-                    splitArea: { areaStyle: { color: ['#f8fbff', '#eef5ff'] } },
-                    splitLine: { lineStyle: { color: '#d7e4fb' } },
-                    axisLine: { lineStyle: { color: '#d7e4fb' } },
+      <div className="space-y-6 px-6 py-5">
+        {/* ===== 第一层：雷达图 + 知识点掌握（40% + 60%） ===== */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[40%_1fr]">
+          {/* 左侧：能力雷达图 */}
+          <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-sm">
+            <h2 className="mb-1 text-[14px] font-semibold text-slate-700">能力雷达图</h2>
+            <p className="mb-4 text-[12px] text-slate-400">六维能力模型可视化</p>
+            <ReactECharts
+              option={{
+                radar: {
+                  center: ['50%', '52%'],
+                  radius: '65%',
+                  indicator: dimensionCards.map((d) => ({
+                    name: d.label,
+                    max: 100,
+                  })),
+                  axisName: {
+                    color: '#94a3b8',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    padding: [3, 5],
                   },
-                  series: [
-                    {
-                      type: 'radar',
-                      data: [
-                        {
-                          value: [scores.knowledge, scores.application, scores.efficiency, scores.thinking, scores.habit, scores.attitude],
-                          name: '能力画像',
-                          areaStyle: { color: 'rgba(47,120,255,0.18)' },
-                          lineStyle: { color: '#2f78ff', width: 3 },
-                          itemStyle: { color: '#2f78ff' },
-                          symbol: 'circle',
-                          symbolSize: 7,
-                        },
-                      ],
-                    },
-                  ],
-                }}
-                style={{ height: 360 }}
-                opts={{ renderer: 'svg' }}
-              />
-            </div>
-
-            {/* 图例 */}
-            <div className={styles.radarLegend}>
-              <span className={styles.radarLegendLine} />
-              <span className={styles.radarLegendText}>能力画像</span>
-            </div>
-
-            {/* 总结描述 */}
-            <p className={styles.radarDesc}>
-              {(() => {
-                const low = dimensionDefs.filter((d) => d.value < 60).map((d) => d.label)
-                if (low.length > 0)
-                  return `综合来看，该学生在${low.join('、')}方面有提升空间`
-                if (dimensionDefs.some((d) => d.value < 80))
-                  return `整体表现良好，各维度发展较为均衡，继续保持即可`
-                return `各项能力表现优异，建议挑战更高难度的学习内容`
-              })()}
-            </p>
+                  splitArea: {
+                    areaStyle: { color: ['transparent', 'transparent'] },
+                  },
+                  splitLine: {
+                    lineStyle: { color: '#f1f5f9', width: 1 },
+                  },
+                  axisLine: {
+                    lineStyle: { color: '#f1f5f9', width: 1 },
+                  },
+                },
+                series: [
+                  {
+                    type: 'radar',
+                    data: [
+                      {
+                        value: dimensionCards.map((d) => d.value),
+                        name: '能力画像',
+                        areaStyle: { color: 'rgba(59,130,246,0.08)' },
+                        lineStyle: { color: '#3b82f6', width: 2 },
+                        itemStyle: { color: '#3b82f6' },
+                        symbol: 'circle',
+                        symbolSize: 5,
+                      },
+                    ],
+                  },
+                ],
+              }}
+              style={{ height: 300 }}
+              opts={{ renderer: 'svg' }}
+            />
           </div>
-        </section>
 
-        {/* 中栏：画像解读 / 核心洞察 */}
-        <section className={styles.panel}>
-          <h2 className={styles.panelTitle}>画像解读 / 核心洞察</h2>
-
-          {insights.weaknesses.length > 0 && (
-            <div className={`${styles.insightCard} ${styles.toneOrange}`}>
-              <div className={styles.insightCardHead}>
-                <h3>薄弱环节</h3>
+          {/* 右侧：知识点掌握流 */}
+          <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-[14px] font-semibold text-slate-700">知识点掌握流</h2>
+                <p className="text-[12px] text-slate-400">
+                  已掌握 {knowledgeMap.filter((k) => (k.mastery ?? 0) >= 80).length}/
+                  {knowledgeMap.length} 个知识点
+                </p>
               </div>
-              <p className={styles.insightCardBody}>
-                {insights.weaknesses.join('，')}
-              </p>
+              <button
+                type="button"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-slate-300 transition-colors hover:bg-slate-50 hover:text-slate-500"
+              >
+                <MoreHorizontal size={16} />
+              </button>
             </div>
-          )}
 
-          {insights.suggestions.length > 0 && (
-            <div className={`${styles.insightCard} ${styles.toneGreen}`}>
-              <div className={styles.insightCardHead}>
-                <h3>学习建议</h3>
-              </div>
-              <p className={styles.insightCardBody}>
-                {insights.suggestions.join('，')}
-              </p>
-            </div>
-          )}
-
-          {insights.nextSteps.length > 0 && (
-            <div className={`${styles.insightCard} ${styles.toneBlue}`}>
-              <div className={styles.insightCardHead}>
-                <h3>推荐下一步</h3>
-              </div>
-              <p className={styles.insightCardBody}>
-                {insights.nextSteps.join('，')}
-              </p>
-            </div>
-          )}
-
-          {/* 画像完整度 */}
-          {(() => {
-            const completionPct = Math.round(([profile.knowledgeLevel, profile.learningGoal, profile.cognitiveStyle, profile.learningPace, (profile.knowledgeMap ?? []).length > 0].filter(Boolean).length / 5) * 100)
-            return (
-          <div className={styles.completionSection}>
-            <div className={styles.completionHead}>
-              <span className={styles.completionLabel}>画像完整度</span>
-              <strong className={styles.completionValue}>{completionPct}%</strong>
-            </div>
-            <div className={styles.completionTrack}>
-              <span className={styles.completionFill} style={{ width: completionPct + '%' }} />
-            </div>
-            <p className={styles.completionHint}>数据基于你的学习行为自动生成 ⓘ</p>
-          </div>
-            )
-          })()}
-        </section>
-
-        {/* 右栏：知识点掌握 */}
-        <section className={styles.panel}>
-          <h2 className={styles.panelTitle}>知识点掌握</h2>
-          <KnowledgeMasteryList knowledgeMap={profile.knowledgeMap ?? []} />
-        </section>
-      </div>
-
-      <div className={styles.bottomGrid}>
-        {/* 左栏：六维度概览 */}
-        <section className={styles.dimensionPanel}>
-          <h2 className={styles.panelTitle}>六维度概览</h2>
-          <div className={styles.dimensionBody}>
-            {/* 进度条列表 */}
-            <div className={styles.dimList}>
-              {dimensionDefs.map((item) => (
-                <div key={item.label} className={styles.dimRow}>
-                  <span className={styles.dimLabel}>{item.label}</span>
-                  <div className={styles.dimTrack}>
-                    <span className={`${styles.dimFill} ${toneClass(item.tone)}`} style={{ width: `${item.value}%` }} />
-                  </div>
-                  <strong className={styles.dimScore}>{item.value}/100</strong>
+            {knowledgeMap.length > 0 ? (
+              <div className="max-h-[360px] overflow-y-auto pr-1">
+                {/* 双列布局 */}
+                <div className="grid grid-cols-1 gap-x-6 gap-y-0 sm:grid-cols-2">
+                  {knowledgeMap.map((kp, i) => (
+                    <KnowledgeProgressBar
+                      key={kp.kpId}
+                      title={kp.displayTitle}
+                      mastery={kp.mastery ?? 0}
+                      animated={animated}
+                      delay={i * 60}
+                    />
+                  ))}
                 </div>
-              ))}
+              </div>
+            ) : (
+              <p className="py-8 text-center text-[13px] text-slate-400">
+                暂无知识点数据，完成学习后自动生成
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* ===== 第二层：核心洞察三栏 ===== */}
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+          {/* 左卡：优势识别 */}
+          <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50">
+                <Lightbulb size={18} className="text-blue-500" />
+              </div>
+              <h3 className="text-[14px] font-semibold text-slate-700">
+                模式识别与认知优势
+              </h3>
             </div>
+            <ul className="space-y-3">
+              {insights.strengths.map((s, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-2 text-[14px] leading-relaxed text-slate-600"
+                >
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-400" />
+                  {s}
+                </li>
+              ))}
+            </ul>
           </div>
-        </section>
 
-        {/* 右栏：历史学习路径 */}
-        <section className={styles.panel}>
-          <div className={styles.historyHead}>
-            <h2 className={styles.panelTitle}>历史学习路径</h2>
-            <span className={styles.historyMeta}>{(profile.knowledgeMap ?? []).length > 0 ? '近30天' : ''}学习轨迹回顾</span>
+          {/* 中卡：短板检测 */}
+          <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-50">
+                <AlertTriangle size={18} className="text-red-400" />
+              </div>
+              <h3 className="text-[14px] font-semibold text-slate-700">
+                算法与代码短板检测
+              </h3>
+            </div>
+            <ul className="space-y-3">
+              {insights.weaknesses.map((w, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-2 text-[14px] leading-relaxed text-slate-600"
+                >
+                  <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-400" />
+                  {w}
+                </li>
+              ))}
+            </ul>
           </div>
 
-          {currentPath?.nodes && currentPath.nodes.length > 0 ? (
-            <>
-              <ul className={styles.historyList}>
-                {currentPath.nodes.slice(0, 4).map((node) => (
-                  <li key={node.kpId} className={styles.historyItem}>
-                    <span className={`${styles.historyDot} ${node.completed || node.status === 'COMPLETED' ? styles.historyDotDone : ''}`} />
-                    <span className={styles.historyTitle}>{node.title}</span>
-                    <span className={styles.historyDate}>{new Date().toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }).replace(/\//g, '.')}</span>
-                    <span className={styles.historyBadge}>{node.completed || node.status === 'COMPLETED' ? '已完成' : '学习中'}</span>
-                  </li>
-                ))}
-              </ul>
-              <a className={styles.historyMore} onClick={() => navigate('/workspace/learning-path')}>
-                查看完整学习历史 &gt;
-              </a>
-            </>
-          ) : (
-            <p className={styles.emptyText}>暂无学习路径，可在聊天中生成</p>
-          )}
-        </section>
+          {/* 右卡：下一步行动 */}
+          <div className="rounded-xl border border-slate-100 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50">
+                <ArrowRight size={18} className="text-emerald-500" />
+              </div>
+              <h3 className="text-[14px] font-semibold text-slate-700">
+                多智能体下一阶段特训建议
+              </h3>
+            </div>
+            <ul className="space-y-3">
+              {insights.nextSteps.map((step, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-2 text-[14px] leading-relaxed text-slate-600"
+                >
+                  <span className="mt-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-[10px] font-bold text-emerald-500">
+                    {i + 1}
+                  </span>
+                  {step}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </div>
-    </section>
+    </div>
   )
 }

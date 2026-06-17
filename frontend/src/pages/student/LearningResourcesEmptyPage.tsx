@@ -350,7 +350,7 @@ export default function LearningResourcesEmptyPage() {
             <div className={styles.recentList}>
               {recentLearning.map((item) => (
                 <article key={item.title} className={styles.recentItem}>
-                  <ResourceArtwork icon={item.icon} tone={item.tone} />
+                  <ResourceArtwork icon={item.icon} tone={item.tone as ResourceCard['tone']} />
                   <div className={styles.recentInfo}>
                     <h3 className={styles.recentTitle}>{item.title}</h3>
                     <p className={styles.recentSubtitle}>{item.subtitle}</p>

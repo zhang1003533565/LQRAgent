@@ -53,20 +53,24 @@ export default function ChatView() {
 
   return (
     <section className={styles.page}>
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <div className={styles.scrollBody}>
-          <div className={styles.content}>
-            <div className={styles.connectionStatus}>
-              <span className={`${styles.statusDot} ${isConnected ? styles.connected : styles.disconnected}`} />
-              <span className={styles.statusText}>
-                {isConnected ? '已连接' : '连接中...'}
-              </span>
-            </div>
-            <AgentStepsBar />
-            <ChatMessageList />
+      <div className={styles.workspace}>
+        <div className={styles.chatCard}>
+          <div className={styles.connectionStatus}>
+            <span className={`${styles.statusDot} ${isConnected ? styles.connected : styles.disconnected}`} />
+            <span className={styles.statusText}>
+              {isConnected ? '已连接' : '连接中'}
+            </span>
           </div>
+          <div className={styles.stepsWrap}>
+            <AgentStepsBar />
+          </div>
+          <div className={styles.scrollBody}>
+            <div className={styles.content}>
+              <ChatMessageList />
+            </div>
+          </div>
+          <ChatComposer onSend={trackSend} />
         </div>
-        <ChatComposer onSend={trackSend} />
       </div>
     </section>
   )
