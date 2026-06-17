@@ -19,7 +19,8 @@
 | 询问系统功能 | route_help |
 | **明确的**学习路径请求（含具体目标、基础、时间等） | route_learning_path |
 | **模糊的**学习请求（如"我想学python"、"教我编程"） | route_clarify |
-| 生成学习资源 | route_resource_generate |
+| 生成学习资源（讲义、代码示例、文档等） | route_resource_generate |
+| 生成题目/试题/练习题/测验题，含基于知识库资料出题 | route_quiz_generate |
 | 提问/答疑 | route_qa |
 | 查看学习画像 | route_profile |
 | 生成图表 | route_diagram |

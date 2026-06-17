@@ -141,6 +141,13 @@ public class OrchestratorCore {
                 .tags(Set.of("summary", "review"))
                 .build());
         capabilityRegistry.register(AgentCapability.builder()
+                .agentId(AgentIds.QUIZ)
+                .displayName("题目生成")
+                .description("题目生成：按要求或基于知识库资料生成混合题型练习题")
+                .actions(List.of("generate_quiz"))
+                .tags(Set.of("quiz", "question", "exercise", "test"))
+                .build());
+        capabilityRegistry.register(AgentCapability.builder()
                 .agentId(AgentIds.RECOMMENDATION)
                 .displayName("个性化推荐")
                 .description("个性化推荐：根据学习情况推荐资源和方向")
@@ -637,6 +644,7 @@ public class OrchestratorCore {
             case LEARNING_PATH -> PipelineTemplates.learningPath();
             case DIAGRAM -> PipelineTemplates.diagram();
             case SUMMARY -> PipelineTemplates.summary();
+            case QUIZ -> PipelineTemplates.quiz();
             case RECOMMENDATION -> PipelineTemplates.recommendation();
             case ASSESSMENT -> PipelineTemplates.assessment();
             case RESOURCE -> PipelineTemplates.resource();

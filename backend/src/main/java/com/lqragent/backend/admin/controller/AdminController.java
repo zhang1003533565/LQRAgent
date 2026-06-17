@@ -32,7 +32,10 @@ import com.lqragent.backend.admin.dto.SysConfigSaveRequest;
 import com.lqragent.backend.admin.repository.AgentRunLogRepository;
 import com.lqragent.backend.admin.service.AdminService;
 import com.lqragent.backend.admin.service.ModelConfigService;
+import com.lqragent.backend.agents.base.AgentInterface;
 import com.lqragent.backend.agents.base.AgentRegistry;
+import com.lqragent.backend.agents.base.AgentRequest;
+import com.lqragent.backend.agents.base.AgentResponse;
 import com.lqragent.backend.agents.resourcegeneration.entity.ResourceItem;
 import com.lqragent.backend.agents.resourcegeneration.repository.ResourceItemRepository;
 import com.lqragent.backend.agents.path.entity.LearningPath;
@@ -44,6 +47,7 @@ import com.lqragent.backend.agents.learnerprofile.repository.LearnerProfileRepos
 import com.lqragent.backend.chat.entity.AgentRunLog;
 import com.lqragent.backend.common.dto.ApiResponse;
 import com.lqragent.backend.orchestrator.OrchestratorCore;
+import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.quiz.repository.QuizRecordRepository;
 import com.lqragent.backend.quiz.repository.StudyBehaviorRepository;
 import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgeEdge;
@@ -259,18 +263,36 @@ public class AdminController {
             @RequestBody Map<String, Object> body,
             @Parameter(hidden = true) @AuthenticationPrincipal UserDetails userDetails) {
         String message = (String) body.getOrDefault("message", "");
+        String agentId = (String) body.getOrDefault("agentId", "");
         Long userId = currentUserService.requireUserId(userDetails);
 
         long start = System.currentTimeMillis();
-        Map<String, Object> result = orchestratorCore.handleChatMessage(String.valueOf(userId), message);
-        long duration = System.currentTimeMillis() - start;
-
         Map<String, Object> data = new HashMap<>();
-        data.put("success", true);
-        data.put("route", result.get("route"));
-        data.put("response", result.get("response"));
-        data.put("agent", result.get("agent"));
-        data.put("durationMs", duration);
+
+        if (agentId != null && !agentId.isBlank() && !"orchestrator".equals(agentId)) {
+            AgentInterface agent = agentRegistry.getAgent(agentId)
+                    .orElseThrow(() -> new IllegalArgumentException("Agent 未注册: " + agentId));
+            Map<String, Object> context = new HashMap<>(body);
+            context.put("goal", message);
+            context.put("userId", userId);
+            AgentResponse response = agent.process(
+                    new AgentRequest("test", message, context),
+                    new TaskContext(UUID.randomUUID().toString(), String.valueOf(userId), null, message)
+            );
+            data.put("success", response.isSuccess());
+            data.put("agent", agentId);
+            data.put("content", response.getContent());
+            data.put("error", response.getError());
+            data.put("metadata", response.getMetadata());
+        } else {
+            Map<String, Object> result = orchestratorCore.handleChatMessage(String.valueOf(userId), message);
+            data.put("success", true);
+            data.put("route", result.get("route"));
+            data.put("response", result.get("response"));
+            data.put("agent", result.get("agent"));
+        }
+
+        data.put("durationMs", System.currentTimeMillis() - start);
         return ApiResponse.ok(data);
     }
 

@@ -31,13 +31,14 @@ public class PipelineTemplates {
         engine.registerTemplate(resource());
         engine.registerTemplate(diagram());
         engine.registerTemplate(summary());
+        engine.registerTemplate(quiz());
         engine.registerTemplate(profile());
         engine.registerTemplate(recommendation());
         engine.registerTemplate(assessment());
         engine.registerTemplate(intervention());
         engine.registerTemplate(learningPathCore());
         engine.registerTemplate(quizEvaluation());
-        log.info("[PipelineTemplates] registered {} templates", 13);
+        log.info("[PipelineTemplates] registered {} templates", 14);
     }
 
     /**
@@ -246,6 +247,23 @@ public class PipelineTemplates {
                                 .stepId("summary")
                                 .agentId(AgentIds.SUMMARY)
                                 .action("generate_summary")
+                                .timeoutMs(60000)
+                                .build()
+                ))
+                .build();
+    }
+
+    /** 题目生成 */
+    public static PipelineConfig quiz() {
+        return PipelineConfig.builder()
+                .pipelineId("quiz")
+                .name("题目生成")
+                .description("按要求或基于知识库资料生成混合题型练习题")
+                .steps(List.of(
+                        PipelineStep.builder()
+                                .stepId("quiz")
+                                .agentId(AgentIds.QUIZ)
+                                .action("generate_quiz")
                                 .timeoutMs(60000)
                                 .build()
                 ))

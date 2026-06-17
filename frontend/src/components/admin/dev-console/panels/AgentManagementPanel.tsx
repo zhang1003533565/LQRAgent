@@ -165,7 +165,7 @@ const AGENTS: AgentDef[] = [
     promptAgentId: 'content_analysis_agent',
   },
   {
-    id: 'promptgen', name: '提示词生成', logName: 'prompt_generation', category: '内容',
+    id: 'promptgen', name: '提示词生成', logName: 'prompt_gen_agent', category: '内容',
     description: '根据用户意图，LLM 生成适合 AI 图片/视频的英文提示词，并判断媒体类型',
     aiSource: 'LLM API — 提示词优化',
     features: [
@@ -400,10 +400,9 @@ function AgentDetail({ agent, stats, configMap, onSave, saving, promptData, prom
           res = r.data.data
         }
       } else {
-        // 将 payload 组装为消息文本，后端只读 message 字段
         const message = (payload.message as string)
           || Object.entries(payload).map(([k, v]) => `${k}: ${v}`).join('，')
-        res = await testAgent(message)
+        res = await testAgent(message, payload, agent.logName)
       }
       setTestResult(JSON.stringify(res, null, 2))
     } catch (e: unknown) {
@@ -423,7 +422,11 @@ function AgentDetail({ agent, stats, configMap, onSave, saving, promptData, prom
             <p className="text-xs text-console-muted">{agent.description}</p>
             <p className="mt-1 text-xs text-console-muted/60">{agent.aiSource}</p>
           </div>
-          <span className="rounded bg-console-border/30 px-2 py-0.5 text-xs text-console-muted">
+          <span
+            className={`rounded px-2 py-0.5 text-xs ${
+              total > 0 ? 'bg-green-500/10 text-green-400' : 'bg-console-border/30 text-console-muted'
+            }`}
+          >
             {total > 0 ? '已调用' : '待调用'}
           </span>
         </div>
@@ -731,9 +734,21 @@ export default function AgentManagementPanel() {
   configs.forEach(c => configMap.set(c.configKey, c.configValue))
 
   const selected = AGENTS.find(a => a.id === selectedId) ?? AGENTS[0]
+  const registeredSet = new Set(stats?.registeredAgents ?? [])
+  const directlyUsableAgents = AGENTS.filter(a => registeredSet.has(a.logName)).length
+  const specialAgents = AGENTS.filter(a => ['promptgen', 'mediagen'].includes(a.id)).length
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-8rem)]">
+    <div className="space-y-3">
+      <Card>
+        <CardContent className="flex flex-wrap gap-3 p-3 text-xs text-console-muted">
+          <span>后端真实注册：{stats?.agentCount ?? 0} 个</span>
+          <span>可直接测试：{directlyUsableAgents} 个</span>
+          <span>专用接口测试：{specialAgents} 个</span>
+          <span>未接入的 Agent 不能直接运行。</span>
+        </CardContent>
+      </Card>
+      <div className="flex gap-4 h-[calc(100vh-11rem)]">
       {/* 左侧列表 */}
       <Card className="w-56 shrink-0 overflow-y-auto">
         <CardHeader className="pb-2">
@@ -783,7 +798,11 @@ export default function AgentManagementPanel() {
                               {hasPrompt && <span className="text-[9px] text-console-blue">✦</span>}
                             </div>
                             <div className="text-[10px] text-console-muted">
-                              {total > 0 ? `${total} 次调用` : '未调用'}
+                              {registeredSet.has(a.logName)
+                                ? (total > 0 ? `${total} 次调用` : '已接入，未调用')
+                                : ['promptgen', 'mediagen'].includes(a.id)
+                                  ? '专用接口测试'
+                                  : '未接入'}
                             </div>
                           </button>
                         )
@@ -800,6 +819,7 @@ export default function AgentManagementPanel() {
       {/* 右侧详情 */}
       <div className="flex-1 overflow-y-auto">
         <AgentDetail
+          key={selected.id}
           agent={selected}
           stats={stats}
           configMap={configMap}
@@ -814,6 +834,7 @@ export default function AgentManagementPanel() {
           }}
           promptSaving={promptMutation.isPending}
         />
+      </div>
       </div>
     </div>
   )

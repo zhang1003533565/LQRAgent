@@ -21,6 +21,7 @@ public final class AgentIds {
     // 内容生成层
     public static final String DIAGRAM = "diagram_agent";
     public static final String SUMMARY = "summary_agent";
+    public static final String QUIZ = "quiz_agent";
     
     // 智能服务层
     public static final String RECOMMENDATION = "recommendation_agent";

@@ -74,11 +74,32 @@ public class PlanningAgent {
             "type", "function",
             "function", Map.of(
                 "name", "route_resource_generate",
-                "description", "用户请求生成学习资源，如讲义、练习题、代码示例、文档等",
+                "description", "用户请求生成学习资源，如讲义、代码示例、文档等。注意：单独请求生成题目、试题、练习题、测验题时应选择 route_quiz_generate。",
                 "parameters", Map.of(
                     "type", "object",
                     "properties", Map.of(
                         "topic", Map.of("type", "string", "description", "资源主题")
+                    ),
+                    "required", List.of("topic")
+                )
+            )
+        ),
+        Map.of(
+            "type", "function",
+            "function", Map.of(
+                "name", "route_quiz_generate",
+                "description", "用户请求生成题目、试题、练习题、测验题、选择题、填空题、简答题、编程题；也包括基于知识库、资料、文档或上传内容出题。",
+                "parameters", Map.of(
+                    "type", "object",
+                    "properties", Map.of(
+                        "topic", Map.of("type", "string", "description", "出题主题或知识点"),
+                        "count", Map.of("type", "integer", "description", "题目数量，可选"),
+                        "difficulty", Map.of("type", "string", "description", "难度，可选"),
+                        "questionTypes", Map.of(
+                            "type", "array",
+                            "items", Map.of("type", "string"),
+                            "description", "题型列表，可选"
+                        )
                     ),
                     "required", List.of("topic")
                 )
@@ -275,6 +296,7 @@ public class PlanningAgent {
                 // === 业务意图：返回 PIPELINE，调用真正的 Agent ===
                 case "route_learning_path" -> pipelineFor("learning_path", args, AgentIds.LEARNING_PATH, "generate_path");
                 case "route_resource_generate" -> pipelineFor("resource", args, AgentIds.RESOURCE, "generate_lesson");
+                case "route_quiz_generate" -> pipelineFor("quiz", args, AgentIds.QUIZ, "generate_quiz");
                 case "route_diagram" -> pipelineFor("diagram", args, AgentIds.DIAGRAM, "generate_diagram");
                 case "route_media_gen" -> pipelineFor("media_gen", args, AgentIds.MEDIA_GEN, "generate_media");
                 case "route_profile" -> pipelineFor("profile", args, AgentIds.PROFILE, "get_profile");

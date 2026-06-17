@@ -48,7 +48,7 @@ export type AgentId =
   | 'behavior_agent'
   | 'preference_agent'
   | 'knowledge_graph_agent'
-  | 'prerequisite_agent
+  | 'prerequisite_agent'
 
 export type AgentStepStatus = 'running' | 'done' | 'failed'
 

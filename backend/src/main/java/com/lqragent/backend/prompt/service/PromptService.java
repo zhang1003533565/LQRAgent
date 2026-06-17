@@ -53,6 +53,7 @@ public class PromptService {
         // 内容生成层
         Map.entry("diagram_agent", "agents/diagram/prompts/system.md"),
         Map.entry("summary_agent", "agents/summary/prompts/system.md"),
+        Map.entry("quiz_agent", "agents/quiz/prompts/system.md"),
         // 智能服务层
         Map.entry("recommendation_agent", "agents/recommendation/prompts/system.md"),
         Map.entry("assessment_agent", "agents/assessment/prompts/system.md"),

@@ -346,8 +346,12 @@ export interface AgentTestResult {
   durationMs: number
 }
 
-export async function testAgent(message: string): Promise<AgentTestResult> {
-  const res = await http.post<{ data: AgentTestResult }>('/admin/agent-test', { message })
+export async function testAgent(
+  message: string,
+  payload?: Record<string, unknown>,
+  agentId?: string,
+): Promise<AgentTestResult> {
+  const res = await http.post<{ data: AgentTestResult }>('/admin/agent-test', { message, agentId, ...(payload ?? {}) })
   return res.data.data
 }
 

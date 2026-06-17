@@ -12,6 +12,7 @@ export const STEP_LABELS: Record<string, string> = {
   media_gen: '媒体生成',
   assessment: '评估批改',
   summary: '总结生成',
+  quiz: '题目生成',
   recommendation: '推荐',
   intervention: '学习干预',
 }
@@ -23,18 +24,26 @@ export const AGENT_LABELS: Record<AgentId, string> = {
   // 用户理解层
   profile_agent: '画像智能体',
   learner_profile: '学习画像',
+  behavior_agent: '行为分析',
+  preference_agent: '偏好分析',
   
   // 学习科学层
   learning_path_agent: '路径规划',
+  path_planner: '路径规划',
   knowledge_state_agent: '知识状态',
   spaced_repetition_agent: '间隔复习',
   difficulty_agent: '自适应难度',
   learning_style_agent: '学习风格',
+  effect_agent: '效果评估',
+  effect_assessment: '效果评估',
+  knowledge_graph_agent: '知识图谱',
+  prerequisite_agent: '先修知识',
   
   // 内容生成层
   resource_agent: '资源生成',
+  resource_facade: '资源生成',
   lesson_agent: '讲义生成',
-  quiz_agent: '练习题生成',
+  quiz_agent: '题目生成',
   code_agent: '代码生成',
   diagram_agent: '图表生成',
   summary_agent: '总结生成',
@@ -42,6 +51,7 @@ export const AGENT_LABELS: Record<AgentId, string> = {
   
   // 质量保障层
   quality_agent: '质量评估',
+  quality_assessment: '质量评估',
   content_quality_agent: '内容质量',
   pedagogy_quality_agent: '教学质量',
   fact_check_agent: '事实检查',
