@@ -129,3 +129,5 @@ blob-report/
 # --- Agent 工作目录 ---
 .hermes/
 docs/specs/
+test-ai/
+frontend/src/components/admin/dev-console/logs/

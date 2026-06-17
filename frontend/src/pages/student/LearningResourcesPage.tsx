@@ -1,479 +1,584 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { usePathStore } from '@/utils/store/pathStore'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  Bot,
+  Check,
+  ChevronRight,
+  Code2,
+  FileText,
+  Image,
+  Loader2,
+  Play,
+  RefreshCw,
+  Sparkles,
+  Trash2,
+  Video,
+  X,
+} from 'lucide-react'
 import { getResources, generateResource } from '@/api/student/resources'
-import { getKnowledgePointDetail } from '@/api/student/knowledge'
-import { generateImage, generateVideo, submitVideoTask, getVideoTaskStatus } from '@/api/student/media'
+import { generateImage, getVideoTaskStatus, submitVideoTask } from '@/api/student/media'
 import { trackBehavior } from '@/utils/tracker'
+import { usePathStore } from '@/utils/store/pathStore'
 import type { LearningResource, ResourceType } from '@/utils/types/media-resource'
-import LearningResourcesEmptyPage from './LearningResourcesEmptyPage'
 import styles from './LearningResourcesPage.module.css'
 
-const TABS: { label: string; icon: string; type: ResourceType | 'ALL' }[] = [
-  { label: '讲义', icon: 'doc', type: 'LESSON' },
-  { label: '代码', icon: 'code', type: 'CODE_CASE' },
-  { label: '题目列表', icon: 'list', type: 'QUIZ' },
-  { label: '示意图', icon: 'image', type: 'ILLUSTRATION' },
-  { label: '短视频', icon: 'video', type: 'VIDEO_CLIP' },
-]
-
-function ResourceIcon({ kind }: { kind: string }) {
-  return <span className={`${styles.iconBadge} ${styles[`icon${kind}`]}`} />
+type ResourceTab = {
+  type: ResourceType
+  label: string
+  icon: typeof FileText
 }
 
-export default function LearningResourcesPage() {
-  const navigate = useNavigate()
-  const { selectedKpId, nodes, selectNode } = usePathStore()
-  const [resources, setResources] = useState<LearningResource[]>([])
-  const [activeTab, setActiveTab] = useState<ResourceType | 'ALL'>('ALL')
-  const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [generating, setGenerating] = useState(false)
-  const [genImageLoading, setGenImageLoading] = useState(false)
-  const [genVideoLoading, setGenVideoLoading] = useState(false)
-  const [genVideoStatus, setGenVideoStatus] = useState<string | null>(null)
-  const [relatedKps, setRelatedKps] = useState<{ kpId: string; title: string }[]>([])
+type GenerateMode = 'image' | 'video'
+type Difficulty = 'basic' | 'advanced'
+type StyleType = 'diagram' | 'card' | 'animation'
+type Purpose = 'concept' | 'quiz' | 'review'
 
-  const kpId = selectedKpId || ''
-  const currentNode = nodes.find((n) => n.kpId === kpId)
+const RESOURCE_TABS: ResourceTab[] = [
+  { type: 'LESSON', label: '讲义梳理', icon: FileText },
+  { type: 'CODE_CASE', label: '代码示例', icon: Code2 },
+  { type: 'ILLUSTRATION', label: '示意图', icon: Image },
+  { type: 'VIDEO_CLIP', label: '学习视频', icon: Play },
+  { type: 'QUIZ', label: 'AI生成', icon: Sparkles },
+]
 
-  useEffect(() => {
-    if (!kpId) return
-    setLoading(true)
-    getResources(kpId)
-      .then((res) => {
-        setResources(res)
-        if (res.length > 0) {
-          setSelectedId(res[0].id)
-          trackBehavior({ kpId, action: 'view_resource', extra: res[0].title })
+const PATH_STEPS = ['环境搭建', '基础语法', '条件判断', '循环结构', '综合练习']
 
-          // Fetch related knowledge points from resource data
-          const allRelatedIds = new Set<string>()
-          for (const r of res) {
-            if (r.relatedKpIds) {
-              r.relatedKpIds.forEach((id) => allRelatedIds.add(id))
-            }
-          }
-          if (allRelatedIds.size > 0) {
-            Promise.all(
-              Array.from(allRelatedIds).slice(0, 6).map((id) =>
-                getKnowledgePointDetail(id).catch(() => null)
-              )
-            ).then((details) => {
-              setRelatedKps(
-                details
-                  .filter((d): d is NonNullable<typeof d> => d !== null)
-                  .map((d) => ({ kpId: d.kpId, title: d.title }))
-              )
-            })
-          } else {
-            setRelatedKps([])
-          }
-        }
-      })
-      .catch(() => { setResources([]); setRelatedKps([]) })
-      .finally(() => setLoading(false))
-  }, [kpId])
+const QUICK_REQUESTS = ['当前阶段知识点', '变量', '输入输出', '注释', '流程图', '对比图', '3分钟讲解视频']
 
-  const filtered = useMemo(
-    () => (activeTab === 'ALL' ? resources : resources.filter((r) => r.resourceType === activeTab)),
-    [resources, activeTab],
+const SAMPLE_VIDEOS = [
+  {
+    title: '变量与数据类型 3 分钟讲解',
+    desc: '快速理解变量的定义、数据类型分类及示例，帮你建立清晰的知识框架。',
+    time: '03:12',
+    tone: 'blue',
+  },
+  {
+    title: 'input() 与 print() 快速理解',
+    desc: '3 分钟带你掌握输入输出的使用方法与常见场景，轻松上手编程交互。',
+    time: '02:48',
+    tone: 'green',
+  },
+]
+
+function getResourceTitle(type: ResourceType) {
+  const map: Record<ResourceType, string> = {
+    LESSON: '基础语法讲义',
+    CODE_CASE: 'Python 变量代码示例',
+    QUIZ: '阶段练习题',
+    ILLUSTRATION: '变量与数据类型关系图',
+    VIDEO_CLIP: '基础语法学习视频',
+  }
+  return map[type]
+}
+
+function getDefaultPrompt(title: string) {
+  return `帮我生成一张解释 ${title} 的示意图`
+}
+
+function getPreferenceText(difficulty: Difficulty, styleType: StyleType, purpose: Purpose) {
+  const difficultyText = difficulty === 'basic' ? '基础' : '进阶'
+  const styleText: Record<StyleType, string> = {
+    diagram: '简洁图解',
+    card: '卡片总结',
+    animation: '动态讲解',
+  }
+  const purposeText: Record<Purpose, string> = {
+    concept: '课堂预习',
+    quiz: '课后复习',
+    review: '考前速记',
+  }
+  return `难度：${difficultyText}；风格：${styleText[styleType]}；用途：${purposeText[purpose]}`
+}
+
+function normalizeMediaUrl(url?: string) {
+  if (!url) return null
+  if (/^(https?:|data:|blob:)/i.test(url)) return url
+  return url.startsWith('/') ? url : `/${url}`
+}
+
+function buildImagePreviewTitle(source: string | undefined, fallbackTitle: string) {
+  const mainPart = (source || '').split(/[，,；;\n]/)[0]
+  const cleaned = mainPart
+    .replace(/\s+/g, ' ')
+    .replace(/^帮我生成一张/i, '')
+    .replace(/^生成一张/i, '')
+    .replace(/^解释/i, '')
+    .replace(/的示意图$/i, '')
+    .replace(/示意图$/i, '')
+    .trim()
+
+  const base = cleaned || fallbackTitle
+  return base.length > 24 ? `${base.slice(0, 24)}...` : `${base} 示意图`
+}
+
+function upsertResource(list: LearningResource[], next: LearningResource) {
+  const sameIndex = list.findIndex(
+    (item) =>
+      (next.id > 0 && item.id === next.id) ||
+      (item.kpId === next.kpId && item.resourceType === next.resourceType && item.title === next.title),
   )
+  if (sameIndex < 0) return [next, ...list]
+  return list.map((item, index) => (index === sameIndex ? next : item))
+}
 
-  const selected = useMemo(() => resources.find((r) => r.id === selectedId) ?? null, [resources, selectedId])
+function findResource(resources: LearningResource[], type: ResourceType) {
+  return resources.find((item) => item.resourceType === type)
+}
 
-  const stats = useMemo(() => {
-    const counts: Record<string, number> = { total: resources.length }
-    for (const r of resources) {
-      counts[r.resourceType] = (counts[r.resourceType] || 0) + 1
-    }
-    return [
-      { label: '已生成资源', value: String(counts.total), tone: 'blue' },
-      { label: '讲义', value: String(counts.LESSON || 0), tone: 'indigo' },
-      { label: '代码', value: String(counts.CODE_CASE || 0), tone: 'cyan' },
-      { label: '题目', value: String(counts.QUIZ || 0), tone: 'violet' },
-      { label: '示意图', value: String(counts.ILLUSTRATION || 0), tone: 'green' },
-    ]
-  }, [resources])
-
-  const menuItems = useMemo(() => {
-    return filtered.map((r, i) => ({
-      id: r.id,
-      title: r.title,
-      type: r.resourceType,
-      state: r.id === selectedId ? 'active' : i === 0 && selectedId === null ? 'active' : 'done',
-    }))
-  }, [filtered, selectedId])
-
-  async function handleGenerateImage() {
-    if (!kpId || genImageLoading) return
-    setGenImageLoading(true)
-    try {
-      const nodeTitle = currentNode?.title || kpId
-      const result = await generateImage(kpId, `${nodeTitle} 教学示意图，清晰简洁`)
-      if (result.success && result.imageUrl) {
-        const updated = await getResources(kpId)
-        setResources(updated)
-      }
-    } catch {
-      // best-effort
-    } finally {
-      setGenImageLoading(false)
-    }
-  }
-
-  const handleGenerateVideo = useCallback(async () => {
-    if (!kpId || genVideoLoading) return
-    setGenVideoLoading(true)
-    setGenVideoStatus('正在提交生成任务...')
-    try {
-      const nodeTitle = currentNode?.title || kpId
-      const { taskId } = await submitVideoTask(`${nodeTitle} 教学演示视频`, 5)
-      setGenVideoStatus('视频生成中，请稍候...')
-
-      const poll = async (attempts: number): Promise<void> => {
-        if (attempts <= 0) {
-          setGenVideoStatus('生成超时，请稍后刷新')
-          return
-        }
-        const status = await getVideoTaskStatus(taskId)
-        if (status.status === 'done' || status.status === 'completed') {
-          setGenVideoStatus(null)
-          const updated = await getResources(kpId)
-          setResources(updated)
-        } else if (status.status === 'failed' || status.status === 'error') {
-          setGenVideoStatus('生成失败：' + (status.error || '未知错误'))
-        } else {
-          setGenVideoStatus(`视频生成中... ${status.status}`)
-          setTimeout(() => poll(attempts - 1), 5000)
-        }
-      }
-      await poll(120)
-    } catch {
-      setGenVideoStatus('生成失败，请重试')
-    } finally {
-      setGenVideoLoading(false)
-    }
-  }, [kpId, genVideoLoading, currentNode?.title])
-
-  async function handleGenerate(type: ResourceType) {
-    if (!kpId || generating) return
-    setGenerating(true)
-    try {
-      const res = await generateResource({ kpId, resourceType: type })
-      setResources((prev) => [...prev, res])
-      setSelectedId(res.id)
-    } catch {
-      // best-effort
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  function renderContent(r: LearningResource) {
-    if (r.resourceType === 'CODE_CASE') {
-      return (
-        <div className={styles.codeCard}>
-          <div className={styles.codeHead}>
-            <h3>{r.title}</h3>
-            <button type="button" className={styles.copyBtn} onClick={() => navigator.clipboard.writeText(r.content || '')}>
-              复制
-            </button>
-          </div>
-          <pre className={styles.codeBlock}>{r.content || '// 暂无代码内容'}</pre>
-        </div>
-      )
-    }
-
-    if (r.resourceType === 'QUIZ') {
-      const lines = (r.content || '').split('\n').filter(Boolean)
-      return (
-        <div className={styles.exerciseCard}>
-          <div className={styles.exerciseHead}>
-            <h3>{r.title}</h3>
-          </div>
-          <div className={styles.exerciseList}>
-            {lines.map((line, i) => (
-              <div key={i} className={styles.exerciseRow}>
-                <div className={styles.exerciseMain}>
-                  <span className={styles.exerciseIndex}>{i + 1}</span>
-                  <span className={styles.exerciseTitle}>{line}</span>
-                </div>
-                <div className={styles.exerciseMeta}>
-                  <button type="button" className={styles.startBtn}>
-                    开始练习
-                  </button>
-                </div>
-              </div>
-            ))}
-            {lines.length === 0 && (
-              <p style={{ color: '#8b9ab6', fontSize: 13, padding: '8px 0' }}>暂无题目内容</p>
-            )}
-          </div>
-        </div>
-      )
-    }
-
-    if (r.resourceType === 'ILLUSTRATION' && r.mediaUrl) {
-      return (
-        <div>
-          <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 800, color: '#1f3d71' }}>{r.title}</h3>
-          <img src={r.mediaUrl} alt={r.title} style={{ width: '100%', borderRadius: 14 }} />
-        </div>
-      )
-    }
-
-    // LESSON, SUMMARY, EXTENDED_READING, etc. — render as markdown
-    return (
-      <div>
-        <div className={styles.articleHead}>
-          <h2 className={styles.articleTitle}>{r.title}</h2>
-        </div>
-        <div className={styles.articleBlock}>
-          <div style={{ fontSize: 14, lineHeight: 1.8, color: '#526989', whiteSpace: 'pre-wrap' }}>
-            {r.content || '暂无内容'}
-          </div>
-        </div>
+function StageProgress({ activeIndex }: { activeIndex: number }) {
+  return (
+    <div className={styles.stageCard}>
+      <div className={styles.currentStage}>
+        当前阶段：<strong>{PATH_STEPS[activeIndex] ?? PATH_STEPS[1]}</strong>
       </div>
+      <div className={styles.stageTrack}>
+        {PATH_STEPS.map((step, index) => {
+          const isActive = index === activeIndex
+          const isDone = index < activeIndex
+          return (
+            <div key={step} className={styles.stageItem}>
+              <div className={`${styles.stageLine} ${isDone || isActive ? styles.stageLineDone : ''}`} />
+              <span className={`${styles.stageDot} ${isActive ? styles.stageDotActive : ''}`}>
+                {index + 1}
+              </span>
+              <span className={`${styles.stageLabel} ${isActive ? styles.stageLabelActive : ''}`}>{step}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function VariablesDiagram({ imageUrl }: { imageUrl?: string }) {
+  if (imageUrl) {
+    return (
+      <img className={styles.previewImage} src={imageUrl} alt="AI 生成学习图片" />
     )
   }
 
-  if (!selectedKpId) {
-    return <LearningResourcesEmptyPage />
+  return (
+    <div className={styles.diagramCanvas}>
+      <div className={styles.diagramLeft}>
+        {['int（整数）  例：10', 'float（浮点数）  例：3.14', 'str（字符串）  例："hello"', 'bool（布尔值）  例：True/False'].map((item) => (
+          <span key={item}>{item}</span>
+        ))}
+      </div>
+      <div className={styles.diagramCenter}>变量<br />(Variable)</div>
+      <div className={styles.diagramRight}>
+        {['list（列表）  例：[1, 2, 3]', 'tuple（元组）  例：(1, 2, 3)', 'dict（字典）  例：{"a": 1}', 'set（集合）  例：{1, 2, 3}'].map((item) => (
+          <span key={item}>{item}</span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function FlowDiagram() {
+  return (
+    <div className={styles.flowCanvas}>
+      {['开始', 'input() 接收用户输入', '处理数据', 'print() 输出结果', '结束'].map((item, index) => (
+        <div key={item} className={styles.flowNodeWrap}>
+          <div className={`${styles.flowNode} ${index === 0 || index === 4 ? styles.flowTerminal : ''}`}>
+            {item}
+          </div>
+          {index < 4 && <ChevronRight className={styles.flowArrow} size={18} />}
+        </div>
+      ))}
+      <div className={styles.flowNotes}>
+        <span>从键盘读取数据</span>
+        <span>进行计算或逻辑处理</span>
+        <span>在控制台显示结果</span>
+      </div>
+    </div>
+  )
+}
+
+function VideoPreview({ video, videoUrl }: { video?: LearningResource; videoUrl?: string }) {
+  const src = video?.mediaUrl || videoUrl
+  if (src) {
+    return (
+      <video className={styles.realVideo} src={src} controls />
+    )
+  }
+
+  return (
+    <div className={styles.videoList}>
+      {SAMPLE_VIDEOS.map((item) => (
+        <article key={item.title} className={styles.videoRow}>
+          <div className={`${styles.videoThumb} ${styles[`videoThumb${item.tone}`]}`}>
+            <span>Python 基础</span>
+            <strong>{item.title.split(' ')[0]}</strong>
+            <div className={styles.playCircle}><Play size={18} fill="currentColor" /></div>
+            <em>{item.time}</em>
+          </div>
+          <div className={styles.videoInfo}>
+            <h3>{item.title}</h3>
+            <p>{item.desc}</p>
+            <button type="button">立即观看</button>
+          </div>
+        </article>
+      ))}
+    </div>
+  )
+}
+
+export default function LearningResourcesPage() {
+  const { selectedKpId, nodes } = usePathStore()
+  const [resources, setResources] = useState<LearningResource[]>([])
+  const [activeTab, setActiveTab] = useState<ResourceType>('LESSON')
+  const [mode, setMode] = useState<GenerateMode>('image')
+  const [difficulty, setDifficulty] = useState<Difficulty>('basic')
+  const [styleType, setStyleType] = useState<StyleType>('diagram')
+  const [purpose, setPurpose] = useState<Purpose>('concept')
+  const [prompt, setPrompt] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [generating, setGenerating] = useState<ResourceType | 'bundle' | 'media' | null>(null)
+  const [videoStatus, setVideoStatus] = useState<string | null>(null)
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null)
+  const [generatedImageTitle, setGeneratedImageTitle] = useState<string | null>(null)
+  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null)
+  const [imageModalOpen, setImageModalOpen] = useState(false)
+
+  const fallbackNode = nodes[1] || nodes[0]
+  const kpId = selectedKpId || fallbackNode?.kpId || 'python_basic_syntax'
+  const currentNode = nodes.find((node) => node.kpId === kpId) || fallbackNode
+  const currentTitle = currentNode?.title || '基础语法入门'
+  const activeIndex = nodes.findIndex((node) => node.kpId === kpId)
+  const normalizedActiveIndex = activeIndex >= 0 ? Math.min(activeIndex, PATH_STEPS.length - 1) : 1
+
+  const illustration = useMemo(() => findResource(resources, 'ILLUSTRATION'), [resources])
+  const video = useMemo(() => findResource(resources, 'VIDEO_CLIP'), [resources])
+  const lesson = useMemo(() => findResource(resources, 'LESSON'), [resources])
+  const codeCase = useMemo(() => findResource(resources, 'CODE_CASE'), [resources])
+  const previewImageUrl = illustration?.mediaUrl || generatedImageUrl || undefined
+  const previewVideoUrl = video?.mediaUrl || generatedVideoUrl || undefined
+  const previewImageTitle = generatedImageTitle
+    || (previewImageUrl ? buildImagePreviewTitle(illustration?.generationPrompt || illustration?.title || prompt, currentTitle) : buildImagePreviewTitle(undefined, currentTitle))
+
+  useEffect(() => {
+    setPrompt(getDefaultPrompt(currentTitle))
+  }, [currentTitle])
+
+  useEffect(() => {
+    setGeneratedImageUrl(null)
+    setGeneratedImageTitle(null)
+    setGeneratedVideoUrl(null)
+    setImageModalOpen(false)
+  }, [kpId])
+
+  const refreshResources = useCallback(async () => {
+    if (!kpId) return
+    setLoading(true)
+    try {
+      const next = await getResources(kpId)
+      setResources(next)
+      const first = next[0]
+      if (first) trackBehavior({ kpId, action: 'view_resource', extra: first.title })
+    } finally {
+      setLoading(false)
+    }
+  }, [kpId])
+
+  useEffect(() => {
+    void refreshResources()
+  }, [refreshResources])
+
+  async function handleGenerateText(type: ResourceType) {
+    if (!kpId || generating) return
+    setGenerating(type)
+    try {
+      const next = await generateResource({
+        kpId,
+        resourceType: type,
+        prompt: `${prompt}\n${getPreferenceText(difficulty, styleType, purpose)}`,
+      })
+      setResources((prev) => upsertResource(prev, next))
+      setActiveTab(type)
+    } finally {
+      setGenerating(null)
+    }
+  }
+
+  async function handleGenerateMedia() {
+    if (!kpId || generating) return
+    setGenerating('media')
+    try {
+      if (mode === 'image') {
+        const result = await generateImage(kpId, `${prompt}\n${getPreferenceText(difficulty, styleType, purpose)}`)
+        const imageUrl = normalizeMediaUrl(result.imageUrl)
+        if (result.success && imageUrl) {
+          setGeneratedImageUrl(imageUrl)
+          setGeneratedImageTitle(buildImagePreviewTitle(prompt, currentTitle))
+        }
+        await refreshResources()
+        setActiveTab('ILLUSTRATION')
+        return
+      }
+
+      setVideoStatus('视频生成任务已提交')
+      const task = await submitVideoTask(`${prompt}\n${getPreferenceText(difficulty, styleType, purpose)}`, 5)
+      setVideoStatus('视频生成中，请稍候...')
+
+      const poll = async (times: number): Promise<void> => {
+        if (times <= 0) {
+          setVideoStatus('生成时间较长，请稍后刷新资源')
+          return
+        }
+        const status = await getVideoTaskStatus(task.taskId)
+        if (status.status === 'done' || status.status === 'completed') {
+          const videoUrl = normalizeMediaUrl(status.videoUrl)
+          if (videoUrl) {
+            setGeneratedVideoUrl(videoUrl)
+          }
+          setVideoStatus(null)
+          await refreshResources()
+          setActiveTab('VIDEO_CLIP')
+          return
+        }
+        if (status.status === 'failed' || status.status === 'error') {
+          setVideoStatus(status.error || '视频生成失败，请重试')
+          return
+        }
+        setVideoStatus(`视频生成中... ${status.status || task.status}`)
+        window.setTimeout(() => {
+          void poll(times - 1)
+        }, 5000)
+      }
+
+      await poll(60)
+    } finally {
+      setGenerating(null)
+    }
+  }
+
+  async function handleRegenerateBundle() {
+    if (!kpId || generating) return
+    setGenerating('bundle')
+    try {
+      const next = await Promise.all(
+        (['LESSON', 'CODE_CASE', 'QUIZ'] as ResourceType[]).map((resourceType) =>
+          generateResource({ kpId, resourceType, prompt: `${currentTitle} 阶段推荐资源` }),
+        ),
+      )
+      setResources((prev) => next.reduce(upsertResource, prev))
+    } finally {
+      setGenerating(null)
+    }
+  }
+
+  const activeResource = findResource(resources, activeTab)
+  const openPreviewImage = () => {
+    if (previewImageUrl) {
+      setImageModalOpen(true)
+    }
   }
 
   return (
     <section className={styles.page}>
-      <div className={styles.glow} />
-
-      <header className={styles.topbar}>
+      <header className={styles.header}>
         <div>
-          <h1 className={styles.title}>学习资源展示</h1>
-          <p className={styles.subtitle}>围绕当前学习路径节点自动生成多类型学习资源</p>
+          <h1>学习资源展示</h1>
+          <p>AI 根据当前学习阶段推荐资源，并支持你自主生成学习图片与学习视频</p>
         </div>
-        <div className={styles.topMeta}>◎ M5 · 资源展示</div>
-        <div className={styles.topActions}>
-          <button type="button" className={styles.secondaryBtn} onClick={() => kpId && getResources(kpId).then(setResources)} disabled={loading}>
-            <span className={styles.btnIcon}>↻</span>
+        <div className={styles.headerActions}>
+          <button type="button" className={styles.ghostButton} onClick={refreshResources} disabled={loading}>
+            <RefreshCw size={16} className={loading ? styles.spin : ''} />
             刷新资源
           </button>
-          <button
-            type="button"
-            className={styles.primaryBtn}
-            onClick={() => handleGenerate('LESSON')}
-            disabled={generating}
-          >
-            <span className={styles.btnIcon}>✦</span>
-            {generating ? '生成中...' : '重新生成资源'}
+          <button type="button" className={styles.primaryButton} onClick={handleRegenerateBundle} disabled={Boolean(generating)}>
+            {generating === 'bundle' ? <Loader2 size={16} className={styles.spin} /> : <Sparkles size={16} />}
+            重新生成资源
           </button>
         </div>
       </header>
 
-      <section className={styles.toolbarPanel}>
-        <div className={styles.currentInfo}>
-          <div className={styles.infoBlock}>
-            <span className={styles.infoLabel}>当前路径：</span>
-            <strong>{currentNode?.title || '—'} &gt; 学习路径</strong>
-          </div>
-          <div className={styles.infoDivider} />
-          <div className={styles.infoBlock}>
-            <span className={styles.infoLabel}>当前节点：</span>
-            <strong>{currentNode?.title || '—'}</strong>
-          </div>
-          <div className={styles.infoDivider} />
-          <div className={styles.infoBlock}>
-            <span className={styles.infoLabel}>学习目标：</span>
-            <span>{currentNode?.description || '理解并掌握核心知识点'}</span>
-          </div>
-        </div>
+      <StageProgress activeIndex={normalizedActiveIndex} />
 
-        <div className={styles.filterRow}>
-          <button type="button" className={styles.selectBtn}>
-            {currentNode?.title || '全部节点'}
-            <span className={styles.chevron}>⌄</span>
-          </button>
-          <div className={styles.searchBox}>
-            <span className={styles.searchIcon}>⌕</span>
-            <span>搜索资源</span>
+      <main className={styles.workspace}>
+        <section className={styles.generatorPanel}>
+          <div className={styles.panelHead}>
+            <div>
+              <h2>当前阶段推荐资源</h2>
+              <p><Sparkles size={14} /> 不会的内容，可以直接用 AI 生成专题图解或视频帮助理解</p>
+            </div>
           </div>
-          <div className={styles.tabGroup}>
-            <button
-              type="button"
-              className={activeTab === 'ALL' ? `${styles.tabBtn} ${styles.tabActive}` : styles.tabBtn}
-              onClick={() => setActiveTab('ALL')}
-            >
-              全部
-            </button>
-            {TABS.map((tab) => (
-              <button
-                key={tab.label}
-                type="button"
-                className={activeTab === tab.type ? `${styles.tabBtn} ${styles.tabActive}` : styles.tabBtn}
-                onClick={() => setActiveTab(tab.type)}
-              >
-                <ResourceIcon kind={tab.icon} />
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </section>
 
-      <div className={styles.layout}>
-        <aside className={styles.menuColumn}>
-          <section className={styles.panel}>
-            <h2 className={styles.panelTitle}>资源目录</h2>
-            <div className={styles.menuList}>
-              {menuItems.map((item) => (
+          <div className={styles.tabs}>
+            {RESOURCE_TABS.map((tab) => {
+              const Icon = tab.icon
+              return (
                 <button
-                  key={item.id}
+                  key={tab.type}
                   type="button"
-                  className={item.state === 'active' ? `${styles.menuItem} ${styles.menuItemActive}` : styles.menuItem}
-                  onClick={() => setSelectedId(item.id)}
+                  className={activeTab === tab.type ? styles.tabActive : styles.tab}
+                  onClick={() => setActiveTab(tab.type)}
                 >
-                  <div className={styles.menuLeft}>
-                    <ResourceIcon kind="doc" />
-                    <div>
-                      <p className={styles.menuTitle}>{item.title}</p>
-                      <span className={styles.menuType}>{item.type}</span>
-                    </div>
-                  </div>
-                  <div className={styles.menuRight}>
-                    <span className={`${styles.menuDot} ${styles[`dot${item.state}`]}`} />
-                  </div>
+                  <Icon size={16} />
+                  {tab.label}
                 </button>
-              ))}
-              {menuItems.length === 0 && !loading && (
-                <p style={{ color: '#8b9ab6', fontSize: 13, padding: '8px 0' }}>暂无资源</p>
-              )}
-            </div>
-          </section>
-        </aside>
+              )
+            })}
+          </div>
 
-        <main className={styles.contentColumn}>
-          <section className={styles.panel}>
-            {loading ? (
-              <div style={{ padding: 40, textAlign: 'center', color: '#8b9ab6' }}>加载资源中...</div>
-            ) : selected ? (
-              renderContent(selected)
-            ) : (
-              <div style={{ padding: 40, textAlign: 'center', color: '#8b9ab6' }}>选择左侧资源查看内容</div>
-            )}
-          </section>
-        </main>
-
-        <aside className={styles.sideColumn}>
-          <section className={styles.panel}>
-            <h2 className={styles.panelTitle}>示意图预览</h2>
-            <div className={styles.chartCard}>
-              {resources.find((r) => r.resourceType === 'ILLUSTRATION' && r.mediaUrl) ? (
-                <img
-                  src={resources.find((r) => r.resourceType === 'ILLUSTRATION' && r.mediaUrl)!.mediaUrl}
-                  alt="示意图"
-                  style={{ width: '100%', borderRadius: 12 }}
-                />
-              ) : (
-                <svg viewBox="0 0 300 170" className={styles.chartSvg} aria-hidden="true">
-                  <path d="M36 142H280" stroke="#1f3356" strokeWidth="1.8" />
-                  <path d="M78 152V24" stroke="#1f3356" strokeWidth="1.8" />
-                  <path d="M280 142l-6-4v8l6-4Z" fill="#1f3356" />
-                  <path d="M78 24l-4 6h8l-4-6Z" fill="#1f3356" />
-                  <path d="M44 104C70 36 122 118 164 88C188 70 218 18 252 28" fill="none" stroke="#2f78ff" strokeWidth="2.8" />
-                  <path d="M48 112L242 52" fill="none" stroke="#ff5d52" strokeWidth="2.2" />
-                  <circle cx="170" cy="74" r="4.2" fill="#1f3356" />
-                  <text x="214" y="28" className={styles.chartText}>y = f(x)</text>
-                  <text x="234" y="63" className={styles.chartText}>切线</text>
-                  <text x="182" y="84" className={styles.chartText}>y - f(x₀) = f′(x₀)(x - x₀)</text>
-                  <text x="130" y="150" className={styles.chartText}>x₀</text>
-                  <text x="286" y="150" className={styles.chartText}>x</text>
-                  <text x="86" y="24" className={styles.chartText}>y</text>
-                  <text x="108" y="66" className={styles.chartText}>P(x₀, f(x₀))</text>
-                </svg>
-              )}
+          <div className={styles.aiBox}>
+            <h3>AI 定制生成</h3>
+            <div className={styles.modeSwitch}>
+              <button type="button" className={mode === 'image' ? styles.modeActive : styles.modeButton} onClick={() => setMode('image')}>
+                <Image size={15} />
+                生成学习图片
+              </button>
+              <button type="button" className={mode === 'video' ? styles.modeActive : styles.modeButton} onClick={() => setMode('video')}>
+                <Video size={15} />
+                生成学习视频
+              </button>
             </div>
-            <button
-              type="button"
-              className={styles.primaryBtn}
-              onClick={handleGenerateImage}
-              disabled={genImageLoading}
-              style={{ marginTop: 10, width: '100%' }}
-            >
-              {genImageLoading ? '生成中...' : '✦ AI 生成示意图'}
-            </button>
-          </section>
 
-          <section className={styles.panel}>
-            <div className={styles.videoHead}>
-              <h2 className={styles.panelTitle}>短视频预览</h2>
-              {genVideoStatus && <span className={styles.videoBadge}>{genVideoStatus}</span>}
-            </div>
-            <div className={styles.videoCard}>
-              {resources.find((r) => r.resourceType === 'VIDEO_CLIP' && r.mediaUrl) ? (
-                <video
-                  src={resources.find((r) => r.resourceType === 'VIDEO_CLIP' && r.mediaUrl)!.mediaUrl}
-                  controls
-                  style={{ width: '100%', borderRadius: 12 }}
-                />
-              ) : (
-                <>
-                  <div className={styles.videoPlay}>▶</div>
-                  <div className={styles.videoTimeline}>
-                    <span>00:00</span>
-                    <span>00:00</span>
-                  </div>
-                </>
-              )}
-            </div>
-            <button
-              type="button"
-              className={styles.primaryBtn}
-              onClick={handleGenerateVideo}
-              disabled={genVideoLoading}
-              style={{ marginTop: 10, width: '100%' }}
-            >
-              {genVideoLoading ? '生成中...' : '✦ AI 生成视频'}
-            </button>
-          </section>
+            <label className={styles.promptLabel} htmlFor="resource-prompt">你想生成什么？</label>
+            <textarea
+              id="resource-prompt"
+              className={styles.promptInput}
+              value={prompt}
+              maxLength={200}
+              onChange={(event) => setPrompt(event.target.value)}
+              placeholder="帮我生成一张解释 Python 变量与数据类型关系的示意图"
+            />
+            <div className={styles.counter}>{prompt.length}/200</div>
 
-          <section className={styles.panel}>
-            <h2 className={styles.panelTitle}>资源统计</h2>
-            <div className={styles.statsGrid}>
-              {stats.map((item) => (
-                <article key={item.label} className={styles.statCard}>
-                  <ResourceIcon kind="doc" />
-                  <p className={styles.statLabel}>{item.label}</p>
-                  <p className={styles.statValue}>{item.value}</p>
-                </article>
-              ))}
-            </div>
-            <button type="button" className={styles.exportBtn}>
-              ⭳ 一键打包导出
-            </button>
-          </section>
-
-          {relatedKps.length > 0 && (
-            <section className={styles.panel}>
-              <h2 className={styles.panelTitle}>相关知识点</h2>
-              <div className={styles.relatedList}>
-                {relatedKps.map((kp) => (
-                  <button
-                    key={kp.kpId}
-                    type="button"
-                    className={styles.relatedItem}
-                    onClick={() => {
-                      selectNode(kp.kpId)
-                      navigate('/workspace/resources')
-                    }}
-                  >
-                    <span className={styles.relatedDot} />
-                    <span className={styles.relatedTitle}>{kp.title}</span>
+            <div className={styles.quickArea}>
+              <span>快速补全需求</span>
+              <div>
+                {QUICK_REQUESTS.map((item) => (
+                  <button key={item} type="button" onClick={() => setPrompt((prev) => `${prev}，${item}`)}>
+                    {item}
                   </button>
                 ))}
               </div>
-            </section>
-          )}
-        </aside>
-      </div>
+            </div>
+
+            <div className={styles.preferenceBox}>
+              <h4>生成偏好</h4>
+              <div className={styles.preferenceRow}>
+                <span>难度：</span>
+                <button type="button" className={difficulty === 'basic' ? styles.choiceActive : styles.choice} onClick={() => setDifficulty('basic')}>基础</button>
+                <button type="button" className={difficulty === 'advanced' ? styles.choiceActive : styles.choice} onClick={() => setDifficulty('advanced')}>进阶</button>
+              </div>
+              <div className={styles.preferenceRow}>
+                <span>风格：</span>
+                <button type="button" className={styleType === 'diagram' ? styles.choiceActive : styles.choice} onClick={() => setStyleType('diagram')}>简洁图解</button>
+                <button type="button" className={styleType === 'card' ? styles.choiceActive : styles.choice} onClick={() => setStyleType('card')}>卡片总结</button>
+                <button type="button" className={styleType === 'animation' ? styles.choiceActive : styles.choice} onClick={() => setStyleType('animation')}>动态讲解</button>
+              </div>
+              <div className={styles.preferenceRow}>
+                <span>用途：</span>
+                <button type="button" className={purpose === 'concept' ? styles.choiceActive : styles.choice} onClick={() => setPurpose('concept')}>课堂预习</button>
+                <button type="button" className={purpose === 'quiz' ? styles.choiceActive : styles.choice} onClick={() => setPurpose('quiz')}>课后复习</button>
+                <button type="button" className={purpose === 'review' ? styles.choiceActive : styles.choice} onClick={() => setPurpose('review')}>考前速记</button>
+              </div>
+            </div>
+
+            <div className={styles.agentTip}>
+              <Bot size={22} />
+              <div>
+                <strong>AI 会结合当前阶段自动理解：</strong>
+                <p>当前阶段：{currentTitle}；覆盖知识点：变量、输入输出、注释；推荐输出：示意图 + 短视频</p>
+              </div>
+            </div>
+
+            <div className={styles.generateActions}>
+              <button type="button" className={styles.primaryButton} onClick={handleGenerateMedia} disabled={Boolean(generating)}>
+                {generating === 'media' ? <Loader2 size={16} className={styles.spin} /> : <Sparkles size={16} />}
+                立即生成
+              </button>
+              <button type="button" className={styles.ghostButton} onClick={() => setPrompt('')}>
+                <Trash2 size={16} />
+                清空内容
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.previewPanel}>
+          <div className={styles.previewHead}>
+            <h2>生成结果预览</h2>
+            <button type="button" onClick={refreshResources} disabled={loading}>
+              {loading ? <Loader2 size={14} className={styles.spin} /> : null}
+              查看全部历史生成
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
+          <div className={styles.previewGrid}>
+            <article className={styles.previewCard}>
+              <h3>变量与数据类型关系图</h3>
+              <h3 className={styles.previewDynamicTitle}>{previewImageTitle}</h3>
+              <VariablesDiagram imageUrl={previewImageUrl} />
+              <button type="button" className={styles.outlineButton} onClick={openPreviewImage} disabled={!previewImageUrl}>
+                <Image size={14} />
+                查看大图
+              </button>
+            </article>
+            <article className={styles.previewCard}>
+              <h3>输入输出流程图</h3>
+              <FlowDiagram />
+              <button type="button" className={styles.outlineButton}>
+                <Image size={14} />
+                查看大图
+              </button>
+            </article>
+          </div>
+
+          <VideoPreview video={video} videoUrl={previewVideoUrl} />
+
+          <div className={styles.textResource}>
+            <div>
+              <h3>{activeResource?.title || getResourceTitle(activeTab)}</h3>
+              <p>{activeResource?.content || lesson?.content || codeCase?.content || '选择上方资源类型，或点击“查看全部历史生成”让后端生成对应资源内容。'}</p>
+            </div>
+            <button type="button" onClick={() => handleGenerateText(activeTab)} disabled={Boolean(generating)}>
+              {generating === activeTab ? '生成中...' : '生成该类型'}
+            </button>
+          </div>
+
+          {videoStatus && <div className={styles.statusBar}>{videoStatus}</div>}
+          <div className={styles.noticeBar}>
+            <Check size={15} />
+            你也可以切换到“生成学习视频”，让 AI 按当前知识点自动产出讲解短视频。
+          </div>
+        </section>
+      </main>
+
+      <section className={styles.recommend}>
+        <h2>推荐使用方式</h2>
+        {[
+          ['1', '提出需求', '描述你想理解的知识点或需要的学习资源'],
+          ['2', 'AI 生成图解/视频', 'AI 基于当前阶段知识，自动生成专题资源'],
+          ['3', '用资源辅助学习', '通过图解和视频，加深理解，提升学习效果'],
+        ].map(([index, title, desc]) => (
+          <article key={index}>
+            <span>{index}</span>
+            <div>
+              <h3>{title}</h3>
+              <p>{desc}</p>
+            </div>
+          </article>
+        ))}
+      </section>
+
+      {imageModalOpen && previewImageUrl && (
+        <div className={styles.imageModalOverlay} role="dialog" aria-modal="true" aria-label="查看生成图片大图" onClick={() => setImageModalOpen(false)}>
+          <div className={styles.imageModal} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.imageModalHead}>
+              <h3>{previewImageTitle}</h3>
+              <button type="button" aria-label="关闭大图预览" onClick={() => setImageModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className={styles.imageModalBody}>
+              <img src={previewImageUrl} alt={previewImageTitle} />
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }
