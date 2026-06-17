@@ -148,14 +148,18 @@ public class ChatRouteDispatcher {
                     sendStepArtifacts(wsSession, agentId, stepData, userId, sender);
                 }
 
-                // 只把最终产出步骤的内容发给用户，中间分析步骤（画像/内容分析等）不发
+                // 只把最终产出步骤的内容发给用户，中间分析步骤（画像/内容分析/Prompt 工程等）不发
                 if (success && stepData != null
                         && !agentId.contains("profile")
                         && !agentId.contains("content_analysis")
                         && !agentId.contains("quality")
                         && !agentId.contains("knowledge_state")
                         && !agentId.contains("difficulty")
-                        && !agentId.contains("learning_style")) {
+                        && !agentId.contains("learning_style")
+                        // 阶段三修复：prompt_gen 是内部加工步骤，输出的 Prompt 不能当回答给用户
+                        && !agentId.contains("prompt_gen")
+                        // 媒体生成步骤的"图片已生成/视频已生成"提示也不重复发，artifact 已经渲染
+                        && !agentId.contains("media_gen")) {
                     String stepContent = extractStepContent(agentId, stepData);
                     if (stepContent != null && !stepContent.isBlank()) {
                         sender.sendEvent(wsSession, "chunk", stepContent);
@@ -657,7 +661,9 @@ public class ChatRouteDispatcher {
                                 && !agentId.contains("quality")
                                 && !agentId.contains("knowledge_state")
                                 && !agentId.contains("difficulty")
-                                && !agentId.contains("learning_style")) {
+                                && !agentId.contains("learning_style")
+                                && !agentId.contains("prompt_gen")
+                                && !agentId.contains("media_gen")) {
                             String stepContent = extractStepContent(agentId, stepData);
                             if (stepContent != null && !stepContent.isBlank()) {
                                 sender.sendEvent(session, "chunk", stepContent);

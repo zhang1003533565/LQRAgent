@@ -11,6 +11,8 @@ import com.lqragent.backend.agents.base.RagSearchTool;
 import com.lqragent.backend.agents.quiz.tools.GenerateQuizTool;
 import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.orchestrator.agents.BaseAgent;
+import com.lqragent.backend.orchestrator.card.AgentCard;
+import com.lqragent.backend.orchestrator.card.ToolSpec;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.prompt.service.PromptService;
@@ -61,5 +63,22 @@ public class QuizAgent extends BaseAgent {
                 + "数量：" + count + "\n"
                 + "补充上下文：" + context + "\n"
                 + "如果用户要求基于知识库、资料、文档或课件出题，请先调用 search_knowledge 检索相关内容，再调用 generate_quiz 生成题目。";
+    }
+
+    @Override
+    public AgentCard getAgentCard() {
+        return new AgentCard(
+                AgentIds.QUIZ,
+                "题目生成",
+                "按要求或基于知识库资料生成混合题型练习题",
+                List.of("quiz", "exercise", "test", "question", "practice"),
+                List.of(
+                        ToolSpec.of("search_knowledge", "知识库检索"),
+                        ToolSpec.of("generate_quiz", "生成题目")
+                ),
+                List.of("text", "rag_sources"),
+                List.of("quiz"),
+                1, 60000L
+        );
     }
 }

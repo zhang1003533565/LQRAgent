@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.lqragent.backend.orchestrator.artifact.Artifact;
 import lombok.Builder;
 import lombok.Data;
 
@@ -27,11 +28,15 @@ public class AgentResponse {
     private List<ToolExecution> executions;
     private Map<String, Object> metadata;
 
-    // ===== DTO 风格字段 =====
-    private String type;
-    private String title;
-    private String summary;
-    private Object data;
+    // ===== DTO 风格字段（已废弃，阶段八将删除） =====
+    @Deprecated private String type;
+    @Deprecated private String title;
+    @Deprecated private String summary;
+    @Deprecated private Object data;
+
+    // ===== 阶段一新增：统一 Artifact 列表 =====
+    /** 统一产物列表（替代散落在 metadata 里的 artifactKind/artifactPayload） */
+    private List<Artifact> artifacts;
 
     /**
      * 创建成功响应（Pipeline 风格）
@@ -91,5 +96,27 @@ public class AgentResponse {
         } catch (Exception e) {
             return "{\"success\":" + success + ",\"content\":\"" + content + "\"}";
         }
+    }
+
+    // ===== 阶段一新增：带 Artifact 的成功响应 =====
+
+    /**
+     * 创建带 Artifact 列表的成功响应
+     */
+    public static AgentResponse successWithArtifacts(String content, List<Artifact> artifacts,
+                                                     Map<String, Object> metadata) {
+        return AgentResponse.builder()
+                .success(true)
+                .content(content)
+                .artifacts(artifacts)
+                .metadata(metadata)
+                .build();
+    }
+
+    /**
+     * 创建带单个 Artifact 的成功响应
+     */
+    public static AgentResponse successWithArtifact(String content, Artifact artifact) {
+        return successWithArtifacts(content, artifact != null ? List.of(artifact) : List.of(), Map.of());
     }
 }

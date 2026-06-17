@@ -10,6 +10,8 @@ import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.quality.tools.CheckQualityTool;
 import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.orchestrator.agents.BaseAgent;
+import com.lqragent.backend.orchestrator.card.AgentCard;
+import com.lqragent.backend.orchestrator.card.ToolSpec;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.prompt.service.PromptService;
@@ -48,5 +50,19 @@ public class QualityAgent extends BaseAgent {
         sb.append("请检查以下资源的质量：\n").append(resourceIds).append("\n\n");
         sb.append("如果发现质量问题，请说明具体问题并提供建议。");
         return sb.toString();
+    }
+
+    @Override
+    public AgentCard getAgentCard() {
+        return new AgentCard(
+                AgentIds.QUALITY,
+                "质量检查",
+                "检查 Agent 产物的完整性、正确性、符合度",
+                List.of("quality", "check", "validate", "review"),
+                List.of(ToolSpec.of("check_quality", "质量检查")),
+                List.of("quiz", "media_image", "video", "summary", "learning_path", "text"),
+                List.of("assessment"),
+                1, 30000L
+        );
     }
 }

@@ -10,12 +10,17 @@ import java.util.stream.Collectors;
 /**
  * Agent 能力注册中心
  * <p>
+ * <b>阶段一已废弃</b>，已迁移至 {@link com.lqragent.backend.orchestrator.card.AgentCardRegistry}。
+ * 新代码请使用 AgentCardRegistry，此类保留仅为向后兼容（OrchestratorCore / handleCfp 仍引用）。
+ * 阶段八将彻底删除。
+ * <p>
  * 职责：
  * 1. 维护所有 Agent 的能力注册信息
  * 2. 提供能力发现（按 ID、标签、关键词）
  * 3. 为 PlanningAgent 构建动态 LLM 能力目录
  * 4. 支持 Agent 间协商时的能力查询
  */
+@Deprecated
 @Slf4j
 @Service
 public class CapabilityRegistry {

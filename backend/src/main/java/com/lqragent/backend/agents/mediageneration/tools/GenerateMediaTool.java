@@ -43,7 +43,8 @@ public class GenerateMediaTool implements AgentTool {
             String kpId = args.get("kpId") != null ? args.get("kpId").toString() : "kp_default";
             String mediaType = args.get("mediaType") != null ? args.get("mediaType").toString() : "image";
 
-            String finalPrompt = "video".equalsIgnoreCase(mediaType) ? prompt : normalizeImagePrompt(prompt);
+            // 阶段三：prompt 由 PromptGenAgent 上游生成，此处直接使用，不再硬编码追加负面词
+            String finalPrompt = prompt;
 
             String mediaUrl;
             if ("video".equalsIgnoreCase(mediaType)) {
@@ -61,10 +62,5 @@ public class GenerateMediaTool implements AgentTool {
         } catch (Exception e) {
             return ToolResult.failure("媒体生成失败: " + e.getMessage());
         }
-    }
-
-    private String normalizeImagePrompt(String prompt) {
-        String base = prompt == null || prompt.isBlank() ? "A clean educational illustration" : prompt.trim();
-        return base + ", single educational illustration, one coherent scene, centered composition, clean modern style, clear visual hierarchy, no multi-panel layout, no grid, no collage, no comic panels, no storyboard, no split screen, no nine-grid, no multiple frames, no dense text, no small unreadable labels";
     }
 }

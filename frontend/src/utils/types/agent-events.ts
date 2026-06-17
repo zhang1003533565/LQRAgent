@@ -49,8 +49,10 @@ export type AgentId =
   | 'preference_agent'
   | 'knowledge_graph_agent'
   | 'prerequisite_agent'
+  | 'media_gen_agent'
+  | 'prompt_gen_agent'
 
-export type AgentStepStatus = 'running' | 'done' | 'failed'
+export type AgentStepStatus = 'running' | 'done' | 'failed' | 'pending'
 
 export interface AgentStepEvent {
   type: 'agent_step'

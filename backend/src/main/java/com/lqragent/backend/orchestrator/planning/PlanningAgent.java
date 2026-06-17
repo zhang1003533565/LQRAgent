@@ -4,520 +4,345 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.agents.base.LlmClient;
-import com.lqragent.backend.orchestrator.AgentIds;
-import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
-import com.lqragent.backend.orchestrator.pipeline.PipelineConfig;
-import com.lqragent.backend.orchestrator.pipeline.PipelineEngine;
-import com.lqragent.backend.orchestrator.pipeline.PipelineStep;
+import com.lqragent.backend.orchestrator.card.AgentCardRegistry;
 
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * LLM 任务规划器 v3
- * 使用 Function Calling 让 LLM 自动选择意图和工具
+ * LLM 任务规划器 v4
  * <p>
- * 核心职责：
- * 1. 通过 Function Calling 识别用户意图
- * 2. 简单请求（问候/帮助/单点QA）→ 快速通道
- * 3. 复杂请求 → LLM 拆解为多步骤 PipelineConfig
- * <p>
- * v3 变更：使用 Function Calling 替代 prompt JSON 解析，更稳定可靠
+ * 阶段二重写：从"意图分类器"升级为"任务规划器"
+ * <ul>
+ *   <li>删除 isExplicitMediaRequest / isVideoRequest 等硬编码关键词拦截</li>
+ *   <li>删除 13 个 route_xxx 硬编码工具，改为 create_plan / route_simple / ask_clarify 三个工具</li>
+ *   <li>基于 AgentCardRegistry 动态构建能力目录注入到提示词</li>
+ *   <li>输出结构化 TaskPlan，由 OrchestratorCore 转为 PipelineConfig 执行</li>
+ * </ul>
  */
 @Slf4j
 @Component
 public class PlanningAgent {
 
     private final LlmClient llmClient;
-    private final CapabilityRegistry capabilityRegistry;
-    private final PipelineEngine pipelineEngine;
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final AgentCardRegistry cardRegistry;
+    private final PlanPromptProvider promptProvider;
 
-    /** Function Calling 工具定义：让 LLM 自动选择意图 */
-    private static final List<Map<String, Object>> INTENT_TOOLS = List.of(
-        Map.of(
-            "type", "function",
-            "function", Map.of(
-                "name", "route_greeting",
-                "description", "用户发送纯粹的问候，没有任何学习相关意图。只有完全的问候语才选这个。"
-            )
-        ),
-        Map.of(
-            "type", "function",
-            "function", Map.of(
-                "name", "route_help",
-                "description", "用户明确询问这个系统能做什么、有哪些功能、如何使用。注意：询问具体内容（如知识库、画像）不算询问功能。"
-            )
-        ),
-        Map.of(
-            "type", "function",
-            "function", Map.of(
-                "name", "route_learning_path",
-                "description", "用户想要学习某项技能或知识，需要制定学习计划或学习路线",
-                "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                        "goal", Map.of("type", "string", "description", "学习目标，如Python、机器学习")
-                    ),
-                    "required", List.of("goal")
-                )
-            )
-        ),
-        Map.of(
-            "type", "function",
-            "function", Map.of(
-                "name", "route_resource_generate",
-                "description", "用户请求生成学习资源，如讲义、代码示例、文档等。注意：单独请求生成题目、试题、练习题、测验题时应选择 route_quiz_generate。",
-                "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                        "topic", Map.of("type", "string", "description", "资源主题")
-                    ),
-                    "required", List.of("topic")
-                )
-            )
-        ),
-        Map.of(
-            "type", "function",
-            "function", Map.of(
-                "name", "route_quiz_generate",
-                "description", "用户请求生成题目、试题、练习题、测验题、选择题、填空题、简答题、编程题；也包括基于知识库、资料、文档或上传内容出题。",
-                "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                        "topic", Map.of("type", "string", "description", "出题主题或知识点"),
-                        "count", Map.of("type", "integer", "description", "题目数量，可选"),
-                        "difficulty", Map.of("type", "string", "description", "难度，可选"),
-                        "questionTypes", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description", "题型列表，可选"
-                        )
-                    ),
-                    "required", List.of("topic")
-                )
-            )
-        ),
-        Map.of(
-            "type", "function",
-            "function", Map.of(
-                "name", "route_qa",
-                "description", "用户提出具体问题需要解答，包括：知识概念查询、知识库内容查询、技术问题、原理问题等。这是最通用的路由，大部分请求都应该走这里。",
-                "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                        "question", Map.of("type", "string", "description", "用户的问题")
-                    ),
-                    "required", List.of("question")
-                )
-            )
-        ),
-        Map.of(
-            "type", "function",
-            "function", Map.of(
-                "name", "route_profile",
-                "description", "用户想要查看自己的学习画像、学习统计、知识掌握度、学习偏好、学习记录等个人信息"
-            )
-        ),
-        Map.of(
-            "type", "function",
-            "function", Map.of(
-                "name", "route_diagram",
-                "description", "用户请求生成流程图、思维导图、架构图、UML图等可以用代码表现的图表或流程图",
-                "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                        "topic", Map.of("type", "string", "description", "图表主题")
-                    ),
-                    "required", List.of("topic")
-                )
-            )
-        ),
-        Map.of(
-            "type", "function",
-            "function", Map.of(
-                "name", "route_media_gen",
-                "description", "用户请求生成真实的图片、示意图、照片、海报、绘画、插画等需要AI绘画生成的内容（不是流程图、思维导图等代码图表）",
-                "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                        "topic", Map.of("type", "string", "description", "图片/内容主题")
-                    ),
-                    "required", List.of("topic")
-                )
-            )
-        ),
-        Map.of(
-            "type", "function",
-            "function", Map.of(
-                "name", "route_recommendation",
-                "description", "用户请求推荐学习资源、练习题、学习内容"
-            )
-        ),
-        Map.of(
-            "type", "function",
-            "function", Map.of(
-                "name", "route_summary",
-                "description", "用户请求总结知识点、生成复习摘要、提炼核心要点、生成学习笔记"
-            )
-        ),
-        Map.of(
-            "type", "function",
-            "function", Map.of(
-                "name", "route_assessment",
-                "description", "用户请求评估答案质量、批改作业、评分、检查答案正确性"
-            )
-        ),
-        Map.of(
-            "type", "function",
-            "function", Map.of(
-                "name", "route_intervention",
-                "description", "用户遇到学习困难或瓶颈，需要学习干预、学习建议、调整学习策略"
-            )
-        ),
-        Map.of(
-            "type", "function",
-            "function", Map.of(
-                "name", "route_clarify",
-                "description", "用户表达学习意愿但信息不足以制定个性化计划，需要先询问更多细节。例如：'我想学python'、'教我编程'、'学习一下AI'等模糊请求。",
-                "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                        "questions", Map.of(
-                            "type", "array",
-                            "items", Map.of("type", "string"),
-                            "description", "需要询问用户的问题列表，2-3个关键问题"
-                        ),
-                        "context", Map.of(
-                            "type", "string",
-                            "description", "已识别的用户意图摘要"
-                        )
-                    ),
-                    "required", List.of("questions", "context")
-                )
-            )
-        )
-    );
-    
-    private final AtomicInteger stepCounter = new AtomicInteger(0);
-    
-    /** 系统提示词（从文件加载） */
-    private final String systemPrompt;
-
-    public PlanningAgent(LlmClient llmClient, CapabilityRegistry capabilityRegistry, PipelineEngine pipelineEngine) {
+    public PlanningAgent(LlmClient llmClient,
+                         AgentCardRegistry cardRegistry,
+                         PlanPromptProvider promptProvider) {
         this.llmClient = llmClient;
-        this.capabilityRegistry = capabilityRegistry;
-        this.pipelineEngine = pipelineEngine;
-        this.systemPrompt = loadPrompt("agents/planning/prompts/system.md");
+        this.cardRegistry = cardRegistry;
+        this.promptProvider = promptProvider;
     }
 
-    /**
-     * 核心方法：使用 Function Calling 识别用户意图
-     *
-     * @param message 用户原始消息
-     * @param userId  用户ID
-     * @return 规划结果
-     */
     public PlanResult decompose(String message, String userId) {
         return decompose(message, userId, null);
     }
 
-    /**
-     * 核心方法：使用 Function Calling 识别用户意图（带对话历史）
-     *
-     * @param message 用户原始消息
-     * @param userId  用户ID
-     * @param chatHistory 对话历史（可选）
-     * @return 规划结果
-     */
     public PlanResult decompose(String message, String userId, String chatHistory) {
-        log.info("[PlanningAgent] decomposing: {}", message);
+        log.info("[PlanningAgent v4] decomposing: {}", message);
 
-        if (isExplicitMediaRequest(message)) {
-            Map<String, Object> args = new HashMap<>();
-            args.put("topic", message);
-            args.put("prompt", message);
-            args.put("mediaType", isVideoRequest(message) ? "video" : "image");
-            return pipelineFor("media_gen", args, AgentIds.MEDIA_GEN, "generate_media");
+        // 1. 快通道：明确的问候/帮助（轻量正则，免去一次 LLM 调用）
+        if (isGreeting(message)) {
+            log.info("[PlanningAgent v4] fast-path GREETING");
+            return PlanResult.simple(PlanIntent.GREETING);
+        }
+        if (isHelp(message)) {
+            log.info("[PlanningAgent v4] fast-path HELP");
+            return PlanResult.simple(PlanIntent.HELP);
         }
 
+        // 2. LLM 规划
         try {
-            // 构建消息列表，包含对话历史
-            List<Map<String, Object>> messages = new ArrayList<>();
-            
-            // 添加对话历史（如果有）
-            if (chatHistory != null && !chatHistory.isBlank()) {
-                messages.add(Map.of("role", "user", "content", "以下是之前的对话历史，请参考上下文理解用户意图：\n" + chatHistory));
+            String systemPrompt = promptProvider.buildSystemPrompt();
+            List<Map<String, Object>> messages = promptProvider.buildUserMessages(message, chatHistory);
+            LlmClient.LlmResponse resp = llmClient.chat(systemPrompt, messages, PlanTools.all());
+
+            if (!resp.isSuccess()) {
+                log.warn("[PlanningAgent v4] LLM 调用失败: {}，兜底 QA", resp.error());
+                return fallbackQa();
             }
-            
-            // 添加当前用户消息
-            messages.add(Map.of("role", "user", "content", message));
-            
-            LlmClient.LlmResponse response = llmClient.chat(systemPrompt, messages, INTENT_TOOLS);
-            
-            // 检查是否有 tool_calls
-            if (response.toolCalls() != null && !response.toolCalls().isEmpty()) {
-                LlmClient.ToolCall toolCall = response.toolCalls().get(0);
-                String toolName = toolCall.name();
-                String argsJson = toolCall.argumentsJson();
-                
-                log.info("[PlanningAgent] Function Calling result: tool={}, args={}", toolName, argsJson);
-                
-                return mapToolCallToPlanResult(toolName, argsJson, message);
+
+            if (resp.toolCalls() == null || resp.toolCalls().isEmpty()) {
+                log.warn("[PlanningAgent v4] LLM 未调用工具，兜底 QA。content={}", resp.content());
+                return fallbackQa();
             }
-            
-            // 如果 LLM 没有调用工具，尝试从 content 解析
-            String content = response.content();
-            if (content != null && !content.isBlank()) {
-                log.warn("[PlanningAgent] LLM returned content instead of tool_call: {}", content);
-                return fallbackIntentMatch(message);
-            }
-            
-            log.warn("[PlanningAgent] LLM returned empty, falling back to simple qa");
-            return PlanResult.simple(PlanIntent.QA);
+
+            LlmClient.ToolCall tc = resp.toolCalls().get(0);
+            return routeByToolCall(tc, message, userId);
 
         } catch (Exception e) {
-            log.error("[PlanningAgent] decompose failed: {}", e.getMessage(), e);
-            return fallbackIntentMatch(message);
+            log.error("[PlanningAgent v4] decompose 失败: {}", e.getMessage(), e);
+            return fallbackQa();
         }
     }
 
-    private boolean isExplicitMediaRequest(String message) {
-        if (message == null) return false;
-        String m = message.toLowerCase();
-        boolean asksGenerate = m.contains("生成") || m.contains("画") || m.contains("做") || m.contains("create") || m.contains("generate");
-        boolean asksVideoExplain = m.contains("用视频") || m.contains("视频解释") || m.contains("视频讲解")
-                || m.contains("视频演示") || m.contains("动画解释") || m.contains("动画讲解");
-        boolean asksScriptOnly = m.contains("视频脚本") || m.contains("分镜脚本") || m.contains("拍摄脚本") || m.contains("视频文案");
-        boolean mediaWord = m.contains("一张") || m.contains("图片") || m.contains("图像") || m.contains("示意图") || m.contains("插画")
-                || m.contains("海报") || m.contains("绘画") || m.contains("照片") || m.contains("动画")
-                || m.contains("视频") || m.contains("真实示意图") || m.contains("image") || m.contains("video");
-        boolean codeDiagramOnly = m.contains("流程图") || m.contains("思维导图") || m.contains("uml") || m.contains("mermaid") || m.contains("路线图");
-        return (asksGenerate || asksVideoExplain) && mediaWord && !asksScriptOnly && !codeDiagramOnly;
-    }
+    private PlanResult routeByToolCall(LlmClient.ToolCall tc, String message, String userId) {
+        String toolName = tc.name();
+        Map<String, Object> args = tc.parseArguments();
+        log.info("[PlanningAgent v4] toolCall: {} args={}", toolName, args);
 
-    private boolean isVideoRequest(String message) {
-        if (message == null) return false;
-        String m = message.toLowerCase();
-        return m.contains("视频") || m.contains("动画") || m.contains("video") || m.contains("movie");
-    }
-
-    /**
-     * 将 Function Calling 结果映射到 PlanResult
-     */
-    private PlanResult mapToolCallToPlanResult(String toolName, String argsJson, String originalMessage) {
-        try {
-            Map<String, Object> args = argsJson != null && !argsJson.isBlank()
-                ? mapper.readValue(argsJson, new TypeReference<>() {})
-                : Map.of();
-            
-            return switch (toolName) {
-                case "route_greeting" -> PlanResult.simple(PlanIntent.GREETING);
-                case "route_help" -> PlanResult.simple(PlanIntent.HELP);
-                // === 业务意图：返回 PIPELINE，调用真正的 Agent ===
-                case "route_learning_path" -> pipelineFor("learning_path", args, AgentIds.LEARNING_PATH, "generate_path");
-                case "route_resource_generate" -> pipelineFor("resource", args, AgentIds.RESOURCE, "generate_lesson");
-                case "route_quiz_generate" -> pipelineFor("quiz", args, AgentIds.QUIZ, "generate_quiz");
-                case "route_diagram" -> pipelineFor("diagram", args, AgentIds.DIAGRAM, "generate_diagram");
-                case "route_media_gen" -> pipelineFor("media_gen_direct", args, AgentIds.MEDIA_GEN, "generate_media");
-                case "route_profile" -> pipelineFor("profile", args, AgentIds.PROFILE, "get_profile");
-                case "route_recommendation" -> pipelineFor("recommendation", args, AgentIds.RECOMMENDATION, "recommend");
-                case "route_summary" -> pipelineFor("summary", args, AgentIds.SUMMARY, "generate_summary");
-                case "route_assessment" -> pipelineFor("assessment", args, AgentIds.ASSESSMENT, "grade");
-                case "route_intervention" -> pipelineFor("intervention", args, AgentIds.INTERVENTION, "suggest_intervention");
-                case "route_clarify" -> {
-                    // 需求确认：返回 CLARIFY 类型，不执行 Pipeline
-                    List<String> questions = args.containsKey("questions")
-                            ? (List<String>) args.get("questions")
-                            : List.of("你想学习哪个方向？", "你有相关基础吗？");
-                    String context = args.containsKey("context")
-                            ? (String) args.get("context")
-                            : "用户想要学习";
-                    yield PlanResult.clarify(questions, context);
+        return switch (toolName) {
+            case "route_simple" -> {
+                // 阶段三关键兜底：原话是媒体请求时，不允许走 simple 单步问答，必须升级成完整媒体 plan
+                if (isMediaIntent(message)) {
+                    log.info("[PlanningAgent v4] route_simple 被覆盖：原话为媒体请求，升级为媒体 plan");
+                    TaskPlan emptyPlan = TaskPlan.of(message, userId, new ArrayList<>());
+                    TaskPlan upgradedPlan = ensureMediaSteps(emptyPlan, message, userId);
+                    List<String> issues = validatePlan(upgradedPlan);
+                    if (issues.isEmpty()) yield PlanResult.plan(upgradedPlan);
                 }
-                // QA 保留 SIMPLE（走 QaAgent 单独处理，支持流式）
-                case "route_qa" -> PlanResult.simple(PlanIntent.QA);
-                default -> {
-                    log.warn("[PlanningAgent] unknown tool: {}, falling back to qa", toolName);
-                    yield PlanResult.simple(PlanIntent.QA);
-                }
-            };
-        } catch (Exception e) {
-            log.error("[PlanningAgent] failed to parse tool args: {}", e.getMessage());
-            return PlanResult.simple(PlanIntent.QA);
-        }
-    }
-
-    /**
-     * 构建单步 Pipeline（通过 PipelineEngine 调用 Agent）
-     * 优先使用已注册的模板；否则创建单步 Pipeline
-     */
-    private PlanResult pipelineFor(String pipelineId, Map<String, Object> args, String agentId, String action) {
-        // 优先使用已注册的模板
-        PipelineConfig template = pipelineEngine.getTemplate(pipelineId);
-        if (template != null) {
-            log.info("[PlanningAgent] using registered template: {}", pipelineId);
-            if (args == null || args.isEmpty()) {
-                return PlanResult.pipeline(template, template.getSteps());
+                String intent = String.valueOf(args.getOrDefault("intent", "help"));
+                yield PlanResult.simple(switch (intent) {
+                    case "greeting" -> PlanIntent.GREETING;
+                    case "help" -> PlanIntent.HELP;
+                    default -> PlanIntent.QA;
+                });
             }
-            List<PipelineStep> steps = template.getSteps().stream().map(step -> {
-                Map<String, Object> params = new HashMap<>();
-                if (step.getParams() != null) params.putAll(step.getParams());
-                params.putAll(args);
-                return PipelineStep.builder()
-                        .stepId(step.getStepId())
-                        .agentId(step.getAgentId())
-                        .action(step.getAction())
-                        .params(params)
-                        .dependsOn(step.getDependsOn())
-                        .conditionType(step.getConditionType())
-                        .maxRetries(step.getMaxRetries())
-                        .timeoutMs(step.getTimeoutMs())
-                        .optional(step.isOptional())
-                        .resultMapping(step.getResultMapping())
-                        .communicationMode(step.getCommunicationMode())
-                        .build();
-            }).toList();
-            PipelineConfig config = PipelineConfig.builder()
-                    .pipelineId(template.getPipelineId())
-                    .name(template.getName())
-                    .description(template.getDescription())
-                    .steps(steps)
-                    .totalTimeoutMs(template.getTotalTimeoutMs())
-                    .parallel(template.isParallel())
-                    .globalParams(template.getGlobalParams())
-                    .build();
-            return PlanResult.pipeline(config, steps);
-        }
-
-        // 回退：创建单步 Pipeline
-        log.info("[PlanningAgent] creating single-step pipeline for: {} -> {}", pipelineId, agentId);
-        PipelineStep step = PipelineStep.builder()
-                .stepId(pipelineId)
-                .agentId(agentId)
-                .action(action)
-                .params(new HashMap<>(args))
-                .timeoutMs(60000)
-                .maxRetries(1)
-                .build();
-
-        PipelineConfig config = PipelineConfig.builder()
-                .pipelineId(pipelineId)
-                .name(pipelineId)
-                .description("Single-step: " + agentId)
-                .steps(List.of(step))
-                .totalTimeoutMs(120000)
-                .build();
-
-        return PlanResult.pipeline(config, List.of(step));
-    }
-
-    /**
-     * 构建 PipelineConfig（复杂请求）
-     */
-    @SuppressWarnings("unchecked")
-    private PlanResult buildPipelineConfig(Map<String, Object> parsed, String message) {
-        String pipelineName = (String) parsed.getOrDefault("pipelineName", "dynamic_pipeline");
-        List<Map<String, Object>> stepMaps = (List<Map<String, Object>>) parsed.get("steps");
-
-        if (stepMaps == null || stepMaps.isEmpty()) {
-            log.warn("[PlanningAgent] empty steps, falling back to qa");
-            return PlanResult.simple(PlanIntent.QA);
-        }
-
-        List<PipelineStep> steps = new ArrayList<>();
-        for (Map<String, Object> sm : stepMaps) {
-            String stepId = (String) sm.getOrDefault("stepId", "step_" + stepCounter.incrementAndGet());
-            String agent = (String) sm.get("agent");
-            String action = (String) sm.getOrDefault("action", "process");
-            List<String> dependsOn = sm.containsKey("dependsOn")
-                    ? ((List<String>) sm.get("dependsOn"))
-                    : List.of();
-
-            Map<String, Object> params = sm.containsKey("params")
-                    ? new HashMap<>((Map<String, Object>) sm.get("params"))
-                    : new HashMap<>();
-
-            // 注入用户原始消息作为上下文
-            params.put("userMessage", message);
-            params.put("context", message);
-
-            // 设置合理的超时
-            long timeoutMs = agent.contains("media_gen") ? 180_000 : 60_000;
-
-            PipelineStep step = PipelineStep.builder()
-                    .stepId(stepId)
-                    .agentId(agent)
-                    .action(action)
-                    .params(params)
-                    .dependsOn(dependsOn)
-                    .timeoutMs(timeoutMs)
-                    .maxRetries(1)
-                    .build();
-
-            steps.add(step);
-        }
-
-        PipelineConfig config = PipelineConfig.builder()
-                .pipelineId("dynamic_" + System.currentTimeMillis())
-                .name(pipelineName)
-                .description("动态规划: " + truncate(message, 80))
-                .steps(steps)
-                .parallel(true)
-                .totalTimeoutMs(300_000)
-                .build();
-
-        log.info("[PlanningAgent] created pipeline: {} steps, steps={}",
-                steps.size(), steps.stream().map(PipelineStep::getStepId).toList());
-
-        return PlanResult.pipeline(config, steps);
-    }
-
-    /**
-     * 降级：当 LLM 不可用时，直接返回 QA（完全依赖 LLM 判断）
-     */
-    private PlanResult fallbackIntentMatch(String message) {
-        log.warn("[PlanningAgent] LLM 意图识别失败，降级为 QA");
-        return PlanResult.simple(PlanIntent.QA);
-    }
-
-    private PlanIntent parseIntent(String intent) {
-        return switch (intent.toLowerCase()) {
-            case "greeting" -> PlanIntent.GREETING;
-            case "help" -> PlanIntent.HELP;
-            case "learning_path" -> PlanIntent.LEARNING_PATH;
-            case "resource" -> PlanIntent.RESOURCE;
-            case "quiz" -> PlanIntent.QUIZ;
-            case "diagram" -> PlanIntent.DIAGRAM;
-            case "summary" -> PlanIntent.SUMMARY;
-            case "recommendation" -> PlanIntent.RECOMMENDATION;
-            case "assessment" -> PlanIntent.ASSESSMENT;
-            default -> PlanIntent.QA;
+            case "ask_clarify" -> {
+                @SuppressWarnings("unchecked")
+                List<String> questions = args.containsKey("questions")
+                        ? (List<String>) args.get("questions")
+                        : List.of("能否补充一下你的具体目标？");
+                String context = String.valueOf(args.getOrDefault("context", "信息不足以制定计划"));
+                yield PlanResult.clarify(questions, context);
+            }
+            case "create_plan" -> {
+                TaskPlan plan = parsePlan(args, message, userId);
+                if (plan == null) {
+                    log.warn("[PlanningAgent v4] parsePlan 返回 null，兜底 QA");
+                    yield fallbackQa();
+                }
+                // 阶段三修复：根据用户原话强制修正媒体类型，避免 LLM 漏传 mediaType=video
+                enforceMediaType(plan, message);
+                // 阶段三关键兜底：用户原话明确要求媒体（图/视频），但 LLM 没规划 media_gen 时强行补足
+                plan = ensureMediaSteps(plan, message, userId);
+                List<String> issues = validatePlan(plan);
+                if (!issues.isEmpty()) {
+                    log.warn("[PlanningAgent v4] plan 校验失败：{}，兜底 QA", issues);
+                    yield fallbackQa();
+                }
+                yield PlanResult.plan(plan);
+            }
+            default -> {
+                log.warn("[PlanningAgent v4] 未知工具: {}，兜底 QA", toolName);
+                yield fallbackQa();
+            }
         };
     }
 
-    private String truncate(String text, int maxLen) {
-        if (text == null) return "";
-        return text.length() > maxLen ? text.substring(0, maxLen) + "..." : text;
-    }
-    
-    /**
-     * 从 classpath 加载提示词文件
-     */
-    private String loadPrompt(String path) {
+    @SuppressWarnings("unchecked")
+    private TaskPlan parsePlan(Map<String, Object> args, String fallbackGoal, String userId) {
         try {
-            ClassPathResource resource = new ClassPathResource(path);
-            return resource.getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+            String planGoal = String.valueOf(args.getOrDefault("goal", fallbackGoal));
+            Object stepsObj = args.get("steps");
+            if (!(stepsObj instanceof List<?> rawSteps) || rawSteps.isEmpty()) {
+                return null;
+            }
+
+            List<TaskStep> steps = new ArrayList<>();
+            int idx = 0;
+            for (Object o : rawSteps) {
+                if (!(o instanceof Map<?, ?> map)) continue;
+                idx++;
+                Map<String, Object> sm = (Map<String, Object>) map;
+
+                String stepId = String.valueOf(sm.getOrDefault("stepId", "s" + idx));
+                String agentId = String.valueOf(sm.get("agentId"));
+                String action = String.valueOf(sm.getOrDefault("action", "process"));
+
+                Map<String, Object> params = sm.get("params") instanceof Map<?, ?> p
+                        ? new HashMap<>((Map<String, Object>) p)
+                        : new HashMap<>();
+                // 把用户原始消息也带上，方便 Agent 理解上下文
+                params.putIfAbsent("goal", fallbackGoal);
+
+                List<String> dependsOn = sm.get("dependsOn") instanceof List<?> d
+                        ? (List<String>) d
+                        : List.of();
+
+                String outputKind = sm.containsKey("outputKind") ? String.valueOf(sm.get("outputKind")) : null;
+
+                steps.add(TaskStep.builder()
+                        .stepId(stepId)
+                        .agentId(agentId)
+                        .action(action)
+                        .params(params)
+                        .dependsOn(dependsOn)
+                        .outputKind(outputKind)
+                        .maxRetries(2)
+                        .optional(false)
+                        .build());
+
+                if (steps.size() >= 6) break;  // 硬截断，防止 LLM 失控
+            }
+
+            List<String> expectedOutputs = args.get("expectedOutputs") instanceof List<?> eo
+                    ? (List<String>) eo
+                    : List.of("text");
+
+            return new TaskPlan(
+                    "plan-" + System.currentTimeMillis(),
+                    userId, planGoal, steps, expectedOutputs, "qa"
+            );
         } catch (Exception e) {
-            log.error("[PlanningAgent] failed to load prompt: {}", path, e);
-            return "You are a helpful assistant.";
+            log.error("[PlanningAgent v4] parsePlan 异常: {}", e.getMessage());
+            return null;
         }
+    }
+
+    /**
+     * 校验计划：所有 agentId 必须在 AgentCardRegistry 中存在
+     * 防止 LLM 编造不存在的 agent 导致执行报错
+     */
+    private List<String> validatePlan(TaskPlan plan) {
+        List<String> issues = new ArrayList<>();
+        if (plan == null || plan.steps() == null || plan.steps().isEmpty()) {
+            issues.add("空 plan");
+            return issues;
+        }
+        for (TaskStep s : plan.steps()) {
+            if (s.getAgentId() == null || s.getAgentId().isBlank()) {
+                issues.add("step " + s.getStepId() + " 缺少 agentId");
+                continue;
+            }
+            if (!cardRegistry.exists(s.getAgentId())) {
+                issues.add("agentId 不存在: " + s.getAgentId());
+            }
+        }
+        return issues;
+    }
+
+    /** LLM 失败兜底为单步 QA */
+    private PlanResult fallbackQa() {
+        return PlanResult.simple(PlanIntent.QA);
+    }
+
+    /** 阶段三：判断用户原话是否为媒体生成意图（视频或图片） */
+    private boolean isMediaIntent(String message) {
+        if (message == null) return false;
+        String m = message.toLowerCase();
+        boolean wantsVideo = m.contains("视频") || m.contains("动画") || m.contains("video") || m.contains("animation");
+        boolean wantsImage = m.contains("图片") || m.contains("图像") || m.contains("示意图")
+                || m.contains("插画") || m.contains("海报") || m.contains("照片") || m.contains("画一") || m.contains("image");
+        return wantsVideo || wantsImage;
+    }
+
+    /**
+     * 阶段三关键兜底：用户原话明确要求"用视频/动画/图片解释"等，但 LLM 没规划 media_gen 时强行补足
+     * <p>
+     * 触发场景：LLM 把"用视频解释 X"误判成纯 QA，结果用户拿到一段"我用文字画给你看"的文本而非真视频。
+     * 解决：服务端硬兜底——检测原话媒体关键词 + plan 缺 media_gen → 在末尾追加 prompt_gen + media_gen 步骤。
+     */
+    private TaskPlan ensureMediaSteps(TaskPlan plan, String message, String userId) {
+        if (plan == null || message == null) return plan;
+        String m = message.toLowerCase();
+        boolean wantsVideo = m.contains("视频") || m.contains("动画") || m.contains("video") || m.contains("animation");
+        boolean wantsImage = m.contains("图片") || m.contains("图像") || m.contains("示意图")
+                || m.contains("插画") || m.contains("海报") || m.contains("照片") || m.contains("画一") || m.contains("image");
+        if (!wantsVideo && !wantsImage) return plan;
+
+        // 检查是否已有 media_gen 步骤
+        boolean hasMediaGen = plan.steps() != null && plan.steps().stream()
+                .anyMatch(s -> s.getAgentId() != null && s.getAgentId().contains("media_gen"));
+        if (hasMediaGen) return plan;
+
+        String mediaType = wantsVideo ? "video" : "image";
+        String outputKind = wantsVideo ? "video" : "media_image";
+        log.info("[PlanningAgent v4] ensureMediaSteps: LLM 漏规划媒体步骤，强行补 prompt_gen+media_gen mediaType={}", mediaType);
+
+        // 在原 plan 末尾追加两步
+        List<TaskStep> newSteps = new ArrayList<>(plan.steps() == null ? List.of() : plan.steps());
+        // 找最后一个非 media 步骤的 stepId 作为依赖，没有就空依赖
+        String lastStepId = newSteps.isEmpty() ? null : newSteps.get(newSteps.size() - 1).getStepId();
+
+        Map<String, Object> promptParams = new HashMap<>();
+        promptParams.put("mediaType", mediaType);
+        promptParams.put("topic", message);
+        TaskStep promptStep = TaskStep.builder()
+                .stepId("auto_prompt_" + System.currentTimeMillis())
+                .agentId("prompt_gen_agent")
+                .action("generate")
+                .params(promptParams)
+                .dependsOn(lastStepId == null ? List.of() : List.of(lastStepId))
+                .outputKind("text")
+                .maxRetries(1)
+                .build();
+
+        Map<String, Object> mediaParams = new HashMap<>();
+        mediaParams.put("mediaType", mediaType);
+        TaskStep mediaStep = TaskStep.builder()
+                .stepId("auto_media_" + System.currentTimeMillis())
+                .agentId("media_gen_agent")
+                .action("generate")
+                .params(mediaParams)
+                .dependsOn(List.of(promptStep.getStepId()))
+                .outputKind(outputKind)
+                .maxRetries(1)
+                .build();
+
+        newSteps.add(promptStep);
+        newSteps.add(mediaStep);
+        return new TaskPlan(plan.planId(), plan.userId(), plan.goal(), newSteps, plan.expectedOutputs(), plan.fallbackStrategy());
+    }
+
+    /**
+     * 阶段三修复：基于用户原话强制修正媒体类型
+     * <p>
+     * 问题：LLM 在生成 plan 时常常漏传 mediaType，或者把"用视频解释"的请求填成 image
+     * 解决：服务端兜底——只要原话出现 video/动画 类关键词，就把所有 media_gen / prompt_gen 步骤的 params.mediaType 强制设为 video
+     */
+    private void enforceMediaType(TaskPlan plan, String message) {
+        if (plan == null || plan.steps() == null || message == null) return;
+        String m = message.toLowerCase();
+        boolean wantsVideo = m.contains("视频") || m.contains("动画") || m.contains("video") || m.contains("animation");
+        boolean wantsImage = m.contains("图片") || m.contains("图像") || m.contains("示意图")
+                || m.contains("插画") || m.contains("海报") || m.contains("照片") || m.contains("image");
+
+        // 视频优先（用户说"用视频解释"时通常 wantsImage 为 false，但为防误判，video 优先）
+        String enforcedType = null;
+        if (wantsVideo) enforcedType = "video";
+        else if (wantsImage) enforcedType = "image";
+        if (enforcedType == null) return;
+
+        for (TaskStep step : plan.steps()) {
+            String aid = step.getAgentId();
+            if (aid == null) continue;
+            if (aid.contains("media_gen") || aid.contains("prompt_gen")) {
+                Map<String, Object> params = step.getParams();
+                if (params == null) {
+                    params = new HashMap<>();
+                    step.setParams(params);
+                }
+                Object existing = params.get("mediaType");
+                if (existing == null || !enforcedType.equalsIgnoreCase(String.valueOf(existing))) {
+                    params.put("mediaType", enforcedType);
+                    log.info("[PlanningAgent v4] enforced mediaType={} on step {}", enforcedType, step.getStepId());
+                }
+            }
+        }
+    }
+
+    private boolean isGreeting(String m) {
+        if (m == null) return false;
+        String s = m.trim().toLowerCase();
+        if (s.length() > 12) return false;  // 太长大概率不是纯问候
+        return s.matches("^(你好|您好|hi|hello|hey|嗨|在吗|在不在|早上好|晚上好|下午好)[!?。.！？]*$");
+    }
+
+    private boolean isHelp(String m) {
+        if (m == null) return false;
+        String s = m.trim().toLowerCase();
+        if (s.length() > 30) return false;
+        return s.contains("你能做什么")
+                || s.contains("有什么功能")
+                || s.contains("帮助")
+                || s.equals("help")
+                || s.equals("?")
+                || s.equals("？");
     }
 }

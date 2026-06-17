@@ -35,6 +35,8 @@ import com.lqragent.backend.orchestrator.pipeline.service.PipelineTaskService;
 import com.lqragent.backend.orchestrator.planning.PlanIntent;
 import com.lqragent.backend.orchestrator.planning.PlanResult;
 import com.lqragent.backend.orchestrator.planning.PlanningAgent;
+import com.lqragent.backend.orchestrator.planning.TaskPlan;
+import com.lqragent.backend.orchestrator.planning.TaskStep;
 
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
@@ -191,6 +193,14 @@ public class OrchestratorCore {
         // Step 1: PlanningAgent LLM 拆解
         PlanResult plan = planningAgent.decompose(message, userId);
 
+        // 阶段二新增：将动态 TaskPlan 转为 PipelineConfig
+        if (plan.isPlan() && plan.taskPlan() != null) {
+            PipelineConfig dynamicConfig = buildPipelineFromPlan(plan.taskPlan());
+            plan = PlanResult.pipeline(dynamicConfig, dynamicConfig.getSteps());
+            log.info("[Orchestrator] converted TaskPlan to dynamic pipeline: {} steps={}",
+                    dynamicConfig.getPipelineId(), dynamicConfig.getSteps().size());
+        }
+
         // 将可映射到 Pipeline 的 SIMPLE 意图升级为 PIPELINE 执行
         if (plan.isSimple() && plan.intent() != null) {
             PipelineConfig upgradedConfig = upgradeToPipeline(plan.intent());
@@ -227,6 +237,12 @@ public class OrchestratorCore {
     public PlanResult planOnly(String userId, String message, String chatHistory) {
         log.info("[Orchestrator] planOnly: userId={}, msg={}", userId, message);
         PlanResult plan = planningAgent.decompose(message, userId, chatHistory);
+
+        // 阶段二新增：将动态 TaskPlan 转为 PipelineConfig
+        if (plan.isPlan() && plan.taskPlan() != null) {
+            PipelineConfig dynamicConfig = buildPipelineFromPlan(plan.taskPlan());
+            plan = PlanResult.pipeline(dynamicConfig, dynamicConfig.getSteps());
+        }
 
         // 将可映射到 Pipeline 的 SIMPLE 意图升级为 PIPELINE
         if (plan.isSimple() && plan.intent() != null) {
@@ -269,6 +285,12 @@ public class OrchestratorCore {
         log.info("[Orchestrator] handleMessage: userId={}, msg={}", userId, message);
 
         PlanResult plan = planningAgent.decompose(message, userId);
+
+        // 阶段二新增：将动态 TaskPlan 转为 PipelineConfig
+        if (plan.isPlan() && plan.taskPlan() != null) {
+            PipelineConfig dynamicConfig = buildPipelineFromPlan(plan.taskPlan());
+            plan = PlanResult.pipeline(dynamicConfig, dynamicConfig.getSteps());
+        }
 
         if (plan.isSimple()) {
             Map<String, Object> simpleResult = handleSimpleRequest(plan.intent(), message);
@@ -635,6 +657,36 @@ public class OrchestratorCore {
     }
 
     // ==================== 工具方法 ====================
+
+    /**
+     * 阶段二新增：从 TaskPlan 动态构建 PipelineConfig
+     * <p>
+     * LLM 输出的 TaskStep 序列 → PipelineStep 序列，由 PipelineEngine 执行
+     */
+    private PipelineConfig buildPipelineFromPlan(TaskPlan plan) {
+        List<com.lqragent.backend.orchestrator.pipeline.PipelineStep> pipelineSteps = new java.util.ArrayList<>();
+        for (TaskStep ts : plan.steps()) {
+            pipelineSteps.add(com.lqragent.backend.orchestrator.pipeline.PipelineStep.builder()
+                    .stepId(ts.getStepId())
+                    .agentId(ts.getAgentId())
+                    .action(ts.getAction())
+                    .params(ts.getParams() != null ? new HashMap<>(ts.getParams()) : new HashMap<>())
+                    .dependsOn(ts.getDependsOn() != null ? ts.getDependsOn() : List.of())
+                    .resultMapping(ts.getInputFromSteps() != null ? ts.getInputFromSteps() : Map.of())
+                    .maxRetries(ts.getMaxRetries())
+                    .optional(ts.isOptional())
+                    .timeoutMs(60000)
+                    .build());
+        }
+        return PipelineConfig.builder()
+                .pipelineId("dynamic_" + plan.planId())
+                .name("动态任务: " + (plan.goal() != null ? plan.goal() : ""))
+                .description("LLM 规划的动态 Pipeline")
+                .steps(pipelineSteps)
+                .totalTimeoutMs(180000)
+                .parallel(false)
+                .build();
+    }
 
     /**
      * 将 SIMPLE 意图升级为 Pipeline（当存在对应模板时）

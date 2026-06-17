@@ -9,6 +9,8 @@ import com.lqragent.backend.agents.base.AgentRequest;
 import com.lqragent.backend.agents.base.AgentResponse;
 import com.lqragent.backend.orchestrator.capability.AgentCapability;
 import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
+import com.lqragent.backend.orchestrator.card.AgentCard;
+import com.lqragent.backend.orchestrator.card.AgentCardRegistry;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.orchestrator.message.Performative;
@@ -62,6 +64,10 @@ public abstract class BaseAgent implements AgentInterface {
     @Autowired(required = false)
     protected AgentRegistry agentRegistry;
 
+    /** 阶段一新增：AgentCardRegistry（声明式能力目录，供 PlanningAgent v2 使用） */
+    @Autowired(required = false)
+    protected AgentCardRegistry agentCardRegistry;
+
     protected BaseAgent(String agentId, RedisStreamsService streams,
                         LlmClient llmClient, AgentToolRegistry toolRegistry,
                         PromptService promptService) {
@@ -87,6 +93,22 @@ public abstract class BaseAgent implements AgentInterface {
 
     /** 获取可用工具列表 */
     protected abstract List<AgentTool> getTools();
+
+    /**
+     * 阶段一新增：声明 Agent 能力卡（强烈建议子类覆盖）
+     * 启动时自动注册到 AgentCardRegistry
+     * <p>
+     * 默认实现返回兜底卡片，子类应根据真实能力覆盖
+     */
+    public AgentCard getAgentCard() {
+        return AgentCard.simple(
+                agentId,
+                agentId,
+                "Agent " + agentId,
+                List.of(),
+                List.of("text")
+        );
+    }
 
     /**
      * 处理消息（子类实现）
@@ -157,6 +179,15 @@ public abstract class BaseAgent implements AgentInterface {
         if (agentRegistry != null) {
             agentRegistry.register(this);
             log.info("[{}] registered in AgentRegistry", agentId);
+        }
+
+        // 阶段一新增：自动注册 AgentCard 到 AgentCardRegistry
+        if (agentCardRegistry != null) {
+            try {
+                agentCardRegistry.register(getAgentCard());
+            } catch (Exception e) {
+                log.warn("[{}] failed to register AgentCard: {}", agentId, e.getMessage());
+            }
         }
 
         String stream = "stream:agent:" + agentId;

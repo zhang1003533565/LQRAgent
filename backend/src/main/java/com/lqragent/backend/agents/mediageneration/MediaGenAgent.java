@@ -12,6 +12,8 @@ import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.mediageneration.tools.GenerateMediaTool;
 import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.orchestrator.agents.BaseAgent;
+import com.lqragent.backend.orchestrator.card.AgentCard;
+import com.lqragent.backend.orchestrator.card.ToolSpec;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.prompt.service.PromptService;
@@ -44,7 +46,9 @@ public class MediaGenAgent extends BaseAgent {
             Map<String, Object> args = new HashMap<>();
             String goal = String.valueOf(request.getContent().getOrDefault("goal", ""));
             String topic = String.valueOf(request.getContent().getOrDefault("topic", goal));
-            String prompt = String.valueOf(request.getContent().getOrDefault("prompt", topic));
+            // 阶段三：上游 PromptGenAgent 通过 resultMapping 注入的 prompt 可能是 Map
+            String prompt = extractPromptText(request.getContent().get("prompt"));
+            if (prompt.isBlank()) prompt = topic;
             String mediaType = String.valueOf(request.getContent().getOrDefault("mediaType", "image"));
             args.put("prompt", prompt.isBlank() ? goal : prompt);
             args.put("mediaType", mediaType);
@@ -74,6 +78,20 @@ public class MediaGenAgent extends BaseAgent {
         }
     }
 
+    /** 上游可能传入 String，也可能是 PipelineEngine resultMapping 注入的整个 Map */
+    @SuppressWarnings("unchecked")
+    private String extractPromptText(Object value) {
+        if (value == null) return "";
+        if (value instanceof String s) return s;
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> m = (Map<String, Object>) map;
+            Object content = m.get("content");
+            if (content instanceof String cs) return cs;
+            if (content != null) return String.valueOf(content);
+        }
+        return String.valueOf(value);
+    }
+
     @Override
     protected String buildUserMessage(AgentMessage request) {
         String goal = String.valueOf(request.getContent().getOrDefault("goal", ""));
@@ -85,5 +103,19 @@ public class MediaGenAgent extends BaseAgent {
                 + "主题：" + topic + "\n"
                 + "提示词：" + prompt + "\n"
                 + "用户原始需求：" + goal;
+    }
+
+    @Override
+    public AgentCard getAgentCard() {
+        return new AgentCard(
+                AgentIds.MEDIA_GEN,
+                "媒体生成",
+                "生成图片或视频媒体内容（不包含流程图等代码图表）",
+                List.of("media", "image", "video", "generate", "draw"),
+                List.of(ToolSpec.of("generate_media", "生成媒体内容")),
+                List.of("text"),
+                List.of("media_image", "video"),
+                1, 120000L
+        );
     }
 }

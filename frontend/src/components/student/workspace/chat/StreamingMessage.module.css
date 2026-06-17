@@ -327,3 +327,56 @@
   font-size: 11px;
   margin-left: auto;
 }
+
+/* 视频生成等待动画 */
+.videoLoading {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #eef2ff 0%, #f0f9ff 100%);
+  border: 1px solid #c7d2fe;
+  border-radius: 12px;
+  color: #4338ca;
+  font-size: 14px;
+}
+
+.videoLoadingSpinner {
+  width: 20px;
+  height: 20px;
+  border: 2.5px solid #c7d2fe;
+  border-top-color: #4f46e5;
+  border-radius: 50%;
+  animation: videoSpin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes videoSpin {
+  to { transform: rotate(360deg); }
+}
+
+.videoLoadingText {
+  font-weight: 500;
+}
+
+.videoLoadingHint {
+  color: #6366f1;
+  font-size: 12px;
+  margin-top: 2px;
+  opacity: 0.85;
+}
+
+.videoLoadingDots::after {
+  content: '';
+  animation: videoDots 1.4s steps(4, end) infinite;
+}
+
+@keyframes videoDots {
+  0% { content: ''; }
+  25% { content: '·'; }
+  50% { content: '··'; }
+  75% { content: '···'; }
+  100% { content: ''; }
+}
+

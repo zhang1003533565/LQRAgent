@@ -38,7 +38,10 @@ public class PipelineTemplates {
         engine.registerTemplate(intervention());
         engine.registerTemplate(learningPathCore());
         engine.registerTemplate(quizEvaluation());
-        log.info("[PipelineTemplates] registered {} templates", 14);
+        // 阶段三新增
+        engine.registerTemplate(multimodalExplanation());
+        engine.registerTemplate(learningLoop());
+        log.info("[PipelineTemplates] registered {} templates", 16);
     }
 
     /**
@@ -389,6 +392,127 @@ public class PipelineTemplates {
                                 .action("evaluate")
                                 .build()
                 ))
+                .build();
+    }
+
+    /**
+     * 阶段三新增：多模态讲解 Pipeline（5 步）
+     * <p>
+     * 适用于"用图片解释 X"、"用视频讲解 Y"等媒体讲解类请求。
+     * 流程：内容分析 → QA 讲解 → Prompt 生成 → 媒体生成 → 质量检查
+     * <p>
+     * 作为 LLM TaskPlan 的参考样例，PlanningAgent v2 也会自主组合等价步骤
+     */
+    public static PipelineConfig multimodalExplanation() {
+        return PipelineConfig.builder()
+                .pipelineId("multimodal_explanation")
+                .name("多模态讲解")
+                .description("文本讲解 → 媒体生成 → 质量检查，用于图片/视频讲解任务")
+                .steps(List.of(
+                        // 1. 内容分析（提取知识点）
+                        PipelineStep.builder()
+                                .stepId("content_analysis")
+                                .agentId(AgentIds.CONTENT_ANALYSIS)
+                                .action("analyze")
+                                .maxRetries(1)
+                                .timeoutMs(60000)
+                                .build(),
+                        // 2. QA 生成讲解文本（依赖分析）
+                        PipelineStep.builder()
+                                .stepId("qa")
+                                .agentId(AgentIds.QA)
+                                .action("generate_answer")
+                                .dependsOn(List.of("content_analysis"))
+                                .resultMapping(Map.of("content_analysis", "content"))
+                                .maxRetries(1)
+                                .timeoutMs(60000)
+                                .build(),
+                        // 3. Prompt 生成（依赖讲解）
+                        PipelineStep.builder()
+                                .stepId("prompt_gen")
+                                .agentId(AgentIds.PROMPT_GEN)
+                                .action("generate_prompt")
+                                .dependsOn(List.of("qa"))
+                                .resultMapping(Map.of("qa", "explanation"))
+                                .maxRetries(2)
+                                .timeoutMs(30000)
+                                .build(),
+                        // 4. 媒体生成（依赖 prompt）
+                        PipelineStep.builder()
+                                .stepId("media_gen")
+                                .agentId(AgentIds.MEDIA_GEN)
+                                .action("generate_media")
+                                .dependsOn(List.of("prompt_gen"))
+                                .resultMapping(Map.of("prompt_gen", "prompt"))
+                                .maxRetries(2)
+                                .timeoutMs(120000)
+                                .build(),
+                        // 5. 质量检查（依赖媒体），失败不阻断
+                        PipelineStep.builder()
+                                .stepId("quality")
+                                .agentId(AgentIds.QUALITY)
+                                .action("check_media")
+                                .dependsOn(List.of("media_gen"))
+                                .resultMapping(Map.of("media_gen", "media"))
+                                .optional(true)
+                                .maxRetries(0)
+                                .timeoutMs(30000)
+                                .build()
+                ))
+                .totalTimeoutMs(360000)
+                .parallel(false)
+                .build();
+    }
+
+    /**
+     * 阶段三新增：学习闭环 Pipeline（4 步）
+     * <p>
+     * 学生提交 quiz 答案后触发：批改 → 薄弱点 → 路径调整 → 资源推送
+     */
+    public static PipelineConfig learningLoop() {
+        return PipelineConfig.builder()
+                .pipelineId("learning_loop")
+                .name("学习闭环")
+                .description("学生提交 quiz 答案后：批改→薄弱点→路径调整→资源推送")
+                .steps(List.of(
+                        PipelineStep.builder()
+                                .stepId("assessment")
+                                .agentId(AgentIds.ASSESSMENT)
+                                .action("grade_and_analyze")
+                                .resultMapping(Map.of("quiz_submission", "answers"))
+                                .maxRetries(1)
+                                .timeoutMs(60000)
+                                .build(),
+                        PipelineStep.builder()
+                                .stepId("effect")
+                                .agentId(AgentIds.EFFECT)
+                                .action("evaluate")
+                                .dependsOn(List.of("assessment"))
+                                .resultMapping(Map.of("assessment", "weakness"))
+                                .maxRetries(1)
+                                .timeoutMs(30000)
+                                .build(),
+                        PipelineStep.builder()
+                                .stepId("path_adjust")
+                                .agentId(AgentIds.LEARNING_PATH)
+                                .action("adjust_path")
+                                .dependsOn(List.of("effect"))
+                                .resultMapping(Map.of("effect", "weakness_profile"))
+                                .maxRetries(1)
+                                .timeoutMs(60000)
+                                .build(),
+                        PipelineStep.builder()
+                                .stepId("resource_push")
+                                .agentId(AgentIds.RECOMMENDATION)
+                                .action("recommend")
+                                .dependsOn(List.of("path_adjust"))
+                                .resultMapping(Map.of("path_adjust", "adjusted_path"))
+                                .maxRetries(1)
+                                .timeoutMs(30000)
+                                .build()
+                ))
+                .totalTimeoutMs(240000)
+                .parallel(false)
                 .build();
     }
 }

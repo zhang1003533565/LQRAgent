@@ -10,6 +10,8 @@ import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.userprofile.tools.GetProfileTool;
 import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.orchestrator.agents.BaseAgent;
+import com.lqragent.backend.orchestrator.card.AgentCard;
+import com.lqragent.backend.orchestrator.card.ToolSpec;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.prompt.service.PromptService;
@@ -52,6 +54,20 @@ public class ProfileAgent extends BaseAgent {
         return String.format(
                 "请分析用户 %s 的学习画像。先获取现有画像数据，然后根据学习目标「%s」进行分析和更新。",
                 userId, goal
+        );
+    }
+
+    @Override
+    public AgentCard getAgentCard() {
+        return new AgentCard(
+                AgentIds.PROFILE,
+                "用户画像",
+                "获取用户学习画像、知识掌握度、学习偏好",
+                List.of("profile", "learner", "preference"),
+                List.of(ToolSpec.of("get_profile", "获取用户画像")),
+                List.of(),
+                List.of("profile"),
+                1, 30000L
         );
     }
 }

@@ -67,4 +67,8 @@ export const AGENT_LABELS: Record<AgentId, string> = {
   // 内容分析
   content_analysis_agent: '内容分析',
   content_analyzer: '内容分析',
+
+  // 媒体生成层
+  media_gen_agent: '媒体生成',
+  prompt_gen_agent: 'Prompt 工程',
 }

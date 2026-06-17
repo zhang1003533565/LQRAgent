@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ChatMessage } from '@/utils/types/chat'
 import { useAgentTraceStore } from '@/utils/store/agentTraceStore'
+import { useChatStore } from '@/utils/store/chatStore'
 import { AGENT_LABELS } from '@/utils/constants/agent-labels'
 import MultiCardMessage from './MultiCardMessage'
 import MermaidRenderer from './MermaidRenderer'
@@ -44,6 +45,20 @@ export default function StreamingMessage({ message }: Props) {
   const [liked, setLiked] = useState<boolean | null>(null)
   const [showAgents, setShowAgents] = useState(false)
   const agentSteps = useAgentTraceStore((s) => s.steps)
+
+  // 是否有正在进行的媒体生成任务（视频/图片），用于显示等待动画
+  const allMessages = useChatStore((s) => s.messages)
+  const pendingMedia = useMemo(() => {
+    if (isUser || isVideo || isImage) return null
+    const mediaStep = agentSteps.find(
+      (s) => s.agent === 'media_gen_agent' && (s.status === 'running' || s.status === 'pending'),
+    )
+    if (!mediaStep) return null
+    // 从最近一条用户消息推断媒体类型
+    const lastUser = [...allMessages].reverse().find((m) => m.role === 'user')
+    const userText = lastUser?.content || ''
+    return /视频|动画|video|animation/i.test(userText) ? 'video' : 'image'
+  }, [agentSteps, isUser, isVideo, isImage, allMessages])
 
   const involvedAgents = useMemo(() => {
     if (isUser) return []
@@ -93,7 +108,12 @@ export default function StreamingMessage({ message }: Props) {
               />
             </a>
           ) : isVideo ? (
-            <VideoPlayer url={message.videoUrl!} />
+            <>
+              {message.content && (
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+              )}
+              <VideoPlayer url={message.videoUrl!} />
+            </>
           ) : isQuiz ? (
             <QuizCard data={message.quizData!} />
           ) : isMulti ? (
@@ -135,6 +155,24 @@ export default function StreamingMessage({ message }: Props) {
             </>
           )}
         </div>
+
+        {/* 视频/图片生成中等待动画（媒体到达后会自动切换为 isVideo/isImage 分支） */}
+        {!isUser && pendingMedia && (
+          <div className={styles.videoLoading}>
+            <div className={styles.videoLoadingSpinner} />
+            <div>
+              <div className={styles.videoLoadingText}>
+                {pendingMedia === 'video' ? '正在生成视频' : '正在生成图片'}
+                <span className={styles.videoLoadingDots} />
+              </div>
+              <div className={styles.videoLoadingHint}>
+                {pendingMedia === 'video'
+                  ? '视频生成约需 30-90 秒，请耐心等待，完成后会自动展示'
+                  : '图片生成中，请稍候'}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* RAG 引用来源卡片 */}
         {!isUser && message.ragSources && message.ragSources.length > 0 && (
