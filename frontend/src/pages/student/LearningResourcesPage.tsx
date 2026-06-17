@@ -12,6 +12,7 @@ import {
   Sparkles,
   Trash2,
   Video,
+  X,
 } from 'lucide-react'
 import { getResources, generateResource } from '@/api/student/resources'
 import { generateImage, getVideoTaskStatus, submitVideoTask } from '@/api/student/media'
@@ -86,6 +87,27 @@ function getPreferenceText(difficulty: Difficulty, styleType: StyleType, purpose
     review: '考前速记',
   }
   return `难度：${difficultyText}；风格：${styleText[styleType]}；用途：${purposeText[purpose]}`
+}
+
+function normalizeMediaUrl(url?: string) {
+  if (!url) return null
+  if (/^(https?:|data:|blob:)/i.test(url)) return url
+  return url.startsWith('/') ? url : `/${url}`
+}
+
+function buildImagePreviewTitle(source: string | undefined, fallbackTitle: string) {
+  const mainPart = (source || '').split(/[，,；;\n]/)[0]
+  const cleaned = mainPart
+    .replace(/\s+/g, ' ')
+    .replace(/^帮我生成一张/i, '')
+    .replace(/^生成一张/i, '')
+    .replace(/^解释/i, '')
+    .replace(/的示意图$/i, '')
+    .replace(/示意图$/i, '')
+    .trim()
+
+  const base = cleaned || fallbackTitle
+  return base.length > 24 ? `${base.slice(0, 24)}...` : `${base} 示意图`
 }
 
 function upsertResource(list: LearningResource[], next: LearningResource) {
@@ -171,10 +193,11 @@ function FlowDiagram() {
   )
 }
 
-function VideoPreview({ video }: { video?: LearningResource }) {
-  if (video?.mediaUrl) {
+function VideoPreview({ video, videoUrl }: { video?: LearningResource; videoUrl?: string }) {
+  const src = video?.mediaUrl || videoUrl
+  if (src) {
     return (
-      <video className={styles.realVideo} src={video.mediaUrl} controls />
+      <video className={styles.realVideo} src={src} controls />
     )
   }
 
@@ -211,6 +234,10 @@ export default function LearningResourcesPage() {
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState<ResourceType | 'bundle' | 'media' | null>(null)
   const [videoStatus, setVideoStatus] = useState<string | null>(null)
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null)
+  const [generatedImageTitle, setGeneratedImageTitle] = useState<string | null>(null)
+  const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null)
+  const [imageModalOpen, setImageModalOpen] = useState(false)
 
   const fallbackNode = nodes[1] || nodes[0]
   const kpId = selectedKpId || fallbackNode?.kpId || 'python_basic_syntax'
@@ -223,10 +250,21 @@ export default function LearningResourcesPage() {
   const video = useMemo(() => findResource(resources, 'VIDEO_CLIP'), [resources])
   const lesson = useMemo(() => findResource(resources, 'LESSON'), [resources])
   const codeCase = useMemo(() => findResource(resources, 'CODE_CASE'), [resources])
+  const previewImageUrl = illustration?.mediaUrl || generatedImageUrl || undefined
+  const previewVideoUrl = video?.mediaUrl || generatedVideoUrl || undefined
+  const previewImageTitle = generatedImageTitle
+    || (previewImageUrl ? buildImagePreviewTitle(illustration?.generationPrompt || illustration?.title || prompt, currentTitle) : buildImagePreviewTitle(undefined, currentTitle))
 
   useEffect(() => {
     setPrompt(getDefaultPrompt(currentTitle))
   }, [currentTitle])
+
+  useEffect(() => {
+    setGeneratedImageUrl(null)
+    setGeneratedImageTitle(null)
+    setGeneratedVideoUrl(null)
+    setImageModalOpen(false)
+  }, [kpId])
 
   const refreshResources = useCallback(async () => {
     if (!kpId) return
@@ -266,7 +304,12 @@ export default function LearningResourcesPage() {
     setGenerating('media')
     try {
       if (mode === 'image') {
-        await generateImage(kpId, `${prompt}\n${getPreferenceText(difficulty, styleType, purpose)}`)
+        const result = await generateImage(kpId, `${prompt}\n${getPreferenceText(difficulty, styleType, purpose)}`)
+        const imageUrl = normalizeMediaUrl(result.imageUrl)
+        if (result.success && imageUrl) {
+          setGeneratedImageUrl(imageUrl)
+          setGeneratedImageTitle(buildImagePreviewTitle(prompt, currentTitle))
+        }
         await refreshResources()
         setActiveTab('ILLUSTRATION')
         return
@@ -283,6 +326,10 @@ export default function LearningResourcesPage() {
         }
         const status = await getVideoTaskStatus(task.taskId)
         if (status.status === 'done' || status.status === 'completed') {
+          const videoUrl = normalizeMediaUrl(status.videoUrl)
+          if (videoUrl) {
+            setGeneratedVideoUrl(videoUrl)
+          }
           setVideoStatus(null)
           await refreshResources()
           setActiveTab('VIDEO_CLIP')
@@ -320,6 +367,11 @@ export default function LearningResourcesPage() {
   }
 
   const activeResource = findResource(resources, activeTab)
+  const openPreviewImage = () => {
+    if (previewImageUrl) {
+      setImageModalOpen(true)
+    }
+  }
 
   return (
     <section className={styles.page}>
@@ -458,8 +510,9 @@ export default function LearningResourcesPage() {
           <div className={styles.previewGrid}>
             <article className={styles.previewCard}>
               <h3>变量与数据类型关系图</h3>
-              <VariablesDiagram imageUrl={illustration?.mediaUrl} />
-              <button type="button" className={styles.outlineButton}>
+              <h3 className={styles.previewDynamicTitle}>{previewImageTitle}</h3>
+              <VariablesDiagram imageUrl={previewImageUrl} />
+              <button type="button" className={styles.outlineButton} onClick={openPreviewImage} disabled={!previewImageUrl}>
                 <Image size={14} />
                 查看大图
               </button>
@@ -474,7 +527,7 @@ export default function LearningResourcesPage() {
             </article>
           </div>
 
-          <VideoPreview video={video} />
+          <VideoPreview video={video} videoUrl={previewVideoUrl} />
 
           <div className={styles.textResource}>
             <div>
@@ -510,6 +563,22 @@ export default function LearningResourcesPage() {
           </article>
         ))}
       </section>
+
+      {imageModalOpen && previewImageUrl && (
+        <div className={styles.imageModalOverlay} role="dialog" aria-modal="true" aria-label="查看生成图片大图" onClick={() => setImageModalOpen(false)}>
+          <div className={styles.imageModal} onClick={(event) => event.stopPropagation()}>
+            <div className={styles.imageModalHead}>
+              <h3>{previewImageTitle}</h3>
+              <button type="button" aria-label="关闭大图预览" onClick={() => setImageModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+            <div className={styles.imageModalBody}>
+              <img src={previewImageUrl} alt={previewImageTitle} />
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }
