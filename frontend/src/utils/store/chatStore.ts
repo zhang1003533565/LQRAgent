@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ChatMessage, MessageContentType } from '@/utils/types/chat'
+import type { ChatMessage, MessageContentType, QuizData } from '@/utils/types/chat'
 import type { MultiCardBlock } from '@/utils/types/multi-card'
 import type { RagSource } from '@/utils/types/artifact'
 import { chatApi } from '@/api/student/chat'
@@ -98,6 +98,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
           contentType: (metadataParsed.contentType as MessageContentType) || (msg.contentType as MessageContentType | undefined),
           agentName: msg.agentName,
           imageUrl: (metadataParsed.imageUrl as string) || msg.imageUrl,
+          videoUrl: (metadataParsed.videoUrl as string) || (msg as any).videoUrl,
+          quizData: (metadataParsed.quizData as QuizData) || (msg as any).quizData,
           diagramCode: (metadataParsed.diagramCode as string) || msg.diagramCode,
           diagramFormat: (metadataParsed.diagramFormat as string) || msg.diagramFormat,
           cards: (metadataParsed.cards as MultiCardBlock[]) || msg.cards,

@@ -10,6 +10,28 @@ export type ArtifactKind =
   | 'multi_card'
   | 'rag_sources'
   | 'diagram'
+  | 'video'
+
+export interface MediaVideoPayload {
+  url: string
+  caption?: string
+  mediaType?: string
+}
+
+export interface QuizArtifactPayload {
+  title?: string
+  topic?: string
+  difficulty?: string
+  questions: {
+    id: number
+    type: string
+    stem: string
+    options?: string[]
+    answer?: string
+    explanation?: string
+    difficulty?: string
+  }[]
+}
 
 export interface ArtifactEvent {
   type: 'artifact'

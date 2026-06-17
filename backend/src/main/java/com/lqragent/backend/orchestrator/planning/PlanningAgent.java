@@ -240,6 +240,14 @@ public class PlanningAgent {
     public PlanResult decompose(String message, String userId, String chatHistory) {
         log.info("[PlanningAgent] decomposing: {}", message);
 
+        if (isExplicitMediaRequest(message)) {
+            Map<String, Object> args = new HashMap<>();
+            args.put("topic", message);
+            args.put("prompt", message);
+            args.put("mediaType", isVideoRequest(message) ? "video" : "image");
+            return pipelineFor("media_gen", args, AgentIds.MEDIA_GEN, "generate_media");
+        }
+
         try {
             // 构建消息列表，包含对话历史
             List<Map<String, Object>> messages = new ArrayList<>();
@@ -281,6 +289,26 @@ public class PlanningAgent {
         }
     }
 
+    private boolean isExplicitMediaRequest(String message) {
+        if (message == null) return false;
+        String m = message.toLowerCase();
+        boolean asksGenerate = m.contains("生成") || m.contains("画") || m.contains("做") || m.contains("create") || m.contains("generate");
+        boolean asksVideoExplain = m.contains("用视频") || m.contains("视频解释") || m.contains("视频讲解")
+                || m.contains("视频演示") || m.contains("动画解释") || m.contains("动画讲解");
+        boolean asksScriptOnly = m.contains("视频脚本") || m.contains("分镜脚本") || m.contains("拍摄脚本") || m.contains("视频文案");
+        boolean mediaWord = m.contains("一张") || m.contains("图片") || m.contains("图像") || m.contains("示意图") || m.contains("插画")
+                || m.contains("海报") || m.contains("绘画") || m.contains("照片") || m.contains("动画")
+                || m.contains("视频") || m.contains("真实示意图") || m.contains("image") || m.contains("video");
+        boolean codeDiagramOnly = m.contains("流程图") || m.contains("思维导图") || m.contains("uml") || m.contains("mermaid") || m.contains("路线图");
+        return (asksGenerate || asksVideoExplain) && mediaWord && !asksScriptOnly && !codeDiagramOnly;
+    }
+
+    private boolean isVideoRequest(String message) {
+        if (message == null) return false;
+        String m = message.toLowerCase();
+        return m.contains("视频") || m.contains("动画") || m.contains("video") || m.contains("movie");
+    }
+
     /**
      * 将 Function Calling 结果映射到 PlanResult
      */
@@ -298,7 +326,7 @@ public class PlanningAgent {
                 case "route_resource_generate" -> pipelineFor("resource", args, AgentIds.RESOURCE, "generate_lesson");
                 case "route_quiz_generate" -> pipelineFor("quiz", args, AgentIds.QUIZ, "generate_quiz");
                 case "route_diagram" -> pipelineFor("diagram", args, AgentIds.DIAGRAM, "generate_diagram");
-                case "route_media_gen" -> pipelineFor("media_gen", args, AgentIds.MEDIA_GEN, "generate_media");
+                case "route_media_gen" -> pipelineFor("media_gen_direct", args, AgentIds.MEDIA_GEN, "generate_media");
                 case "route_profile" -> pipelineFor("profile", args, AgentIds.PROFILE, "get_profile");
                 case "route_recommendation" -> pipelineFor("recommendation", args, AgentIds.RECOMMENDATION, "recommend");
                 case "route_summary" -> pipelineFor("summary", args, AgentIds.SUMMARY, "generate_summary");
@@ -336,7 +364,37 @@ public class PlanningAgent {
         PipelineConfig template = pipelineEngine.getTemplate(pipelineId);
         if (template != null) {
             log.info("[PlanningAgent] using registered template: {}", pipelineId);
-            return PlanResult.pipeline(template, template.getSteps());
+            if (args == null || args.isEmpty()) {
+                return PlanResult.pipeline(template, template.getSteps());
+            }
+            List<PipelineStep> steps = template.getSteps().stream().map(step -> {
+                Map<String, Object> params = new HashMap<>();
+                if (step.getParams() != null) params.putAll(step.getParams());
+                params.putAll(args);
+                return PipelineStep.builder()
+                        .stepId(step.getStepId())
+                        .agentId(step.getAgentId())
+                        .action(step.getAction())
+                        .params(params)
+                        .dependsOn(step.getDependsOn())
+                        .conditionType(step.getConditionType())
+                        .maxRetries(step.getMaxRetries())
+                        .timeoutMs(step.getTimeoutMs())
+                        .optional(step.isOptional())
+                        .resultMapping(step.getResultMapping())
+                        .communicationMode(step.getCommunicationMode())
+                        .build();
+            }).toList();
+            PipelineConfig config = PipelineConfig.builder()
+                    .pipelineId(template.getPipelineId())
+                    .name(template.getName())
+                    .description(template.getDescription())
+                    .steps(steps)
+                    .totalTimeoutMs(template.getTotalTimeoutMs())
+                    .parallel(template.isParallel())
+                    .globalParams(template.getGlobalParams())
+                    .build();
+            return PlanResult.pipeline(config, steps);
         }
 
         // 回退：创建单步 Pipeline

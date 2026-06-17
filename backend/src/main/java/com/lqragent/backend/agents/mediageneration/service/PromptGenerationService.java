@@ -37,6 +37,8 @@ public class PromptGenerationService {
 
             注意事项：
             - 提示词应该是英文，详细描述画面内容、风格、构图
+            - 图片必须是单张完整画面：single coherent scene, centered composition
+            - 图片提示词必须明确禁止九宫格/多面板/拼贴/分镜：no grid, no multi-panel layout, no collage, no storyboard, no split screen, no nine-grid
             - 不要包含任何教学相关的后缀（如 concept diagram, teaching illustration 等），除非用户明确要求
             - 如果用户说"生成图片"或描述静态场景，mediaType 用 "image"
             - 如果用户说"生成视频"或描述动态过程/动画，mediaType 用 "video"

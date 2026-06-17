@@ -18,7 +18,12 @@
 }
 
 .block img {
-  max-width: 100%;
+  display: block;
+  max-width: min(100%, 520px);
+  max-height: 320px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
   border-radius: var(--ws-radius-sm);
 }
 

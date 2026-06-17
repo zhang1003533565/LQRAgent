@@ -6,7 +6,7 @@ import { useProfileStore } from '@/utils/store/profileStore'
 import { chatApi } from '@/api/student/chat'
 import { STEP_LABELS, AGENT_LABELS } from '@/utils/constants/agent-labels'
 import type { AgentId, AgentStepStatus, WsRawMessage } from '@/utils/types/agent-events'
-import type { ArtifactKind, MediaImagePayload, RagSource } from '@/utils/types/artifact'
+import type { ArtifactKind, MediaImagePayload, MediaVideoPayload, QuizArtifactPayload, RagSource } from '@/utils/types/artifact'
 import type { LearningPathArtifactPayload } from '@/utils/types/artifact'
 import type { MultiCardBlock } from '@/utils/types/multi-card'
 import type { ProfileSummary } from '@/utils/types/profile'
@@ -74,6 +74,40 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
       })
       saveMessageMetadata(last.id, { contentType: 'multi_card', cards: payload })
     }
+  }
+
+  if ((kind === 'video' || kind === 'media_video') && payload) {
+    const p = payload as MediaVideoPayload
+    if (p.url) {
+      const msgs = useChatStore.getState().messages
+      const last = [...msgs].reverse().find((m) => m.role === 'assistant')
+      if (last) {
+        useChatStore.getState().updateMessage(last.id, {
+          contentType: 'video',
+          videoUrl: p.url,
+          streaming: false,
+        })
+        saveMessageMetadata(last.id, { contentType: 'video', videoUrl: p.url })
+      }
+    }
+    return
+  }
+
+  if (kind === 'quiz' && payload) {
+    const p = payload as QuizArtifactPayload
+    if (p.questions?.length) {
+      const msgs = useChatStore.getState().messages
+      const last = [...msgs].reverse().find((m) => m.role === 'assistant')
+      if (last) {
+        useChatStore.getState().updateMessage(last.id, {
+          contentType: 'quiz',
+          quizData: { title: p.title, topic: p.topic, difficulty: p.difficulty, questions: p.questions },
+          streaming: false,
+        })
+        saveMessageMetadata(last.id, { contentType: 'quiz', quizData: p })
+      }
+    }
+    return
   }
 
   if (kind === 'rag_sources' && Array.isArray(payload)) {

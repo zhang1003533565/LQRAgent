@@ -169,6 +169,16 @@ public class ChatRouteDispatcher {
 
     private void sendStepArtifacts(WebSocketSession wsSession, String agentId,
                                    Map<String, Object> stepData, Long userId, WsSender sender) {
+        // Agent 工具透传的多模态 artifact
+        Object artifactKind = stepData.get("artifactKind");
+        Object artifactPayload = stepData.get("artifactPayload");
+        if (artifactKind != null && artifactPayload != null) {
+            sender.sendEvent(wsSession, "artifact", objectMapper.createObjectNode()
+                    .put("kind", String.valueOf(artifactKind))
+                    .set("payload", objectMapper.valueToTree(artifactPayload))
+                    .toString());
+        }
+
         // 学习路径 artifact
         if (agentId.contains("learning_path")) {
             try {
@@ -224,6 +234,58 @@ public class ChatRouteDispatcher {
                         .toString());
             } catch (Exception e) {
                 log.warn("[WS] async: failed to send rag_sources artifact: {}", e.getMessage());
+            }
+        }
+
+        // 题目生成 artifact
+        if (agentId.contains("quiz")) {
+            try {
+                Object quizData = stepData.get("data");
+                if (quizData == null) quizData = stepData.get("content");
+                if (quizData != null) {
+                    String quizStr = String.valueOf(quizData);
+                    com.fasterxml.jackson.databind.JsonNode quizNode = objectMapper.readTree(
+                            quizStr.trim().startsWith("{") ? quizStr : "{}");
+                    if (quizNode.has("data") && quizNode.path("data").has("questions")) {
+                        quizNode = quizNode.path("data");
+                    }
+                    if (quizNode.has("questions") || quizNode.has("title")) {
+                        sender.sendEvent(wsSession, "artifact", objectMapper.createObjectNode()
+                                .put("kind", "quiz")
+                                .set("payload", quizNode)
+                                .toString());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[WS] async: failed to send quiz artifact: {}", e.getMessage());
+            }
+        }
+
+        // 媒体生成 artifact：兼容 imageUrl/videoUrl/mediaUrl/url/content 等返回格式
+        if (agentId.contains("media") || agentId.contains("video")) {
+            try {
+                Object mediaUrl = stepData.get("mediaUrl");
+                if (mediaUrl == null) mediaUrl = stepData.get("imageUrl");
+                if (mediaUrl == null) mediaUrl = stepData.get("videoUrl");
+                if (mediaUrl == null) mediaUrl = stepData.get("url");
+                if (mediaUrl == null) mediaUrl = stepData.get("content");
+                String url = mediaUrl == null ? "" : String.valueOf(mediaUrl).trim();
+                if (url.startsWith("{") && url.endsWith("}")) {
+                    var node = objectMapper.readTree(url);
+                    url = node.path("mediaUrl").asText(node.path("imageUrl").asText(node.path("videoUrl").asText(node.path("url").asText(""))));
+                }
+                if (url.startsWith("http") || url.startsWith("data:")) {
+                    boolean isVideo = agentId.contains("video") || url.endsWith(".mp4") || url.endsWith(".webm") || url.endsWith(".mov");
+                    var mediaPayload = objectMapper.createObjectNode()
+                            .put("url", url)
+                            .put("mediaType", isVideo ? "video" : "image");
+                    sender.sendEvent(wsSession, "artifact", objectMapper.createObjectNode()
+                            .put("kind", isVideo ? "video" : "media_image")
+                            .set("payload", mediaPayload)
+                            .toString());
+                }
+            } catch (Exception e) {
+                log.warn("[WS] async: failed to send media artifact: {}", e.getMessage());
             }
         }
     }

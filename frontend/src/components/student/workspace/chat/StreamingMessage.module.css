@@ -139,6 +139,35 @@
   color: #64748b;
 }
 
+.imageFrame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: min(100%, 520px);
+  max-height: 320px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.generatedImage,
+.markdownImage {
+  display: block;
+  max-width: 100%;
+  max-height: 320px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 10px;
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.12);
+  cursor: zoom-in;
+}
+
+.markdownImage {
+  max-width: min(100%, 520px);
+}
+
 /* 时间戳 */
 .time {
   font-size: 11px;

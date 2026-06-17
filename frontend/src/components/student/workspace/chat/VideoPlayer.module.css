@@ -1,0 +1,21 @@
+.wrapper {
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000;
+  max-width: 100%;
+}
+
+.video {
+  display: block;
+  width: 100%;
+  max-height: 400px;
+  border-radius: 10px;
+}
+
+.caption {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #94a3b8;
+  background: #f8fafc;
+  margin: 0;
+}

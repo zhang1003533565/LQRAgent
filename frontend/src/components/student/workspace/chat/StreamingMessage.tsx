@@ -8,6 +8,9 @@ import MultiCardMessage from './MultiCardMessage'
 import MermaidRenderer from './MermaidRenderer'
 import RagSourcesCard from './RagSourcesCard'
 import LearningPathCard from './LearningPathCard'
+import QuizCard from './QuizCard'
+import VideoPlayer from './VideoPlayer'
+import CodeRunner from './CodeRunner'
 import styles from './StreamingMessage.module.css'
 
 interface Props {
@@ -36,6 +39,8 @@ export default function StreamingMessage({ message }: Props) {
   const isMulti = message.contentType === 'multi_card' && message.cards?.length
   const isLearningPath = message.contentType === 'learning_path'
   const isImage = message.contentType === 'image' && message.imageUrl
+  const isVideo = message.contentType === 'video' && message.videoUrl
+  const isQuiz = message.contentType === 'quiz' && message.quizData?.questions?.length
   const [liked, setLiked] = useState<boolean | null>(null)
   const [showAgents, setShowAgents] = useState(false)
   const agentSteps = useAgentTraceStore((s) => s.steps)
@@ -80,19 +85,17 @@ export default function StreamingMessage({ message }: Props) {
               <LearningPathCard />
             </>
           ) : isImage ? (
-            <div style={{ maxWidth: '100%', borderRadius: 8, overflow: 'hidden' }}>
+            <a className={styles.imageFrame} href={message.imageUrl} target="_blank" rel="noreferrer">
               <img
+                className={styles.generatedImage}
                 src={message.imageUrl}
                 alt="AI 生成的示意图"
-                style={{
-                  display: 'block',
-                  maxWidth: '100%',
-                  height: 'auto',
-                  borderRadius: 8,
-                  boxShadow: '0 1px 4px rgba(0,0,0,0.1)'
-                }}
               />
-            </div>
+            </a>
+          ) : isVideo ? (
+            <VideoPlayer url={message.videoUrl!} />
+          ) : isQuiz ? (
+            <QuizCard data={message.quizData!} />
           ) : isMulti ? (
             <MultiCardMessage cards={message.cards!} />
           ) : (
@@ -100,16 +103,29 @@ export default function StreamingMessage({ message }: Props) {
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
+                  img({ src, alt }) {
+                    if (!src) return null
+                    return (
+                      <a href={src} target="_blank" rel="noreferrer">
+                        <img className={styles.markdownImage} src={src} alt={alt ?? '图片'} />
+                      </a>
+                    )
+                  },
                   code({ className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || '')
                     if (match?.[1] === 'mermaid') {
                       return <MermaidRenderer code={String(children).replace(/\n$/, '')} />
                     }
-                    return (
-                      <code className={className} {...props}>
-                        {children}
-                      </code>
-                    )
+                    const isInline = !String(children).includes('\n')
+                    if (isInline) {
+                      return (
+                        <code className={className} {...props}>
+                          {children}
+                        </code>
+                      )
+                    }
+                    const lang = match?.[1] ?? 'text'
+                    return <CodeRunner code={String(children).replace(/\n$/, '')} language={lang} />
                   },
                 }}
               >

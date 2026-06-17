@@ -136,6 +136,12 @@ public abstract class BaseAgent implements AgentInterface {
             if (ragSources != null) {
                 metadata.put("ragSources", ragSources);
             }
+            Object artifactKind = result.getContent().get("artifactKind");
+            Object artifactPayload = result.getContent().get("artifactPayload");
+            if (artifactKind != null && artifactPayload != null) {
+                metadata.put("artifactKind", artifactKind);
+                metadata.put("artifactPayload", artifactPayload);
+            }
             return AgentResponse.success(content, List.of(), metadata);
         } catch (Exception e) {
             log.error("[{}] adapter process failed: {}", agentId, e.getMessage());
@@ -239,8 +245,10 @@ public abstract class BaseAgent implements AgentInterface {
         List<Map<String, Object>> toolSchemas = toolRegistry.getToolSchemas();
         String systemPrompt = getSystemPrompt();
 
-        // 收集工具执行过程中产生的 RAG 引用来源
+        // 收集工具执行过程中产生的 RAG 引用来源和多模态产物
         List<Map<String, Object>> collectedRagSources = new ArrayList<>();
+        String artifactKind = null;
+        Object artifactPayload = null;
 
         for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
             log.debug("[{}] LLM iteration {}/{}", agentId, iteration + 1, MAX_ITERATIONS);
@@ -259,6 +267,10 @@ public abstract class BaseAgent implements AgentInterface {
                 resultContent.put("status", "completed");
                 if (!collectedRagSources.isEmpty()) {
                     resultContent.put("ragSources", collectedRagSources);
+                }
+                if (artifactKind != null && artifactPayload != null) {
+                    resultContent.put("artifactKind", artifactKind);
+                    resultContent.put("artifactPayload", artifactPayload);
                 }
                 log.info("[{}] LLM completed after {} iterations", agentId, iteration + 1);
                 return AgentMessage.inform(taskId, agentId, "pipeline", resultContent);
@@ -295,6 +307,13 @@ public abstract class BaseAgent implements AgentInterface {
                             }
                         }
                     }
+                    if (result.success()) {
+                        ArtifactInfo artifact = detectToolArtifact(result.content());
+                        if (artifact != null) {
+                            artifactKind = artifact.kind();
+                            artifactPayload = artifact.payload();
+                        }
+                    }
                 } catch (Exception e) {
                     log.error("[{}] tool {} error: {}", agentId, tc.name(), e.getMessage());
                     messages.add(Map.of("role", "tool", "tool_call_id", (Object) tc.id(),
@@ -306,6 +325,38 @@ public abstract class BaseAgent implements AgentInterface {
         }
 
         return AgentMessage.error(taskId, agentId, "Reached maximum iterations");
+    }
+
+    private record ArtifactInfo(String kind, Object payload) {}
+
+    private ArtifactInfo detectToolArtifact(String content) {
+        if (content == null || content.isBlank()) return null;
+        try {
+            var root = mapper.readTree(content);
+            if (root.has("type") && "quiz".equals(root.path("type").asText()) && root.has("data")) {
+                return new ArtifactInfo("quiz", mapper.convertValue(root.path("data"), Object.class));
+            }
+            if (root.has("questions")) {
+                return new ArtifactInfo("quiz", mapper.convertValue(root, Object.class));
+            }
+            String mediaUrl = root.path("mediaUrl").asText("");
+            if (mediaUrl.isBlank()) mediaUrl = root.path("imageUrl").asText("");
+            if (mediaUrl.isBlank()) mediaUrl = root.path("videoUrl").asText("");
+            if (mediaUrl.isBlank()) mediaUrl = root.path("url").asText("");
+            if (!mediaUrl.isBlank()) {
+                String mediaType = root.path("mediaType").asText("");
+                if (mediaType.isBlank() && (mediaUrl.endsWith(".mp4") || mediaUrl.endsWith(".webm") || mediaUrl.endsWith(".mov"))) {
+                    mediaType = "video";
+                }
+                var payload = new LinkedHashMap<String, Object>();
+                payload.put("url", mediaUrl);
+                payload.put("prompt", root.path("prompt").asText(""));
+                payload.put("mediaType", mediaType.isBlank() ? "image" : mediaType);
+                return new ArtifactInfo("video".equalsIgnoreCase(mediaType) ? "video" : "media_image", payload);
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
     }
 
     /**
