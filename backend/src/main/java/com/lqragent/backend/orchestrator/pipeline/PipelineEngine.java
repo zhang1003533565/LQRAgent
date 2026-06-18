@@ -15,14 +15,18 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.lqragent.backend.agents.base.AgentInterface;
 import com.lqragent.backend.agents.base.AgentRegistry;
 import com.lqragent.backend.agents.base.AgentRequest;
 import com.lqragent.backend.agents.base.AgentResponse;
+import com.lqragent.backend.orchestrator.artifact.Artifact;
 import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.orchestrator.context.TraceSpan;
+import com.lqragent.backend.orchestrator.quality.QualityGate;
+import com.lqragent.backend.orchestrator.quality.QualityReport;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,7 +41,11 @@ import lombok.extern.slf4j.Slf4j;
 public class PipelineEngine {
 
     private final AgentRegistry agentRegistry;
-    
+
+    /** 阶段四新增：质量门禁（可选注入，缺失时跳过质检） */
+    @Autowired(required = false)
+    private QualityGate qualityGate;
+
     /** 内置模板注册表 */
     private final Map<String, PipelineConfig> templateRegistry = new ConcurrentHashMap<>();
 
@@ -209,6 +217,42 @@ public class PipelineEngine {
                 );
 
                 AgentResponse response = agent.process(request, context);
+
+                // 阶段四新增：QualityGate 质量门禁
+                // 仅对成功且包含 artifacts 的响应做检查；未输出 artifact 的 Agent 不受影响（向后兼容）
+                if (response.isSuccess() && qualityGate != null
+                        && response.getArtifacts() != null && !response.getArtifacts().isEmpty()) {
+                    boolean qualityFailed = false;
+                    List<String> failureIssues = new ArrayList<>();
+                    for (Artifact artifact : response.getArtifacts()) {
+                        QualityReport qr = qualityGate.check(artifact);
+                        if (!qr.isPassed()) {
+                            qualityFailed = true;
+                            failureIssues.addAll(qr.getIssues());
+                        }
+                    }
+                    if (qualityFailed) {
+                        if (retryCount < step.getMaxRetries()) {
+                            log.warn("[PipelineEngine] step {} 质检失败（重试 {}/{}）：{}",
+                                    step.getStepId(), retryCount + 1, step.getMaxRetries(), failureIssues);
+                            // 把质检问题加入 context，让 Agent 重试时可以参考
+                            context.put(step.getStepId() + "_quality_issues", failureIssues);
+                            retryCount++;
+                            // 重新进入 while 循环触发重试
+                            continue;
+                        }
+                        // 重试已耗尽
+                        log.error("[PipelineEngine] step {} 质检最终失败：{}", step.getStepId(), failureIssues);
+                        if (step.isOptional()) {
+                            log.warn("[PipelineEngine] optional step {} 质检失败，跳过", step.getStepId());
+                            return StepResult.skipped(step.getStepId(), step.getAgentId(),
+                                    new RuntimeException("质量检查未通过：" + String.join("; ", failureIssues)));
+                        }
+                        long failDuration = System.currentTimeMillis() - stepStart;
+                        return StepResult.failure(step.getStepId(), step.getAgentId(),
+                                "质量检查未通过：" + String.join("; ", failureIssues), failDuration);
+                    }
+                }
 
                 // 将 AgentResponse 转为 Map，存入上下文供后续步骤使用
                 Map<String, Object> result = new LinkedHashMap<>();

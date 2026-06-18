@@ -45,8 +45,24 @@ public class QualityAgent extends BaseAgent {
 
     @Override
     protected String buildUserMessage(AgentMessage request) {
-        String resourceIds = (String) request.getContent().getOrDefault("resourceIds", "");
         StringBuilder sb = new StringBuilder();
+
+        // 阶段四新增：支持产物级别的检查请求
+        if (request.getContent().containsKey("artifact")) {
+            Object artifactObj = request.getContent().get("artifact");
+            sb.append("请检查以下 Agent 产物的质量：\n");
+            sb.append("产物：").append(artifactObj).append("\n\n");
+            sb.append("检查要点：\n");
+            sb.append("- 内容完整性：必填字段是否齐全\n");
+            sb.append("- 正确性：知识点是否准确\n");
+            sb.append("- 符合度：是否符合用户请求\n");
+            sb.append("- 格式：是否能被前端正确渲染\n");
+            sb.append("如果质量合格，回复'通过'；如果有问题，说明具体问题。");
+            return sb.toString();
+        }
+
+        // 兼容旧调用
+        String resourceIds = (String) request.getContent().getOrDefault("resourceIds", "");
         sb.append("请检查以下资源的质量：\n").append(resourceIds).append("\n\n");
         sb.append("如果发现质量问题，请说明具体问题并提供建议。");
         return sb.toString();

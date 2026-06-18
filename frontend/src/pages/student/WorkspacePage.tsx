@@ -8,7 +8,6 @@ import UploadPage from './UploadPage'
 import ProfilePage from './ProfilePage'
 import ProfileCenterPage from './ProfileCenterPage'
 import KnowledgeGraphPage from './KnowledgeGraphPage'
-import DashboardPage from './DashboardPage'
 
 type RouteState = {
   backgroundLocation?: Location
@@ -33,7 +32,6 @@ export default function WorkspacePage() {
           <Route path="quiz" element={<QuizPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
-          <Route path="dashboard" element={<DashboardPage />} />
 
           <Route path="quiz/practice/:questionId" element={backgroundLocation ? <QuizPage /> : <QuizPracticeDrawer questionId={activeQuestionId} />} />
         </Route>

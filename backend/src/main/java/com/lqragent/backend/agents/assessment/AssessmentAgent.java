@@ -44,6 +44,28 @@ public class AssessmentAgent extends BaseAgent {
 
     @Override
     protected String buildUserMessage(AgentMessage request) {
+        String action = (String) request.getContent().getOrDefault("action", "process");
+
+        // 阶段五新增：批改 + 薄弱点分析
+        if ("grade_and_analyze".equals(action)) {
+            Object answers = request.getContent().getOrDefault("answers", "");
+            Object quizData = request.getContent().getOrDefault("quiz", "");
+            String userId = (String) request.getContent().getOrDefault("userId", "0");
+            StringBuilder sb = new StringBuilder();
+            sb.append("用户 ").append(userId).append(" 提交了以下答题：\n");
+            sb.append(answers).append("\n\n");
+            sb.append("对应题目：\n").append(quizData).append("\n\n");
+            sb.append("请完成：\n");
+            sb.append("1. 批改每道题，标注对错\n");
+            sb.append("2. 统计总分和正确率\n");
+            sb.append("3. 分析薄弱知识点\n");
+            sb.append("输出 JSON 格式：\n");
+            sb.append("{\"score\": 85, \"correctRate\": 0.85, \"weakness\": [\"闭包\", \"装饰器\"], ");
+            sb.append("\"details\": [{\"questionId\": 1, \"correct\": true, \"explanation\": \"...\"}]}");
+            return sb.toString();
+        }
+
+        // 兼容旧调用
         String goal = (String) request.getContent().getOrDefault("goal", "");
         return String.format("请执行 assessment 相关任务: %s", goal);
     }

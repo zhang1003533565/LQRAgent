@@ -7,6 +7,8 @@ import com.lqragent.backend.agents.base.AgentRegistry;
 import com.lqragent.backend.agents.base.AgentInterface;
 import com.lqragent.backend.agents.base.AgentRequest;
 import com.lqragent.backend.agents.base.AgentResponse;
+import com.lqragent.backend.orchestrator.artifact.Artifact;
+import com.lqragent.backend.orchestrator.artifact.ArtifactKind;
 import com.lqragent.backend.orchestrator.capability.AgentCapability;
 import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
 import com.lqragent.backend.orchestrator.card.AgentCard;
@@ -141,11 +143,17 @@ public abstract class BaseAgent implements AgentInterface {
     public AgentResponse process(AgentRequest request, TaskContext context) {
         try {
             // 将 AgentRequest 转换为 AgentMessage
+            Map<String, Object> requestContent = new LinkedHashMap<>();
+            if (request.context() != null) {
+                requestContent.putAll(request.context());
+            }
+            requestContent.putIfAbsent("goal", request.goal());
+            requestContent.put("action", request.action());
             AgentMessage msg = AgentMessage.request(
                     "pipeline-" + System.currentTimeMillis(),
                     "pipeline",
                     agentId,
-                    request.context() != null ? request.context() : Map.of("goal", request.goal())
+                    requestContent
             );
             AgentMessage result = process(msg);
             // 将 AgentMessage 转换为 AgentResponse
@@ -160,9 +168,21 @@ public abstract class BaseAgent implements AgentInterface {
             }
             Object artifactKind = result.getContent().get("artifactKind");
             Object artifactPayload = result.getContent().get("artifactPayload");
+            List<Artifact> artifacts = List.of();
             if (artifactKind != null && artifactPayload != null) {
                 metadata.put("artifactKind", artifactKind);
                 metadata.put("artifactPayload", artifactPayload);
+                // 阶段四：把 metadata 形式的 artifact 同步翻译为统一 Artifact 模型，让 QualityGate 可见
+                if (artifactPayload instanceof Map<?, ?> payloadMap) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> payload = (Map<String, Object>) payloadMap;
+                    ArtifactKind kind = ArtifactKind.fromWire(String.valueOf(artifactKind));
+                    Artifact artifact = Artifact.of(kind, agentId, payload);
+                    artifacts = List.of(artifact);
+                }
+            }
+            if (success && !artifacts.isEmpty()) {
+                return AgentResponse.successWithArtifacts(content, artifacts, metadata);
             }
             return AgentResponse.success(content, List.of(), metadata);
         } catch (Exception e) {

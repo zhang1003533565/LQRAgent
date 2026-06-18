@@ -32,6 +32,11 @@ import com.lqragent.backend.quiz.entity.StudyBehavior;
 import com.lqragent.backend.quiz.repository.QuestionBankRepository;
 import com.lqragent.backend.quiz.repository.QuizRecordRepository;
 import com.lqragent.backend.quiz.repository.StudyBehaviorRepository;
+import com.lqragent.backend.orchestrator.context.TaskContext;
+import com.lqragent.backend.orchestrator.pipeline.PipelineConfig;
+import com.lqragent.backend.orchestrator.pipeline.PipelineEngine;
+import com.lqragent.backend.orchestrator.pipeline.PipelineResult;
+import com.lqragent.backend.orchestrator.pipeline.PipelineTemplates;
 import com.lqragent.backend.shared.knowledgegraph.service.KnowledgeGraphService;
 
 import lombok.RequiredArgsConstructor;
@@ -56,6 +61,7 @@ public class QuizService {
     private final ResourceGenerationService resourceGenerationService;
     private final KnowledgeGraphService kgService;
     private final ResourceItemRepository resourceItemRepository;
+    private final PipelineEngine pipelineEngine;
 
     @Transactional(readOnly = true)
     public QuestionBankPageDto listQuestions(int page, int size, String questionType, String knowledgePoint) {
@@ -176,6 +182,8 @@ public class QuizService {
 
         // 异步触发学习科学层分析（不阻塞答题响应）
         triggerLearningScienceAsync(userId);
+        // 阶段五新增：异步触发多 Agent 学习闭环（批改→薄弱点→路径调整→资源推荐）
+        triggerLearningLoopAsync(userId, question, request, correct, score, kpId);
 
         return QuizResultDto.builder()
                 .id(record.getId())
@@ -187,6 +195,80 @@ public class QuizService {
                 .correctAnswer(question.getCorrectAnswer())
                 .analysis(question.getAnalysis())
                 .build();
+    }
+
+    /**
+     * 阶段五新增：异步触发学习闭环 Pipeline，不阻塞答题响应。
+     */
+    private void triggerLearningLoopAsync(Long userId, QuestionBank question, QuizSubmitRequest request,
+                                          boolean correct, int score, String kpId) {
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                PipelineConfig config = PipelineTemplates.learningLoop();
+                TaskContext context = new TaskContext(
+                        "quiz-loop-" + System.currentTimeMillis(),
+                        String.valueOf(userId),
+                        "quiz-submit",
+                        "学生提交题目后进行学习闭环"
+                );
+                Map<String, Object> quizSubmission = new java.util.LinkedHashMap<>();
+                quizSubmission.put("userId", userId);
+                quizSubmission.put("questionId", question.getId());
+                quizSubmission.put("kpId", kpId);
+                quizSubmission.put("question", question.getTitle());
+                quizSubmission.put("questionType", question.getQuestionType());
+                quizSubmission.put("answer", request.getAnswer());
+                quizSubmission.put("correctAnswer", question.getCorrectAnswer());
+                quizSubmission.put("correct", correct);
+                quizSubmission.put("score", score);
+                quizSubmission.put("analysis", question.getAnalysis());
+                context.setResult("quiz_submission", Map.of("answers", quizSubmission, "quiz", quizSubmission));
+
+                var result = pipelineEngine.execute(config, context);
+                if (result.isSuccess()) {
+                    persistLearningLoopResult(userId, question.getId(), result);
+                    log.info("[Quiz] 学习闭环 Pipeline 完成: userId={}, questionId={}", userId, question.getId());
+                } else {
+                    log.warn("[Quiz] 学习闭环 Pipeline 失败: userId={}, questionId={}, error={}",
+                            userId, question.getId(), result.getErrorMessage());
+                }
+            } catch (Exception e) {
+                log.warn("[Quiz] 学习闭环 Pipeline 异常: {}", e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * 阶段五新增：把学习闭环结果沉淀到用户记忆，让后续聊天/路径/推荐能感知。
+     */
+    private void persistLearningLoopResult(Long userId, Long questionId, PipelineResult result) {
+        try {
+            StringBuilder summary = new StringBuilder();
+            summary.append("[自动] 答题后的学习闭环结果：题目ID=").append(questionId).append("\n");
+            if (result.getStepResults() != null) {
+                result.getStepResults().forEach(step -> {
+                    if (step.isSuccess() && step.getData() != null) {
+                        Object content = step.getData().get("content");
+                        if (content != null && !String.valueOf(content).isBlank()) {
+                            summary.append("- ").append(step.getStepId()).append("：")
+                                    .append(truncateMemory(String.valueOf(content), 500))
+                                    .append("\n");
+                        }
+                    }
+                });
+            }
+            if (summary.length() > 0) {
+                userMemoryService.addMemory(userId, MemoryType.LEARNING_PROGRESS,
+                        truncateMemory(summary.toString(), 1800), "learning_loop", 3);
+            }
+        } catch (Exception e) {
+            log.warn("[Quiz] 保存学习闭环记忆失败: {}", e.getMessage());
+        }
+    }
+
+    private String truncateMemory(String text, int maxLen) {
+        if (text == null) return "";
+        return text.length() > maxLen ? text.substring(0, maxLen) + "..." : text;
     }
 
     /**

@@ -45,6 +45,25 @@ public class EffectAgent extends BaseAgent {
 
     @Override
     protected String buildUserMessage(AgentMessage request) {
+        String action = (String) request.getContent().getOrDefault("action", "evaluate");
+
+        // 阶段五新增：基于 assessment 结果更新效果
+        if ("evaluate".equals(action)) {
+            Object weakness = request.getContent().getOrDefault("weakness",
+                    request.getContent().getOrDefault("assessment", ""));
+            String userId = (String) request.getContent().getOrDefault("userId", "0");
+            StringBuilder sb = new StringBuilder();
+            sb.append("用户 ").append(userId).append(" 的最新评估结果：\n");
+            sb.append(weakness).append("\n\n");
+            sb.append("请更新该用户的学习效果档案：\n");
+            sb.append("1. 记录本次评估的薄弱点\n");
+            sb.append("2. 更新知识掌握度（mastery score）\n");
+            sb.append("3. 标记需要强化的知识点\n");
+            sb.append("输出 JSON：{\"userId\": \"...\", \"weakness\": [...], \"mastery\": {...}}");
+            return sb.toString();
+        }
+
+        // 兼容旧调用
         String userId = (String) request.getContent().getOrDefault("userId", "0");
         return String.format("请分析用户 %s 的学习效果和薄弱点。", userId);
     }
