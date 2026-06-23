@@ -61,23 +61,7 @@ public class OrchestratorTestService {
     public PlanTestResult planOnly(String userId, String message, String chatHistory) {
         long start = System.currentTimeMillis();
         try {
-            PlanResult plan = orchestratorCore.planOnly(userId, message, chatHistory);
-            PlanTestResult base = OrchestratorTestSupport.fromPlanResult(plan, message, System.currentTimeMillis() - start);
-
-            if (plan.isSimple() && plan.intent() != null) {
-                Map<String, Object> simple = orchestratorCore.handleSimpleRequest(plan.intent(), message);
-                return OrchestratorTestSupport.withRoute(base,
-                        String.valueOf(simple.getOrDefault("route", "direct")),
-                        String.valueOf(simple.getOrDefault("response", simple.getOrDefault("message", ""))));
-            }
-            if (plan.isClarify()) {
-                return OrchestratorTestSupport.withRoute(base, "clarify",
-                        plan.clarifyQuestions() != null ? String.join("；", plan.clarifyQuestions()) : "");
-            }
-            if (OrchestratorTestSupport.isPipelinePlan(plan)) {
-                return OrchestratorTestSupport.withRoute(base, "pipeline", "（规划完成，使用 pipeline 命令执行）");
-            }
-            return base;
+            return resolvePlan(userId, message, chatHistory).dto();
         } catch (Exception e) {
             log.error("[OrchestratorTest] planOnly failed: {}", e.getMessage(), e);
             return new PlanTestResult(false, null, null, null, null, message,
@@ -91,52 +75,28 @@ public class OrchestratorTestService {
      */
     public PipelineTestResult runPipelineSync(String userId, String message) {
         long start = System.currentTimeMillis();
-        PlanTestResult planInfo = planOnly(userId, message, null);
-
-        if (!planInfo.success()) {
-            return new PipelineTestResult(false, planInfo, List.of(), List.of(),
-                    System.currentTimeMillis() - start, planInfo.error());
-        }
-
-        if ("SIMPLE".equals(planInfo.planType()) || "CLARIFY".equals(planInfo.planType())) {
-            return new PipelineTestResult(
-                    true,
-                    planInfo,
-                    List.of(),
-                    List.of(),
-                    System.currentTimeMillis() - start,
-                    null
-            );
-        }
-
-        if (planInfo.steps() == null || planInfo.steps().isEmpty()) {
-            return new PipelineTestResult(false, planInfo, List.of(), List.of(),
-                    System.currentTimeMillis() - start, "无 Pipeline 步骤可执行");
-        }
-
         try {
-            PlanResult plan = orchestratorCore.planOnly(userId, message, null);
-            if (!OrchestratorTestSupport.isPipelinePlan(plan)) {
-                return new PipelineTestResult(false, planInfo, List.of(), List.of(),
-                        System.currentTimeMillis() - start, "规划结果不是 Pipeline");
+            ResolvedPlan resolved = resolvePlan(userId, message, null);
+            PlanTestResult planInfo = resolved.dto();
+
+            if ("SIMPLE".equals(planInfo.planType()) || "CLARIFY".equals(planInfo.planType())) {
+                return new PipelineTestResult(
+                        true,
+                        planInfo,
+                        List.of(),
+                        List.of(),
+                        System.currentTimeMillis() - start,
+                        null
+                );
             }
 
-            PipelineResult result = orchestratorCore.handlePipelineAsync(plan, userId, message, null);
-            List<StepResultDto> stepDtos = mapStepResults(result.getStepResults());
-            List<com.lqragent.backend.orchestrator.artifact.Artifact> artifacts =
-                    OrchestratorTestSupport.collectAllArtifacts(stepDtos);
-
-            return new PipelineTestResult(
-                    result.isSuccess(),
-                    planInfo,
-                    stepDtos,
-                    artifacts,
-                    System.currentTimeMillis() - start,
-                    result.isSuccess() ? null : result.getErrorMessage()
-            );
+            return executePipeline(userId, message, resolved.plan(), planInfo, start);
         } catch (Exception e) {
             log.error("[OrchestratorTest] runPipelineSync failed: {}", e.getMessage(), e);
-            return new PipelineTestResult(false, planInfo, List.of(), List.of(),
+            PlanTestResult failedPlan = new PlanTestResult(false, null, null, null, null, message,
+                    List.of(), List.of(), null, null, null,
+                    System.currentTimeMillis() - start, e.getMessage());
+            return new PipelineTestResult(false, failedPlan, List.of(), List.of(),
                     System.currentTimeMillis() - start, e.getMessage());
         }
     }
@@ -146,41 +106,55 @@ public class OrchestratorTestService {
      */
     public AgentRunTestResult runAgentRoute(String userId, String message) {
         long start = System.currentTimeMillis();
-        PlanTestResult planInfo = planOnly(userId, message, null);
+        try {
+            ResolvedPlan resolved = resolvePlan(userId, message, null);
+            PlanTestResult planInfo = resolved.dto();
+            PlanResult plan = resolved.plan();
 
-        if ("PIPELINE".equals(planInfo.planType()) || "PLAN".equals(planInfo.planType())) {
-            PipelineTestResult pipeline = runPipelineSync(userId, message);
-            String response = pipeline.stepResults().isEmpty()
-                    ? planInfo.response()
-                    : pipeline.stepResults().stream()
-                            .filter(StepResultDto::success)
-                            .map(StepResultDto::summary)
-                            .filter(s -> s != null && !s.isBlank())
-                            .reduce((a, b) -> b)
-                            .orElse("");
+            if ("PIPELINE".equals(planInfo.planType()) || "PLAN".equals(planInfo.planType())) {
+                PipelineTestResult pipeline = executePipeline(userId, message, plan, planInfo, start);
+                String response = pipeline.stepResults().isEmpty()
+                        ? planInfo.response()
+                        : pipeline.stepResults().stream()
+                                .filter(StepResultDto::success)
+                                .map(StepResultDto::summary)
+                                .filter(s -> s != null && !s.isBlank())
+                                .reduce((a, b) -> b)
+                                .orElse("");
+
+                return new AgentRunTestResult(
+                        pipeline.success(),
+                        pipeline.success() ? "pipeline_complete" : "pipeline_error",
+                        "pipeline_engine",
+                        OrchestratorTestSupport.truncate(response, 500),
+                        planInfo,
+                        pipeline,
+                        System.currentTimeMillis() - start,
+                        pipeline.error()
+                );
+            }
 
             return new AgentRunTestResult(
-                    pipeline.success(),
-                    pipeline.success() ? "pipeline_complete" : "pipeline_error",
-                    "pipeline_engine",
-                    OrchestratorTestSupport.truncate(response, 500),
+                    planInfo.success(),
+                    planInfo.route(),
+                    planInfo.intent() != null ? planInfo.intent().toLowerCase() : "orchestrator",
+                    planInfo.response(),
                     planInfo,
-                    pipeline,
+                    null,
                     System.currentTimeMillis() - start,
-                    pipeline.error()
+                    planInfo.error()
+            );
+        } catch (Exception e) {
+            log.error("[OrchestratorTest] runAgentRoute failed: {}", e.getMessage(), e);
+            PlanTestResult failedPlan = new PlanTestResult(false, null, null, null, null, message,
+                    List.of(), List.of(), null, null, null,
+                    System.currentTimeMillis() - start, e.getMessage());
+            return new AgentRunTestResult(
+                    false, "error", "orchestrator", null,
+                    failedPlan, null,
+                    System.currentTimeMillis() - start, e.getMessage()
             );
         }
-
-        return new AgentRunTestResult(
-                planInfo.success(),
-                planInfo.route(),
-                planInfo.intent() != null ? planInfo.intent().toLowerCase() : "orchestrator",
-                planInfo.response(),
-                planInfo,
-                null,
-                System.currentTimeMillis() - start,
-                planInfo.error()
-        );
     }
 
     public List<AgentCardDto> listAgentCards() {
@@ -321,6 +295,67 @@ public class OrchestratorTestService {
     }
 
     // ==================== internal ====================
+
+    private record ResolvedPlan(PlanResult plan, PlanTestResult dto) {}
+
+    /** 单次 LLM 规划，返回原始 PlanResult 与展示用 DTO */
+    private ResolvedPlan resolvePlan(String userId, String message, String chatHistory) {
+        long planStart = System.currentTimeMillis();
+        PlanResult plan = orchestratorCore.planOnly(userId, message, chatHistory);
+        PlanTestResult dto = buildPlanTestResult(plan, message, System.currentTimeMillis() - planStart);
+        return new ResolvedPlan(plan, dto);
+    }
+
+    private PlanTestResult buildPlanTestResult(PlanResult plan, String message, long durationMs) {
+        PlanTestResult base = OrchestratorTestSupport.fromPlanResult(plan, message, durationMs);
+
+        if (plan.isSimple() && plan.intent() != null) {
+            Map<String, Object> simple = orchestratorCore.handleSimpleRequest(plan.intent(), message);
+            return OrchestratorTestSupport.withRoute(base,
+                    String.valueOf(simple.getOrDefault("route", "direct")),
+                    String.valueOf(simple.getOrDefault("response", simple.getOrDefault("message", ""))));
+        }
+        if (plan.isClarify()) {
+            return OrchestratorTestSupport.withRoute(base, "clarify",
+                    plan.clarifyQuestions() != null ? String.join("；", plan.clarifyQuestions()) : "");
+        }
+        if (OrchestratorTestSupport.isPipelinePlan(plan)) {
+            return OrchestratorTestSupport.withRoute(base, "pipeline", "（规划完成，使用 pipeline 命令执行）");
+        }
+        return base;
+    }
+
+    /** 用已解析的 PlanResult 执行 Pipeline，不再重复规划 */
+    private PipelineTestResult executePipeline(String userId, String message, PlanResult plan,
+                                               PlanTestResult planInfo, long startMs) {
+        if (!OrchestratorTestSupport.isPipelinePlan(plan)) {
+            String error = planInfo.steps() == null || planInfo.steps().isEmpty()
+                    ? "无 Pipeline 步骤可执行"
+                    : "规划结果不是 Pipeline";
+            return new PipelineTestResult(false, planInfo, List.of(), List.of(),
+                    System.currentTimeMillis() - startMs, error);
+        }
+
+        try {
+            PipelineResult result = orchestratorCore.handlePipelineAsync(plan, userId, message, null);
+            List<StepResultDto> stepDtos = mapStepResults(result.getStepResults());
+            List<com.lqragent.backend.orchestrator.artifact.Artifact> artifacts =
+                    OrchestratorTestSupport.collectAllArtifacts(stepDtos);
+
+            return new PipelineTestResult(
+                    result.isSuccess(),
+                    planInfo,
+                    stepDtos,
+                    artifacts,
+                    System.currentTimeMillis() - startMs,
+                    result.isSuccess() ? null : result.getErrorMessage()
+            );
+        } catch (Exception e) {
+            log.error("[OrchestratorTest] executePipeline failed: {}", e.getMessage(), e);
+            return new PipelineTestResult(false, planInfo, List.of(), List.of(),
+                    System.currentTimeMillis() - startMs, e.getMessage());
+        }
+    }
 
     private List<StepResultDto> mapStepResults(List<StepResult> stepResults) {
         if (stepResults == null) return List.of();
