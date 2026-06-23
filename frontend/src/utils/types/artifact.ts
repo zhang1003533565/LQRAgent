@@ -60,4 +60,5 @@ export interface RagSource {
   page?: string
   chunk_id?: string
   score?: number | string
+  kbName?: string
 }

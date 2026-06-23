@@ -86,10 +86,12 @@ public class ChatHistoryService {
         
         ChatMessage saved = messageRepo.save(message);
 
-        // 更新会话
+        // 更新会话时间与标题（用户消息驱动侧边栏展示）
         ChatSession session = sessionRepo.findById(sessionId).orElseThrow();
         session.setUpdatedAt(LocalDateTime.now());
-        if (session.getTitle() == null || session.getTitle().startsWith("新对话")) {
+        if ("user".equals(role)) {
+            session.setTitle(generateTitleFromContent(content));
+        } else if (session.getTitle() == null || session.getTitle().startsWith("新对话")) {
             session.setTitle(generateTitleFromContent(content));
         }
         sessionRepo.save(session);
@@ -115,15 +117,33 @@ public class ChatHistoryService {
         
         ChatMessage saved = messageRepo.save(message);
 
-        // 更新会话
         ChatSession session = sessionRepo.findById(sessionId).orElseThrow();
         session.setUpdatedAt(LocalDateTime.now());
-        if (session.getTitle() == null || session.getTitle().startsWith("新对话")) {
+        if ("user".equals(role)) {
+            session.setTitle(generateTitleFromContent(content));
+        } else if (session.getTitle() == null || session.getTitle().startsWith("新对话")) {
             session.setTitle(generateTitleFromContent(content));
         }
         sessionRepo.save(session);
 
         return saved;
+    }
+
+    /**
+     * 保存消息（metadata 为 Map，序列化为 JSON 入库）
+     */
+    @Transactional
+    public ChatMessage saveMessage(Long sessionId, Long userId, String role,
+                                   String content, String agentName, Map<String, Object> metadata) {
+        String metadataJson = null;
+        if (metadata != null && !metadata.isEmpty()) {
+            try {
+                metadataJson = objectMapper.writeValueAsString(metadata);
+            } catch (Exception e) {
+                log.warn("[ChatHistory] serialize metadata failed: {}", e.getMessage());
+            }
+        }
+        return saveMessage(sessionId, userId, role, content, agentName, metadataJson);
     }
 
     /**

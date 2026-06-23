@@ -1,9 +1,10 @@
 package com.lqragent.backend.chat.handler;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
 
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -22,7 +23,6 @@ import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -34,7 +34,6 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class ChatWebSocketHandler extends TextWebSocketHandler {
 
     private final ChatSessionService chatSessionService;
@@ -44,7 +43,29 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     private final WebSocketSessionManager sessionManager;
     private final AgentMemory agentMemory;
     private final LearnerProfileService learnerProfileService;
+    private final ExecutorService chatWsExecutor;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private static final String ORCHESTRATOR_STEP_ID = "orchestrator";
+
+    public ChatWebSocketHandler(
+            ChatSessionService chatSessionService,
+            ChatRouteDispatcher dispatcher,
+            AiServerWsProxy aiServerWsProxy,
+            AppRuntimeConfig runtimeConfig,
+            WebSocketSessionManager sessionManager,
+            AgentMemory agentMemory,
+            LearnerProfileService learnerProfileService,
+            @Qualifier("chatWsExecutor") ExecutorService chatWsExecutor) {
+        this.chatSessionService = chatSessionService;
+        this.dispatcher = dispatcher;
+        this.aiServerWsProxy = aiServerWsProxy;
+        this.runtimeConfig = runtimeConfig;
+        this.sessionManager = sessionManager;
+        this.agentMemory = agentMemory;
+        this.learnerProfileService = learnerProfileService;
+        this.chatWsExecutor = chatWsExecutor;
+    }
 
     // WsSender 实现：委托给本类的 sendEvent 方法
     private final WsSender wsSender = this::sendEvent;
@@ -96,6 +117,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         if (chatSessionId == null) return;
 
         session.getAttributes().put("chatSessionId", chatSessionId);
+        agentMemory.loadSession(userInfo.userId(), chatSessionId);
 
         // ===== 新路径：ai-server Agentic Pipeline =====
         if (runtimeConfig.isUseAgenticPipeline()) {
@@ -111,42 +133,49 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        // ===== 旧路径：Java Agent 系统 =====
+        // ===== 旧路径：Java Agent 系统（规划 + 执行放线程池，避免阻塞 WS 读线程）=====
         agentMemory.addUserMessage(userInfo.userId(), chatSessionId, content);
         String sessionIdStr = String.valueOf(chatSessionId);
-        String chatHistory = agentMemory.getFormattedHistory(userInfo.userId(), 10);
+        Long userId = userInfo.userId();
 
-        // 意图识别
+        sendOrchestratorStep(session, "running", "正在分析问题...");
+
+        chatWsExecutor.execute(() -> {
+            RequestContext.init(userId);
+            try {
+                String chatHistory = agentMemory.getFormattedHistory(userId, 10);
+                PlanResult plan = dispatcher.planOnly(userId, content, chatHistory);
+
+                if (plan.isClarify()) {
+                    dispatcher.handleClarify(session, plan, userId, sessionIdStr, wsSender);
+                } else if (plan.isPipeline() && plan.pipelineConfig() != null) {
+                    sendOrchestratorStep(session, "running", "正在检索知识库并生成回答...");
+                    dispatcher.handlePipeline(session, plan, userId, sessionIdStr, content, wsSender);
+                } else {
+                    handleSimpleRoute(session, plan, userId, sessionIdStr, content, chatHistory);
+                }
+            } catch (Exception e) {
+                log.error("[WS] chat processing error: {}", e.getMessage(), e);
+                sendOrchestratorStep(session, "failed", "处理异常");
+                sendEvent(session, "error", "处理异常: " + e.getMessage());
+                sendEvent(session, "done", objectMapper.createObjectNode()
+                        .put("session_id", sessionIdStr)
+                        .toString());
+                agentMemory.addAgentResponse(userId, chatSessionId,
+                        "抱歉，处理异常: " + e.getMessage(), "orchestrator");
+            } finally {
+                RequestContext.clear();
+            }
+        });
+    }
+
+    private void sendOrchestratorStep(WebSocketSession session, String status, String label) {
         sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                .put("agent", "orchestrator")
-                .put("label", "正在分析问题...")
-                .put("status", "running")
+                .put("stepId", ORCHESTRATOR_STEP_ID)
+                .put("agent", ORCHESTRATOR_STEP_ID)
+                .put("label", label)
+                .put("status", status)
                 .toString());
-
-        PlanResult plan;
-        try {
-            plan = dispatcher.planOnly(userInfo.userId(), content, chatHistory);
-        } catch (Exception e) {
-            log.error("[WS] planOnly error: {}", e.getMessage(), e);
-            sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                    .put("agent", "orchestrator")
-                    .put("label", "处理异常")
-                    .put("status", "failed")
-                    .toString());
-            sendEvent(session, "error", "处理异常: " + e.getMessage());
-            agentMemory.addAgentResponse(userInfo.userId(), chatSessionId,
-                    "抱歉，处理异常: " + e.getMessage(), "orchestrator");
-            return;
-        }
-
-        // 路由分发
-        if (plan.isClarify()) {
-            dispatcher.handleClarify(session, plan, userInfo.userId(), sessionIdStr, wsSender);
-        } else if (plan.isPipeline() && plan.pipelineConfig() != null) {
-            dispatcher.handlePipeline(session, plan, userInfo.userId(), sessionIdStr, content, wsSender);
-        } else {
-            handleSimpleRoute(session, plan, userInfo.userId(), sessionIdStr, content, chatHistory);
-        }
     }
 
     /**
@@ -169,11 +198,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
 
         if ("direct".equals(route)) {
             String response = (String) routeResult.get("response");
-            sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                    .put("agent", "orchestrator")
-                    .put("label", "处理完成")
-                    .put("status", "done")
-                    .toString());
+            sendOrchestratorStep(session, "done", "处理完成");
             sendEvent(session, "chunk", response);
             sendEvent(session, "done", objectMapper.createObjectNode()
                     .put("session_id", sessionId)
@@ -195,11 +220,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 "3. 生成学习资源 - 说「帮我生成讲义/练习题」\n" +
                 "4. 分析学习状态 - 说「我哪些知识点薄弱」\n\n" +
                 "请问有什么可以帮助你的？";
-        sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                .put("agent", "orchestrator")
-                .put("label", "处理完成")
-                .put("status", "done")
-                .toString());
+        sendOrchestratorStep(session, "done", "处理完成");
         sendEvent(session, "chunk", fallback);
         sendEvent(session, "done", objectMapper.createObjectNode()
                 .put("session_id", sessionId)

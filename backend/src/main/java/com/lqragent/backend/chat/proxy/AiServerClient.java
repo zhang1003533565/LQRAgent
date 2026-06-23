@@ -94,6 +94,54 @@ public class AiServerClient {
                 .retrieve()
                 .body(new ParameterizedTypeReference<>() {});
     }
+
+    public boolean knowledgeBaseExists(String kbName) {
+        try {
+            String encodedKbName = UriUtils.encodePathSegment(kbName, StandardCharsets.UTF_8);
+            client().get()
+                    .uri("/api/v1/knowledge/" + encodedKbName)
+                    .retrieve()
+                    .toBodilessEntity();
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 知识库向量检索（Chroma / 本地索引均由 ai-server 路由）
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> searchKnowledgeBase(String kbName, String query, int topK) {
+        String encodedKbName = UriUtils.encodePathSegment(kbName, StandardCharsets.UTF_8);
+        MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
+        form.add("query", query);
+        form.add("top_k", String.valueOf(topK));
+        try {
+            return client().post()
+                    .uri("/api/v1/knowledge/" + encodedKbName + "/search")
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(form)
+                    .retrieve()
+                    .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            log.warn("[AiServerClient] searchKnowledgeBase failed: kb={}, error={}", kbName, e.getMessage());
+            return Map.of("needs_reindex", true, "error", e.getMessage());
+        }
+    }
+
+    /**
+     * 触发知识库向量重建（写入 Docker Chroma）
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> reindexKnowledgeBase(String kbName) {
+        String encodedKbName = UriUtils.encodePathSegment(kbName, StandardCharsets.UTF_8);
+        log.info("[AiServerClient] reindexKnowledgeBase: {}", kbName);
+        return client().post()
+                .uri("/api/v1/knowledge/" + encodedKbName + "/reindex")
+                .retrieve()
+                .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+    }
     
     /**
      * 删除知识库

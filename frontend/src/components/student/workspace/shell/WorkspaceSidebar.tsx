@@ -15,6 +15,7 @@ export default function WorkspaceSidebar() {
   const user = useAuthStore((s) => s.user)
   const navigate = useNavigate()
   const currentSessionId = useChatStore((s) => s.sessionId)
+  const sessionListVersion = useChatStore((s) => s.sessionListVersion)
   const setSessionId = useChatStore((s) => s.setSessionId)
   const clearMessages = useChatStore((s) => s.clearMessages)
   const loadMessages = useChatStore((s) => s.loadMessages)
@@ -28,7 +29,7 @@ export default function WorkspaceSidebar() {
     } catch {}
   }, [user?.userId])
 
-  useEffect(() => { loadSessions() }, [loadSessions])
+  useEffect(() => { loadSessions() }, [loadSessions, sessionListVersion])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {

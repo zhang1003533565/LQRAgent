@@ -1,6 +1,7 @@
 package com.lqragent.backend.agents.recommendation;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Component;
 
@@ -39,6 +40,16 @@ public class RecommendationAgent extends BaseAgent {
 
     @Override
     public AgentMessage process(AgentMessage request) {
+        String action = String.valueOf(request.getContent().getOrDefault("action", "process"));
+        if ("recommend".equals(action)) {
+            String userId = String.valueOf(request.getContent().getOrDefault("userId", "1"));
+            Object pathCtx = request.getContent().get("adjusted_path");
+            String context = pathCtx != null ? String.valueOf(pathCtx) : "";
+            return informFromToolResult(request.getTaskId(), tool.execute(Map.of(
+                    "userId", userId,
+                    "context", context
+            )));
+        }
         return executeLlmLoop(request);
     }
 

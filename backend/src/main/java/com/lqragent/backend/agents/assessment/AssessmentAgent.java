@@ -1,6 +1,7 @@
 package com.lqragent.backend.agents.assessment;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Component;
 
@@ -39,6 +40,15 @@ public class AssessmentAgent extends BaseAgent {
 
     @Override
     public AgentMessage process(AgentMessage request) {
+        String action = String.valueOf(request.getContent().getOrDefault("action", "process"));
+        if ("grade_and_analyze".equals(action)) {
+            Map<String, Object> submission = extractQuizSubmission(request.getContent().get("answers"));
+            return informFromToolResult(request.getTaskId(), tool.execute(Map.of(
+                    "question", String.valueOf(submission.getOrDefault("question", "")),
+                    "answer", String.valueOf(submission.getOrDefault("answer", "")),
+                    "expectedAnswer", String.valueOf(submission.getOrDefault("correctAnswer", ""))
+            )));
+        }
         return executeLlmLoop(request);
     }
 

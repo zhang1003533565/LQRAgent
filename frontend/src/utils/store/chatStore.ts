@@ -10,6 +10,7 @@ interface ChatState {
   isConnected: boolean
   loadingMessages: boolean
   autoLoaded: boolean
+  sessionListVersion: number
   addMessage: (msg: ChatMessage) => void
   appendToLastMessage: (chunk: string) => void
   setStreaming: (id: string, streaming: boolean) => void
@@ -17,8 +18,10 @@ interface ChatState {
   setSessionId: (id: string | null) => void
   setConnected: (connected: boolean) => void
   setAutoLoaded: (v: boolean) => void
+  bumpSessionList: () => void
   clearMessages: () => void
   loadMessages: (sessionId: string) => Promise<void>
+  finalizeStuckStreaming: () => void
 }
 
 // 用于批量处理 chunk 更新
@@ -48,6 +51,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isConnected: false,
   loadingMessages: false,
   autoLoaded: false,
+  sessionListVersion: 0,
 
   addMessage: (msg) =>
     set((state) => ({ messages: [...state.messages, msg] })),
@@ -77,7 +81,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setSessionId: (id) => set({ sessionId: id }),
   setConnected: (connected) => set({ isConnected: connected }),
   setAutoLoaded: (v) => set({ autoLoaded: v }),
+  bumpSessionList: () => set((state) => ({ sessionListVersion: state.sessionListVersion + 1 })),
   clearMessages: () => set({ messages: [] }),
+
+  finalizeStuckStreaming: () =>
+    set((state) => {
+      const msgs = [...state.messages]
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i]
+        if (m.role === 'assistant' && m.streaming) {
+          msgs[i] = {
+            ...m,
+            streaming: false,
+            content: m.content?.trim()
+              ? m.content
+              : '回答未完成或超时，请重试。',
+          }
+          break
+        }
+      }
+      return { messages: msgs }
+    }),
 
   loadMessages: async (sessionId: string) => {
     set({ loadingMessages: true, sessionId: String(sessionId), messages: [] })

@@ -1,3 +1,4 @@
+import type { ChatMessage } from '@/utils/types/chat'
 import { useChatStore } from '@/utils/store/chatStore'
 import { useChatAutoScroll } from '@/utils/hooks/useChatAutoScroll'
 import { useWebSocket } from '@/utils/hooks/useWebSocket'
@@ -9,6 +10,17 @@ const SUGGESTIONS = [
   { icon: '💡', text: '解释一下列表推导式' },
   { icon: '📋', text: '帮我制定本周学习计划' },
 ]
+
+function isRenderableMessage(msg: ChatMessage): boolean {
+  if (msg.role !== 'assistant') return true
+  if (msg.streaming) return true
+  if (msg.content?.trim()) return true
+  if (msg.imageUrl || msg.videoUrl || msg.quizData || msg.cards?.length || msg.ragSources?.length) {
+    return true
+  }
+  if (msg.contentType && msg.contentType !== 'text') return true
+  return false
+}
 
 export default function ChatMessageList() {
   const messages = useChatStore((s) => s.messages)
@@ -44,7 +56,7 @@ export default function ChatMessageList() {
           </div>
         </div>
       )}
-      {messages.map((msg) => (
+      {messages.filter(isRenderableMessage).map((msg) => (
         <StreamingMessage key={msg.id} message={msg} />
       ))}
       <div ref={bottomRef} />

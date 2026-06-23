@@ -61,7 +61,7 @@ export default function StreamingMessage({ message }: Props) {
   }, [agentSteps, isUser, isVideo, isImage, allMessages])
 
   const involvedAgents = useMemo(() => {
-    if (isUser) return []
+    if (isUser || !message.streaming) return []
     const seen = new Set<string>()
     return agentSteps
       .filter((s) => {

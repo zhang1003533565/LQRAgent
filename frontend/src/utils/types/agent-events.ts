@@ -56,6 +56,7 @@ export type AgentStepStatus = 'running' | 'done' | 'failed' | 'pending'
 
 export interface AgentStepEvent {
   type: 'agent_step'
+  stepId?: string
   agent: AgentId
   label: string
   status: AgentStepStatus

@@ -84,15 +84,25 @@ public class AgentMemory {
      * 记录 Agent 回复（带 sessionId 持久化）
      */
     public void addAgentResponse(Long userId, Long sessionId, String content, String agent) {
-        // 1. 保存到短期记忆
+        addAgentResponse(userId, sessionId, content, agent, null);
+    }
+
+    /**
+     * 记录 Agent 回复（带 metadata，如 ragSources）
+     */
+    public void addAgentResponse(Long userId, Long sessionId, String content, String agent,
+                                 Map<String, Object> metadata) {
         userMemories.computeIfAbsent(userId, k -> new ArrayList<>())
                 .add(new MemoryEntry("assistant", content, agent));
         trimMemory(userId);
-        
-        // 2. 持久化到数据库
+
         if (sessionId != null) {
             try {
-                historyService.saveMessage(sessionId, userId, "assistant", content, agent);
+                if (metadata != null && !metadata.isEmpty()) {
+                    historyService.saveMessage(sessionId, userId, "assistant", content, agent, metadata);
+                } else {
+                    historyService.saveMessage(sessionId, userId, "assistant", content, agent);
+                }
             } catch (Exception e) {
                 log.warn("[AgentMemory] save agent response failed: {}", e.getMessage());
             }

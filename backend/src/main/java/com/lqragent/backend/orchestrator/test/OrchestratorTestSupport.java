@@ -7,7 +7,7 @@ import java.util.Map;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.orchestrator.artifact.Artifact;
-import com.lqragent.backend.orchestrator.artifact.ArtifactKind;
+import com.lqragent.backend.orchestrator.artifact.ArtifactExtractor;
 import com.lqragent.backend.orchestrator.card.AgentCard;
 import com.lqragent.backend.orchestrator.card.ToolSpec;
 import com.lqragent.backend.orchestrator.pipeline.PipelineConfig;
@@ -116,30 +116,7 @@ public final class OrchestratorTestSupport {
     }
 
     public static List<Artifact> extractArtifactsFromData(String agentId, Map<String, Object> data) {
-        if (data == null || data.isEmpty()) return List.of();
-
-        List<Artifact> artifacts = new ArrayList<>();
-
-        Object arts = data.get("artifacts");
-        if (arts instanceof List<?> list) {
-            for (Object o : list) {
-                if (o instanceof Artifact a) {
-                    artifacts.add(a);
-                }
-            }
-        }
-
-        Object kind = data.get("artifactKind");
-        Object payload = data.get("artifactPayload");
-        if (kind != null && payload != null && artifacts.isEmpty()) {
-            ArtifactKind ak = ArtifactKind.fromWire(String.valueOf(kind));
-            Map<String, Object> payloadMap = payload instanceof Map<?, ?> m
-                    ? new LinkedHashMap<>((Map<String, Object>) m)
-                    : Map.of("value", payload);
-            artifacts.add(Artifact.of(ak, agentId != null ? agentId : "unknown", payloadMap));
-        }
-
-        return artifacts;
+        return ArtifactExtractor.fromStepData(agentId, data);
     }
 
     public static List<Artifact> collectAllArtifacts(List<StepResultDto> stepResults) {

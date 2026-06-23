@@ -225,6 +225,9 @@ public class UploadQueueService {
             String aiTaskId = asText(submitResponse.get("task_id"));
             waitForKnowledgeProcessing(task, kbName, aiTaskId, content, mimeType);
 
+            updateTaskProgress(task, 80, "正在同步 Docker Chroma 向量索引");
+            ensureChromaIndexed(kbName);
+
             updateTaskProgress(task, 85, "正在获取向量块数据");
             // 获取并保存向量块
             saveVectorChunks(task, kbName);
@@ -304,10 +307,41 @@ public class UploadQueueService {
     }
 
     private boolean knowledgeBaseExists(String kbName) {
-        return aiServerClient.listKnowledgeBases().stream()
-                .map(item -> asText(item.get("name")))
-                .filter(Objects::nonNull)
-                .anyMatch(kbName::equals);
+        return aiServerClient.knowledgeBaseExists(kbName);
+    }
+
+    /**
+     * 上传完成后确保向量写入 Docker Chroma（从 local 切到 chroma 时需要 reindex）
+     */
+    private void ensureChromaIndexed(String kbName) throws InterruptedException {
+        Map<String, Object> probe = aiServerClient.searchKnowledgeBase(kbName, "healthcheck", 1);
+        if (!Boolean.TRUE.equals(probe.get("needs_reindex"))) {
+            return;
+        }
+        log.info("[UploadQueue] KB {} missing Chroma index, triggering reindex", kbName);
+        Map<String, Object> reindex = aiServerClient.reindexKnowledgeBase(kbName);
+        if (Boolean.TRUE.equals(reindex.get("noop"))) {
+            return;
+        }
+        String taskId = asText(reindex.get("task_id"));
+        if (taskId == null) {
+            return;
+        }
+        long deadline = System.currentTimeMillis() + 300_000;
+        while (System.currentTimeMillis() < deadline) {
+            Map<String, Object> progress = aiServerClient.getProgress(kbName);
+            String stage = asText(progress.get("stage"));
+            if ("completed".equalsIgnoreCase(stage)) {
+                log.info("[UploadQueue] Chroma reindex completed for {}", kbName);
+                return;
+            }
+            if ("error".equalsIgnoreCase(stage)) {
+                throw new IllegalStateException("Chroma 重建索引失败: "
+                        + firstNonBlank(asText(progress.get("error")), asText(progress.get("message"))));
+            }
+            Thread.sleep(2000);
+        }
+        throw new IllegalStateException("Chroma 重建索引超时: " + kbName);
     }
     
     /**

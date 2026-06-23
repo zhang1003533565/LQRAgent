@@ -1,6 +1,7 @@
 package com.lqragent.backend.agents.effect;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Component;
 
@@ -40,6 +41,12 @@ public class EffectAgent extends BaseAgent {
 
     @Override
     public AgentMessage process(AgentMessage request) {
+        String action = String.valueOf(request.getContent().getOrDefault("action", "evaluate"));
+        if ("evaluate".equals(action)) {
+            String userId = String.valueOf(request.getContent().getOrDefault("userId", "0"));
+            return informFromToolResult(request.getTaskId(), analyzeWeaknessTool.execute(
+                    Map.of("userId", userId)));
+        }
         return executeLlmLoop(request);
     }
 

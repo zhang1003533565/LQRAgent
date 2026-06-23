@@ -90,6 +90,7 @@ export default function RagSourcesCard({ sources }: Props) {
                     <span className={styles.sourceIdx}>{i + 1}</span>
                     <SourceIcon />
                     <span className={styles.sourceTitle}>{src.title || getFileName(src.source)}</span>
+                    {src.kbName && <span className={styles.pageTag}>{src.kbName}</span>}
                     {src.page && <span className={styles.pageTag}>p.{src.page}</span>}
                     {score && <span className={styles.scoreTag}>{score}</span>}
                   </div>

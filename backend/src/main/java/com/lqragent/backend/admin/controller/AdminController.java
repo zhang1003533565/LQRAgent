@@ -7,8 +7,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -45,6 +43,7 @@ import com.lqragent.backend.agents.path.repository.LearningPathStepRepository;
 import com.lqragent.backend.agents.learnerprofile.dto.ProfileSummaryDto;
 import com.lqragent.backend.agents.learnerprofile.repository.LearnerProfileRepository;
 import com.lqragent.backend.chat.entity.AgentRunLog;
+import com.lqragent.backend.chat.proxy.AiServerClient;
 import com.lqragent.backend.common.dto.ApiResponse;
 import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.orchestrator.test.OrchestratorTestService;
@@ -67,8 +66,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
-import org.springframework.beans.factory.annotation.Value;
 
 @Slf4j
 @Tag(name = "管理后台", description = "系统配置、模型管理、用户管理（仅 ADMIN 角色）")
@@ -94,9 +91,7 @@ public class AdminController {
     private final QiniuStorageService qiniuStorageService;
     private final CurrentUserService currentUserService;
     private final AgentRegistry agentRegistry;
-
-    @Value("${ai-server.host:http://localhost:8001}")
-    private String aiServerHost;
+    private final AiServerClient aiServerClient;
 
     @Operation(summary = "系统状态总览", description = "返回后端端口、AI 服务连通性、用户/任务统计")
     @GetMapping("/status")
@@ -445,29 +440,13 @@ public class AdminController {
      * 触发知识库向量索引重建（Chroma）
      * 调用 ai-server 的 /api/v1/knowledge/{kbName}/reindex 端点
      */
-    @Operation(summary = "重建知识库向量索引", description = "触发指定知识库的向量索引重建（Chroma）")
+    @Operation(summary = "重建知识库向量索引", description = "触发指定知识库的向量索引重建（Docker Chroma）")
     @PostMapping("/knowledge-base/reindex")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ApiResponse<Map<String, Object>> reindexKnowledgeBase(@RequestParam(defaultValue = "default") String kbName) {
+    public ApiResponse<Map<String, Object>> reindexKnowledgeBase(
+            @RequestParam(defaultValue = "kb-public") String kbName) {
         try {
-            java.net.URI uri = new java.net.URI(aiServerHost + "/api/v1/knowledge/" + kbName + "/reindex");
-
-            var client = java.net.http.HttpClient.newHttpClient();
-            var request = java.net.http.HttpRequest.newBuilder()
-                    .uri(uri)
-                    .header("Content-Type", "application/json")
-                    .POST(java.net.http.HttpRequest.BodyPublishers.noBody())
-                    .timeout(java.time.Duration.ofSeconds(10))
-                    .build();
-
-            var response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-            String body = response.body();
-
-            @SuppressWarnings("unchecked")
-            Map<String, Object> result = new ObjectMapper().readValue(body, Map.class);
-            log.info("[Admin] reindex KB '{}' triggered: status={}, taskId={}", kbName, response.statusCode(),
-                    result.getOrDefault("task_id", "none"));
-
+            Map<String, Object> result = aiServerClient.reindexKnowledgeBase(kbName);
+            log.info("[Admin] reindex KB '{}' triggered: taskId={}", kbName, result.get("task_id"));
             return ApiResponse.ok(result);
         } catch (Exception e) {
             log.error("[Admin] reindex KB '{}' failed", kbName, e);

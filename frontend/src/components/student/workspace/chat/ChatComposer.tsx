@@ -15,6 +15,8 @@ export default function ChatComposer({ onSend }: Props) {
     const content = input.trim()
     if (!content) return
 
+    useChatStore.getState().finalizeStuckStreaming()
+
     addMessage({
       id: crypto.randomUUID(),
       role: 'user',

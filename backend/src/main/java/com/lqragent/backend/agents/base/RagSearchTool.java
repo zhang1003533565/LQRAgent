@@ -1,166 +1,177 @@
 package com.lqragent.backend.agents.base;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lqragent.backend.chat.proxy.AiServerClient;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import com.lqragent.backend.systemconfig.ConfigKeys;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * 共享的 RAG 搜索工具
- * 可以被任何 Agent 使用，从知识库中检索相关信息
+ * 检索路径：七牛云原始文件 → ai-server 解析 → Docker Chroma 向量索引
  */
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class RagSearchTool implements AgentTool {
-    
+
     private final AppRuntimeConfig runtimeConfig;
-    private final LlmClient llmClient;
+    private final AiServerClient aiServerClient;
     private final ObjectMapper mapper = new ObjectMapper();
-    private final HttpClient httpClient = HttpClient.newHttpClient();
-    
+
     @Override
     public String name() { return "search_knowledge"; }
-    
+
     @Override
     public String description() { return "从知识库中检索相关信息，用于增强回答的准确性"; }
-    
+
     @Override
     public Map<String, Object> parameterSchema() {
         return Map.of(
                 "type", "object",
                 "properties", Map.of(
                         "query", Map.of("type", "string", "description", "搜索查询"),
-                        "topK", Map.of("type", "integer", "description", "返回结果数量")
+                        "topK", Map.of("type", "integer", "description", "返回结果数量"),
+                        "userId", Map.of("type", "string", "description", "用户ID（用于检索私有知识库）")
                 ),
                 "required", new String[]{"query"}
         );
     }
-    
+
     @Override
     public ToolResult execute(Map<String, Object> args) {
         try {
             String query = args.get("query").toString();
             int topK = args.containsKey("topK") ? Integer.parseInt(args.get("topK").toString()) : 3;
-            
-            // 尝试通过 ai-server REST API 搜索知识库
-            String result = searchKnowledgeBase(query, topK);
-            
-            if (result != null && !result.isBlank()) {
-                // 提取 sources 信息放入 metadata，供前端展示引用来源
-                List<Map<String, Object>> sources = extractSources(result);
-                Map<String, Object> metadata = new HashMap<>();
-                if (!sources.isEmpty()) {
-                    metadata.put("ragSources", sources);
-                }
-                return ToolResult.success(result, metadata);
+
+            List<String> kbNames = resolveKbNames(args);
+            if (kbNames.isEmpty()) {
+                return emptyResult(query);
             }
-            
-            // 降级：使用 LLM 通用知识
-            return fallbackToLlm(query);
+
+            List<Map<String, Object>> allSources = new ArrayList<>();
+            StringBuilder contextBuilder = new StringBuilder();
+            boolean anySuccess = false;
+
+            for (String kbName : kbNames) {
+                Map<String, Object> result = aiServerClient.searchKnowledgeBase(kbName, query, topK);
+                if (result == null || result.isEmpty()) {
+                    continue;
+                }
+                if (Boolean.TRUE.equals(result.get("needs_reindex"))) {
+                    log.warn("[RagSearchTool] KB '{}' needs reindex (Chroma), skipping", kbName);
+                    continue;
+                }
+                anySuccess = true;
+                mergeSearchResult(kbName, result, allSources, contextBuilder);
+            }
+
+            if (!anySuccess || allSources.isEmpty()) {
+                return emptyResult(query);
+            }
+
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("ragSources", allSources);
+            metadata.put("knowledgeBases", kbNames);
+
+            String payload = mapper.writeValueAsString(Map.of(
+                    "query", query,
+                    "sources", allSources,
+                    "summary", contextBuilder.length() > 0 ? contextBuilder.toString() : "检索到 " + allSources.size() + " 条参考"
+            ));
+            return ToolResult.success(payload, metadata);
         } catch (Exception e) {
             log.warn("[RagSearchTool] search failed: {}", e.getMessage());
-            try {
-                return ToolResult.success(mapper.writeValueAsString(Map.of(
-                        "query", args.get("query"),
-                        "results", List.of(),
-                        "summary", "知识库检索失败，请基于通用知识回答"
-                )));
-            } catch (Exception ex) {
-                return ToolResult.success("{\"results\":[],\"summary\":\"知识库检索失败\"}");
-            }
+            return emptyResult(String.valueOf(args.get("query")));
         }
     }
-    
-    /**
-     * 从搜索结果 JSON 中提取 sources 列表
-     */
-    @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> extractSources(String resultJson) {
+
+    private ToolResult emptyResult(String query) {
         try {
-            Map<String, Object> result = mapper.readValue(resultJson, Map.class);
-            Object sourcesObj = result.get("sources");
-            if (sourcesObj instanceof List<?> list) {
-                List<Map<String, Object>> sources = new ArrayList<>();
-                for (Object item : list) {
-                    if (item instanceof Map<?, ?> map) {
-                        sources.add((Map<String, Object>) map);
-                    }
-                }
-                return sources;
-            }
-        } catch (Exception e) {
-            log.debug("[RagSearchTool] extractSources failed: {}", e.getMessage());
-        }
-        return List.of();
-    }
-    
-    /**
-     * 通过 ai-server REST API 搜索知识库
-     */
-    private String searchKnowledgeBase(String query, int topK) {
-        try {
-            String baseUrl = runtimeConfig.getAiServerBaseUrl();
-            String kbName = runtimeConfig.get(ConfigKeys.KB_PUBLIC, "kb-public");
-            String searchUrl = baseUrl + "/api/v1/knowledge/" + kbName + "/search";
-            
-            String requestBody = "query=" + java.net.URLEncoder.encode(query, "UTF-8") + "&top_k=" + topK;
-            
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(searchUrl))
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-                    .timeout(java.time.Duration.ofSeconds(30))
-                    .build();
-            
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            
-            if (response.statusCode() == 200) {
-                log.info("[RagSearchTool] knowledge base search success: query={}", query);
-                return response.body();
-            } else {
-                log.warn("[RagSearchTool] knowledge base search failed: status={}", response.statusCode());
-                return null;
-            }
-        } catch (Exception e) {
-            log.warn("[RagSearchTool] knowledge base search exception: {}", e.getMessage());
-            return null;
-        }
-    }
-    
-    /**
-     * 降级：使用 LLM 通用知识
-     */
-    private ToolResult fallbackToLlm(String query) {
-        try {
-            String prompt = String.format(
-                "请基于你的知识回答以下问题：\n\n问题：%s", query);
-            
-            var response = llmClient.chat(
-                "你是一个知识检索助手，请根据用户的问题提供相关信息。",
-                List.of(Map.of("role", "user", "content", prompt)),
-                null
-            );
-            
-            if (response.isSuccess() && response.content() != null) {
-                return ToolResult.success(response.content());
-            }
-            
             return ToolResult.success(mapper.writeValueAsString(Map.of(
                     "query", query,
                     "results", List.of(),
-                    "summary", "知识库检索未返回结果，请基于通用知识回答"
+                    "summary", "知识库暂无相关内容"
             )));
         } catch (Exception e) {
             return ToolResult.success("{\"results\":[],\"summary\":\"知识库检索失败\"}");
         }
+    }
+
+    /**
+     * 解析待检索知识库：公共库 + 用户私有库（均存在时才检索）
+     */
+    private List<String> resolveKbNames(Map<String, Object> args) {
+        List<String> names = new ArrayList<>();
+        String publicKb = runtimeConfig.get(ConfigKeys.KB_PUBLIC, "kb-public");
+        if (aiServerClient.knowledgeBaseExists(publicKb)) {
+            names.add(publicKb);
+        }
+
+        Object userId = args.get("userId");
+        if (userId != null) {
+            String privateKb = runtimeConfig.get(ConfigKeys.KB_PRIVATE_PREFIX, "kb-private-") + userId;
+            if (aiServerClient.knowledgeBaseExists(privateKb) && !names.contains(privateKb)) {
+                names.add(privateKb);
+            }
+        }
+
+        if (names.isEmpty()) {
+            log.warn("[RagSearchTool] no registered KB found (public={}, userId={})", publicKb, userId);
+        }
+        return names;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void mergeSearchResult(String kbName, Map<String, Object> result,
+                                   List<Map<String, Object>> allSources, StringBuilder contextBuilder) {
+        Object sourcesObj = result.get("sources");
+        if (sourcesObj instanceof List<?> list) {
+            Set<String> seen = new LinkedHashSet<>();
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> map) {
+                    Map<String, Object> source = new LinkedHashMap<>((Map<String, Object>) map);
+                    source.putIfAbsent("kbName", kbName);
+                    String key = String.valueOf(source.getOrDefault("chunk_id",
+                            source.getOrDefault("content", "")));
+                    if (seen.add(key)) {
+                        allSources.add(source);
+                    }
+                }
+            }
+        }
+
+        String content = firstNonBlank(
+                asText(result.get("answer")),
+                asText(result.get("content"))
+        );
+        if (!content.isBlank()) {
+            if (contextBuilder.length() > 0) {
+                contextBuilder.append("\n\n");
+            }
+            contextBuilder.append("[").append(kbName).append("]\n").append(content);
+        }
+    }
+
+    private String asText(Object value) {
+        return value == null ? "" : String.valueOf(value).trim();
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String v : values) {
+            if (v != null && !v.isBlank()) {
+                return v;
+            }
+        }
+        return "";
     }
 }

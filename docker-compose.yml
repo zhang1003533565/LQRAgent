@@ -30,6 +30,7 @@ services:
       - PERSIST_DIRECTORY=/chroma/chroma
       - ANONYMIZED_TELEMETRY=FALSE
     restart: unless-stopped
+    # ai-server/.env: RAG_STORAGE_BACKEND=chroma, CHROMA_HOST=localhost, CHROMA_PORT=8000
 
 volumes:
   redis-data:

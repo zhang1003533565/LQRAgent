@@ -9,6 +9,7 @@ import com.lqragent.backend.agents.base.AgentRequest;
 import com.lqragent.backend.agents.base.AgentResponse;
 import com.lqragent.backend.agents.base.PeerCallContext;
 import com.lqragent.backend.orchestrator.artifact.Artifact;
+import com.lqragent.backend.orchestrator.artifact.ArtifactExtractor;
 import com.lqragent.backend.orchestrator.artifact.ArtifactKind;
 import com.lqragent.backend.orchestrator.capability.AgentCapability;
 import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
@@ -176,19 +177,11 @@ public abstract class BaseAgent implements AgentInterface {
             }
             Object artifactKind = result.getContent().get("artifactKind");
             Object artifactPayload = result.getContent().get("artifactPayload");
-            List<Artifact> artifacts = List.of();
             if (artifactKind != null && artifactPayload != null) {
                 metadata.put("artifactKind", artifactKind);
                 metadata.put("artifactPayload", artifactPayload);
-                // 阶段四：把 metadata 形式的 artifact 同步翻译为统一 Artifact 模型，让 QualityGate 可见
-                if (artifactPayload instanceof Map<?, ?> payloadMap) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> payload = (Map<String, Object>) payloadMap;
-                    ArtifactKind kind = ArtifactKind.fromWire(String.valueOf(artifactKind));
-                    Artifact artifact = Artifact.of(kind, agentId, payload);
-                    artifacts = List.of(artifact);
-                }
             }
+            List<Artifact> artifacts = ArtifactExtractor.fromMessageContent(agentId, result.getContent());
             if (success && !artifacts.isEmpty()) {
                 return AgentResponse.successWithArtifacts(content, artifacts, metadata);
             }
@@ -341,8 +334,19 @@ public abstract class BaseAgent implements AgentInterface {
 
         // 收集工具执行过程中产生的 RAG 引用来源和多模态产物
         List<Map<String, Object>> collectedRagSources = new ArrayList<>();
+        Object prefetchedRag = request.getContent().get("ragSources");
+        if (prefetchedRag instanceof List<?> prefetchedList) {
+            for (Object item : prefetchedList) {
+                if (item instanceof Map<?, ?> map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> source = (Map<String, Object>) map;
+                    collectedRagSources.add(source);
+                }
+            }
+        }
         String artifactKind = null;
         Object artifactPayload = null;
+        List<Artifact> toolArtifacts = new ArrayList<>();
 
         for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
             log.debug("[{}] LLM iteration {}/{}", agentId, iteration + 1, MAX_ITERATIONS);
@@ -365,6 +369,15 @@ public abstract class BaseAgent implements AgentInterface {
                 if (artifactKind != null && artifactPayload != null) {
                     resultContent.put("artifactKind", artifactKind);
                     resultContent.put("artifactPayload", artifactPayload);
+                }
+                List<Artifact> artifacts = new ArrayList<>(toolArtifacts);
+                for (Artifact extracted : ArtifactExtractor.fromMessageContent(agentId, resultContent)) {
+                    if (artifacts.stream().noneMatch(a -> a.getKind() == extracted.getKind())) {
+                        artifacts.add(extracted);
+                    }
+                }
+                if (!artifacts.isEmpty()) {
+                    resultContent.put("artifacts", artifacts);
                 }
                 log.info("[{}] LLM completed after {} iterations", agentId, iteration + 1);
                 return AgentMessage.inform(taskId, agentId, "pipeline", resultContent);
@@ -404,6 +417,7 @@ public abstract class BaseAgent implements AgentInterface {
                     if (result.success()) {
                         ArtifactInfo artifact = detectToolArtifact(result.content());
                         if (artifact != null) {
+                            addToolArtifact(toolArtifacts, artifact);
                             artifactKind = artifact.kind();
                             artifactPayload = artifact.payload();
                         }
@@ -421,7 +435,63 @@ public abstract class BaseAgent implements AgentInterface {
         return AgentMessage.error(taskId, agentId, "Reached maximum iterations");
     }
 
+    /**
+     * 直接执行工具并封装为 INFORM 消息（学习闭环等确定性场景使用）
+     */
+    protected AgentMessage informFromToolResult(String taskId, AgentTool.ToolResult result) {
+        if (!result.success()) {
+            return AgentMessage.error(taskId, agentId, String.valueOf(result.content()));
+        }
+        Map<String, Object> resultContent = new LinkedHashMap<>();
+        resultContent.put("content", result.content());
+        resultContent.put("status", "completed");
+        if (result.metadata() != null && !result.metadata().isEmpty()) {
+            Object ragSources = result.metadata().get("ragSources");
+            if (ragSources != null) {
+                resultContent.put("ragSources", ragSources);
+            }
+        }
+        ArtifactInfo artifact = detectToolArtifact(result.content());
+        if (artifact != null) {
+            resultContent.put("artifactKind", artifact.kind());
+            resultContent.put("artifactPayload", artifact.payload());
+        }
+        List<Artifact> artifacts = ArtifactExtractor.fromMessageContent(agentId, resultContent);
+        if (!artifacts.isEmpty()) {
+            resultContent.put("artifacts", artifacts);
+        }
+        return AgentMessage.inform(taskId, agentId, "pipeline", resultContent);
+    }
+
+    @SuppressWarnings("unchecked")
+    protected Map<String, Object> extractQuizSubmission(Object answersField) {
+        if (answersField instanceof Map<?, ?> map) {
+            Object inner = map.get("answers");
+            if (inner instanceof Map<?, ?> submission) {
+                return (Map<String, Object>) submission;
+            }
+            return (Map<String, Object>) map;
+        }
+        return Map.of();
+    }
+
     private record ArtifactInfo(String kind, Object payload) {}
+
+    private void addToolArtifact(List<Artifact> list, ArtifactInfo info) {
+        ArtifactKind kind = ArtifactKind.fromWire(info.kind());
+        Map<String, Object> payloadMap;
+        if (info.payload() instanceof Map<?, ?> map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> m = (Map<String, Object>) map;
+            payloadMap = new LinkedHashMap<>(m);
+        } else {
+            payloadMap = Map.of("value", info.payload());
+        }
+        if (list.stream().anyMatch(a -> a.getKind() == kind)) {
+            return;
+        }
+        list.add(Artifact.of(kind, agentId, payloadMap));
+    }
 
     private ArtifactInfo detectToolArtifact(String content) {
         if (content == null || content.isBlank()) return null;
@@ -447,6 +517,43 @@ public abstract class BaseAgent implements AgentInterface {
                 payload.put("prompt", root.path("prompt").asText(""));
                 payload.put("mediaType", mediaType.isBlank() ? "image" : mediaType);
                 return new ArtifactInfo("video".equalsIgnoreCase(mediaType) ? "video" : "media_image", payload);
+            }
+            if (root.has("diagram")) {
+                var payload = new LinkedHashMap<String, Object>();
+                payload.put("diagram", root.path("diagram").asText());
+                payload.put("format", root.has("format") ? root.path("format").asText()
+                        : root.path("type").asText("mermaid"));
+                if (root.has("topic")) {
+                    payload.put("topic", root.path("topic").asText());
+                }
+                return new ArtifactInfo("diagram", payload);
+            }
+            if (root.has("nodes") && root.get("nodes").isArray()) {
+                return new ArtifactInfo("learning_path", mapper.convertValue(root, Object.class));
+            }
+            if (root.has("score") && (root.has("feedback") || root.has("passed"))) {
+                return new ArtifactInfo("assessment", mapper.convertValue(root, Object.class));
+            }
+            if (root.has("weakPoints")) {
+                return new ArtifactInfo("weakness_profile", mapper.convertValue(root, Object.class));
+            }
+            if (root.has("type") && "recommendation".equals(root.path("type").asText())) {
+                var payload = new LinkedHashMap<String, Object>();
+                if (root.has("data") && !root.path("data").isNull()) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> data = mapper.convertValue(root.path("data"), Map.class);
+                    payload.putAll(data);
+                }
+                if (root.has("content")) {
+                    payload.put("content", root.path("content").asText());
+                }
+                if (root.has("title")) {
+                    payload.put("title", root.path("title").asText());
+                }
+                return new ArtifactInfo("multi_card", payload);
+            }
+            if (root.isArray() && root.size() > 0 && root.get(0).has("title")) {
+                return new ArtifactInfo("multi_card", Map.of("items", mapper.convertValue(root, List.class)));
             }
         } catch (Exception ignored) {
         }

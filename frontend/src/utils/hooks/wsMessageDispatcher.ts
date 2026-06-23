@@ -110,13 +110,15 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
     return
   }
 
-  if (kind === 'rag_sources' && Array.isArray(payload)) {
-    const sources = payload as RagSource[]
-    const msgs = useChatStore.getState().messages
-    const last = [...msgs].reverse().find((m) => m.role === 'assistant')
-    if (last) {
-      useChatStore.getState().updateMessage(last.id, { ragSources: sources })
-      saveMessageMetadata(last.id, { ragSources: sources })
+  if (kind === 'rag_sources' && payload) {
+    const raw = payload as RagSource[] | { sources?: RagSource[] }
+    const sources = Array.isArray(raw) ? raw : raw.sources
+    if (sources?.length) {
+      const msgs = useChatStore.getState().messages
+      const last = [...msgs].reverse().find((m) => m.role === 'assistant')
+      if (last) {
+        useChatStore.getState().updateMessage(last.id, { ragSources: sources })
+      }
     }
   }
 
@@ -153,7 +155,10 @@ export function dispatchWsMessage(data: WsRawMessage) {
 
   switch (data.type) {
     case 'session_created':
-      if (data.session_id) setSessionId(String(data.session_id))
+      if (data.session_id) {
+        setSessionId(String(data.session_id))
+        useChatStore.getState().bumpSessionList()
+      }
       break
     case 'chunk':
       appendToLastMessage(data.content ?? '')
@@ -161,6 +166,7 @@ export function dispatchWsMessage(data: WsRawMessage) {
     case 'agent_step':
       if (data.agent && data.label && data.status) {
         upsertStep({
+          id: data.stepId ? String(data.stepId) : data.agent,
           agent: data.agent as AgentId,
           label: data.label,
           status: data.status as AgentStepStatus,
@@ -209,7 +215,17 @@ export function dispatchWsMessage(data: WsRawMessage) {
     case 'done': {
       const msgs = useChatStore.getState().messages
       const last = [...msgs].reverse().find((m) => m.role === 'assistant')
-      if (last) setStreaming(last.id, false)
+      if (last) {
+        if (!last.content?.trim()) {
+          updateMessage(last.id, {
+            content: '回答生成失败或超时，请重试。',
+            streaming: false,
+          })
+        } else {
+          setStreaming(last.id, false)
+        }
+      }
+      useChatStore.getState().bumpSessionList()
       break
     }
     case 'error': {
@@ -228,6 +244,7 @@ export function dispatchWsMessage(data: WsRawMessage) {
           createdAt: new Date(),
         })
       }
+      useChatStore.getState().bumpSessionList()
       break
     }
     default:
