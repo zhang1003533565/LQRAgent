@@ -7,6 +7,7 @@ import com.lqragent.backend.agents.base.AgentRegistry;
 import com.lqragent.backend.agents.base.AgentInterface;
 import com.lqragent.backend.agents.base.AgentRequest;
 import com.lqragent.backend.agents.base.AgentResponse;
+import com.lqragent.backend.agents.base.PeerCallContext;
 import com.lqragent.backend.orchestrator.artifact.Artifact;
 import com.lqragent.backend.orchestrator.artifact.ArtifactKind;
 import com.lqragent.backend.orchestrator.capability.AgentCapability;
@@ -69,6 +70,9 @@ public abstract class BaseAgent implements AgentInterface {
     /** 阶段一新增：AgentCardRegistry（声明式能力目录，供 PlanningAgent v2 使用） */
     @Autowired(required = false)
     protected AgentCardRegistry agentCardRegistry;
+
+    /** 阶段六新增：Agent 间动态协作上下文 */
+    protected final ThreadLocal<Map<String, Object>> currentTaskContext = ThreadLocal.withInitial(HashMap::new);
 
     protected BaseAgent(String agentId, RedisStreamsService streams,
                         LlmClient llmClient, AgentToolRegistry toolRegistry,
@@ -146,6 +150,10 @@ public abstract class BaseAgent implements AgentInterface {
             Map<String, Object> requestContent = new LinkedHashMap<>();
             if (request.context() != null) {
                 requestContent.putAll(request.context());
+                Object peerCtx = request.context().get("peerCallContext");
+                if (peerCtx instanceof PeerCallContext) {
+                    currentTaskContext.get().put("peerCallContext", peerCtx);
+                }
             }
             requestContent.putIfAbsent("goal", request.goal());
             requestContent.put("action", request.action());
@@ -189,6 +197,41 @@ public abstract class BaseAgent implements AgentInterface {
             log.error("[{}] adapter process failed: {}", agentId, e.getMessage());
             return AgentResponse.failure(e.getMessage());
         }
+    }
+
+    /**
+     * 阶段六新增：Agent 间动态协作。
+     * 子类可在确实需要时调用，默认限制深度 max=2，防止循环调用。
+     */
+    protected AgentResponse requestPeer(String peerId, AgentRequest req) {
+        if (agentRegistry == null) {
+            return AgentResponse.failure("agent registry unavailable");
+        }
+        PeerCallContext peerCtx = (PeerCallContext) currentTaskContext.get().get("peerCallContext");
+        if (peerCtx == null) {
+            peerCtx = new PeerCallContext();
+        }
+        if (!peerCtx.canCall(peerId)) {
+            log.warn("[{}] peer call blocked: {} (depth={}, visited={})",
+                    agentId, peerId, peerCtx.getDepth(), peerCtx.getVisitedPeers());
+            return AgentResponse.failure("peer call blocked: " + peerId);
+        }
+
+        var peer = agentRegistry.getAgent(peerId).orElse(null);
+        if (peer == null) {
+            return AgentResponse.failure("peer not found: " + peerId);
+        }
+
+        PeerCallContext nextCtx = peerCtx.enter(peerId);
+        Map<String, Object> peerContext = new LinkedHashMap<>();
+        if (req.context() != null) {
+            peerContext.putAll(req.context());
+        }
+        peerContext.put("peerCallContext", nextCtx);
+        AgentRequest peerRequest = new AgentRequest(req.action(), req.goal(), peerContext);
+
+        log.info("[{}] requesting peer: {} (depth={})", agentId, peerId, peerCtx.getDepth());
+        return peer.process(peerRequest);
     }
 
     // ==================== Redis Streams 消费者 ====================

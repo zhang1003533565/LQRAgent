@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Component;
 
+import com.lqragent.backend.agents.aiserver.tools.AiServerToolFactory;
 import com.lqragent.backend.agents.base.AgentTool;
 import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.LlmClient;
@@ -22,13 +23,16 @@ public class QuizAgent extends BaseAgent {
 
     private final RagSearchTool ragSearchTool;
     private final GenerateQuizTool generateQuizTool;
+    private final AiServerToolFactory aiServerToolFactory;
 
     public QuizAgent(RedisStreamsService streams, LlmClient llmClient,
                      AgentToolRegistry toolRegistry, RagSearchTool ragSearchTool,
-                     GenerateQuizTool generateQuizTool, PromptService promptService) {
+                     GenerateQuizTool generateQuizTool, PromptService promptService,
+                     AiServerToolFactory aiServerToolFactory) {
         super(AgentIds.QUIZ, streams, llmClient, toolRegistry, promptService);
         this.ragSearchTool = ragSearchTool;
         this.generateQuizTool = generateQuizTool;
+        this.aiServerToolFactory = aiServerToolFactory;
     }
 
     @Override
@@ -38,7 +42,7 @@ public class QuizAgent extends BaseAgent {
 
     @Override
     protected List<AgentTool> getTools() {
-        return List.of(ragSearchTool, generateQuizTool);
+        return List.of(ragSearchTool, generateQuizTool, aiServerToolFactory.deepQuestionTool());
     }
 
     @Override
@@ -71,10 +75,11 @@ public class QuizAgent extends BaseAgent {
                 AgentIds.QUIZ,
                 "题目生成",
                 "按要求或基于知识库资料生成混合题型练习题",
-                List.of("quiz", "exercise", "test", "question", "practice"),
+                List.of("quiz", "exercise", "test", "question", "practice", "deep_question"),
                 List.of(
                         ToolSpec.of("search_knowledge", "知识库检索"),
-                        ToolSpec.of("generate_quiz", "生成题目")
+                        ToolSpec.of("generate_quiz", "生成题目"),
+                        ToolSpec.of("deep_question", "深度出题")
                 ),
                 List.of("text", "rag_sources"),
                 List.of("quiz"),

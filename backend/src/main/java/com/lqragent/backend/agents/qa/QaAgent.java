@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import com.lqragent.backend.agents.base.AgentTool;
 import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.aiserver.tools.AiServerToolFactory;
 import com.lqragent.backend.agents.base.RagSearchTool;
 import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.orchestrator.agents.BaseAgent;
@@ -21,12 +22,14 @@ import com.lqragent.backend.prompt.service.PromptService;
 public class QaAgent extends BaseAgent {
 
     private final RagSearchTool ragSearchTool;
+    private final AiServerToolFactory aiServerToolFactory;
 
     public QaAgent(RedisStreamsService streams, LlmClient llmClient,
                     AgentToolRegistry toolRegistry, RagSearchTool ragSearchTool,
-                    PromptService promptService) {
+                    PromptService promptService, AiServerToolFactory aiServerToolFactory) {
         super(AgentIds.QA, streams, llmClient, toolRegistry, promptService);
         this.ragSearchTool = ragSearchTool;
+        this.aiServerToolFactory = aiServerToolFactory;
     }
 
     @Override
@@ -36,7 +39,7 @@ public class QaAgent extends BaseAgent {
 
     @Override
     protected List<AgentTool> getTools() {
-        return List.of(ragSearchTool);
+        return List.of(ragSearchTool, aiServerToolFactory.deepSolveTool());
     }
 
     @Override
@@ -67,8 +70,11 @@ public class QaAgent extends BaseAgent {
                 AgentIds.QA,
                 "智能问答",
                 "解答学习问题、知识检索、概念解释、生成讲解文本",
-                List.of("qa", "question", "answer", "explain", "knowledge"),
-                List.of(ToolSpec.of("search_knowledge", "知识库检索")),
+                List.of("qa", "question", "answer", "explain", "knowledge", "deep_solve"),
+                List.of(
+                        ToolSpec.of("search_knowledge", "知识库检索"),
+                        ToolSpec.of("deep_solve", "复杂问题深度求解")
+                ),
                 List.of("text", "rag_sources"),
                 List.of("text", "rag_sources"),
                 1, 30000L

@@ -268,6 +268,9 @@ public class PipelineEngine {
                 if (response.getMetadata() != null && !response.getMetadata().isEmpty()) {
                     result.putAll(response.getMetadata());
                 }
+                if (response.getArtifacts() != null && !response.getArtifacts().isEmpty()) {
+                    result.put("artifacts", response.getArtifacts());
+                }
 
                 // 存储步骤结果到上下文（供下游步骤的 resultMapping 使用）
                 context.setResult(step.getStepId(), result);

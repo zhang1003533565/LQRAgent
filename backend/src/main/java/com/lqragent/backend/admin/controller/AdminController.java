@@ -46,8 +46,9 @@ import com.lqragent.backend.agents.learnerprofile.dto.ProfileSummaryDto;
 import com.lqragent.backend.agents.learnerprofile.repository.LearnerProfileRepository;
 import com.lqragent.backend.chat.entity.AgentRunLog;
 import com.lqragent.backend.common.dto.ApiResponse;
-import com.lqragent.backend.orchestrator.OrchestratorCore;
 import com.lqragent.backend.orchestrator.context.TaskContext;
+import com.lqragent.backend.orchestrator.test.OrchestratorTestService;
+import com.lqragent.backend.orchestrator.test.dto.OrchestratorTestDtos.AgentRunTestResult;
 import com.lqragent.backend.quiz.repository.QuizRecordRepository;
 import com.lqragent.backend.quiz.repository.StudyBehaviorRepository;
 import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgeEdge;
@@ -87,7 +88,7 @@ public class AdminController {
     private final LearningPathStepRepository learningPathStepRepo;
     private final ResourceItemRepository resourceItemRepo;
     private final AgentRunLogRepository agentRunLogRepo;
-    private final OrchestratorCore orchestratorCore;
+    private final OrchestratorTestService orchestratorTestService;
     private final QuizRecordRepository quizRecordRepo;
     private final StudyBehaviorRepository studyBehaviorRepo;
     private final QiniuStorageService qiniuStorageService;
@@ -285,11 +286,25 @@ public class AdminController {
             data.put("error", response.getError());
             data.put("metadata", response.getMetadata());
         } else {
-            Map<String, Object> result = orchestratorCore.handleChatMessage(String.valueOf(userId), message);
-            data.put("success", true);
-            data.put("route", result.get("route"));
-            data.put("response", result.get("response"));
-            data.put("agent", result.get("agent"));
+            AgentRunTestResult result = orchestratorTestService.runAgentRoute(String.valueOf(userId), message);
+            data.put("success", result.success());
+            data.put("route", result.route());
+            data.put("response", result.response());
+            data.put("agent", result.agent());
+            data.put("error", result.error());
+            if (result.plan() != null) {
+                data.put("planType", result.plan().planType());
+                data.put("intent", result.plan().intent());
+                data.put("steps", result.plan().steps());
+                data.put("pipelineId", result.plan().pipelineId());
+                data.put("pipelineName", result.plan().pipelineName());
+            }
+            if (result.pipeline() != null) {
+                data.put("stepResults", result.pipeline().stepResults());
+                data.put("artifacts", result.pipeline().artifacts());
+                data.put("pipelineSuccess", result.pipeline().success());
+                data.put("pipelineError", result.pipeline().error());
+            }
         }
 
         data.put("durationMs", System.currentTimeMillis() - start);
