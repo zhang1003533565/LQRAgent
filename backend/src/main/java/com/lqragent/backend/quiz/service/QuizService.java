@@ -49,6 +49,10 @@ public class QuizService {
 
     private static final int ENABLED_STATUS = 1;
 
+    /** learning_loop Pipeline 固定四步（与 PipelineTemplates.learningLoop 一致） */
+    public static final List<String> LEARNING_LOOP_STEP_IDS = List.of(
+            "assessment", "effect", "path_adjust", "resource_push");
+
     private final QuestionBankRepository questionBankRepository;
     private final QuizRecordRepository quizRecordRepo;
     private final StudyBehaviorRepository behaviorRepo;
@@ -204,38 +208,71 @@ public class QuizService {
                                           boolean correct, int score, String kpId) {
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
-                PipelineConfig config = PipelineTemplates.learningLoop();
-                TaskContext context = new TaskContext(
-                        "quiz-loop-" + System.currentTimeMillis(),
-                        String.valueOf(userId),
-                        "quiz-submit",
-                        "学生提交题目后进行学习闭环"
-                );
-                Map<String, Object> quizSubmission = new java.util.LinkedHashMap<>();
-                quizSubmission.put("userId", userId);
-                quizSubmission.put("questionId", question.getId());
-                quizSubmission.put("kpId", kpId);
-                quizSubmission.put("question", question.getTitle());
-                quizSubmission.put("questionType", question.getQuestionType());
-                quizSubmission.put("answer", request.getAnswer());
-                quizSubmission.put("correctAnswer", question.getCorrectAnswer());
-                quizSubmission.put("correct", correct);
-                quizSubmission.put("score", score);
-                quizSubmission.put("analysis", question.getAnalysis());
-                context.setResult("quiz_submission", Map.of("answers", quizSubmission, "quiz", quizSubmission));
-
-                var result = pipelineEngine.execute(config, context);
-                if (result.isSuccess()) {
-                    persistLearningLoopResult(userId, question.getId(), result);
-                    log.info("[Quiz] 学习闭环 Pipeline 完成: userId={}, questionId={}", userId, question.getId());
-                } else {
-                    log.warn("[Quiz] 学习闭环 Pipeline 失败: userId={}, questionId={}, error={}",
-                            userId, question.getId(), result.getErrorMessage());
-                }
+                executeLearningLoop(userId, question, request.getAnswer(), correct, score, kpId, true);
             } catch (Exception e) {
                 log.warn("[Quiz] 学习闭环 Pipeline 异常: {}", e.getMessage());
             }
         });
+    }
+
+    /**
+     * 执行 learning_loop Pipeline（线上 submit 与测试 API 共用）
+     *
+     * @param persistToMemory 成功时是否写入用户记忆（测试 API 传 false）
+     */
+    public PipelineResult executeLearningLoop(Long userId, QuestionBank question,
+                                            String answer, boolean correct, int score,
+                                            String kpId, boolean persistToMemory) {
+        PipelineConfig config = PipelineTemplates.learningLoop();
+        TaskContext context = new TaskContext(
+                "quiz-loop-" + System.currentTimeMillis(),
+                String.valueOf(userId),
+                "quiz-submit",
+                "学生提交题目后进行学习闭环"
+        );
+        Map<String, Object> quizSubmission = buildQuizSubmission(
+                userId, question, answer, correct, score, kpId);
+        context.setResult("quiz_submission", Map.of("answers", quizSubmission, "quiz", quizSubmission));
+
+        PipelineResult result = pipelineEngine.execute(config, context);
+        if (result.isSuccess()) {
+            if (persistToMemory) {
+                persistLearningLoopResult(userId, question.getId(), result);
+            }
+            log.info("[Quiz] 学习闭环 Pipeline 完成: userId={}, questionId={}", userId, question.getId());
+        } else {
+            log.warn("[Quiz] 学习闭环 Pipeline 失败: userId={}, questionId={}, error={}",
+                    userId, question.getId(), result.getErrorMessage());
+        }
+        return result;
+    }
+
+    /**
+     * 按题目 ID 执行 learning_loop（测试 API 入口）
+     */
+    @Transactional(readOnly = true)
+    public PipelineResult executeLearningLoopForQuestion(Long userId, Long questionId,
+                                                         String answer, boolean correct, int score,
+                                                         String kpIdOverride, boolean persistToMemory) {
+        QuestionBank question = requireEnabledQuestion(questionId);
+        String kpId = resolveKpId(kpIdOverride, question);
+        return executeLearningLoop(userId, question, answer, correct, score, kpId, persistToMemory);
+    }
+
+    private Map<String, Object> buildQuizSubmission(Long userId, QuestionBank question,
+                                                   String answer, boolean correct, int score, String kpId) {
+        Map<String, Object> quizSubmission = new java.util.LinkedHashMap<>();
+        quizSubmission.put("userId", userId);
+        quizSubmission.put("questionId", question.getId());
+        quizSubmission.put("kpId", kpId);
+        quizSubmission.put("question", question.getTitle());
+        quizSubmission.put("questionType", question.getQuestionType());
+        quizSubmission.put("answer", answer != null ? answer : "");
+        quizSubmission.put("correctAnswer", question.getCorrectAnswer());
+        quizSubmission.put("correct", correct);
+        quizSubmission.put("score", score);
+        quizSubmission.put("analysis", question.getAnalysis());
+        return quizSubmission;
     }
 
     /**
@@ -328,8 +365,12 @@ public class QuizService {
     }
 
     private String resolveKpId(QuizSubmitRequest request, QuestionBank question) {
-        if (request.getKpId() != null && !request.getKpId().isBlank()) {
-            return request.getKpId().trim();
+        return resolveKpId(request.getKpId(), question);
+    }
+
+    private String resolveKpId(String kpIdOverride, QuestionBank question) {
+        if (kpIdOverride != null && !kpIdOverride.isBlank()) {
+            return kpIdOverride.trim();
         }
         if (question.getKnowledgePoint() != null && !question.getKnowledgePoint().isBlank()) {
             return question.getKnowledgePoint().trim();

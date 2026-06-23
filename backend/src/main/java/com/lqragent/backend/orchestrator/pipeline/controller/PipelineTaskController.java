@@ -6,12 +6,13 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.lqragent.backend.common.dto.ApiResponse;
 import com.lqragent.backend.orchestrator.pipeline.dto.PipelineTaskDto;
-import com.lqragent.backend.orchestrator.pipeline.entity.PipelineTask;
+import com.lqragent.backend.orchestrator.pipeline.service.PipelineRetryService;
 import com.lqragent.backend.orchestrator.pipeline.service.PipelineTaskService;
 import com.lqragent.backend.user.service.CurrentUserService;
 
@@ -27,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 public class PipelineTaskController {
 
     private final PipelineTaskService pipelineTaskService;
+    private final PipelineRetryService pipelineRetryService;
     private final CurrentUserService currentUserService;
 
     @Operation(summary = "查询任务状态", description = "根据 taskId 查询 Pipeline 任务的执行状态、当前步骤、已完成步骤等")
@@ -60,5 +62,16 @@ public class PipelineTaskController {
                 .map(pipelineTaskService::toDto)
                 .toList();
         return ApiResponse.ok(tasks);
+    }
+
+    @Operation(summary = "重试失败任务", description = "从 failed_step 断点重试，保留已成功步骤结果")
+    @PostMapping("/{taskId}/retry")
+    public ApiResponse<PipelineTaskDto> retryTask(
+            @PathVariable String taskId,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        Long userId = currentUserService.requireUserId(userDetails);
+        return pipelineRetryService.retryAsync(taskId, userId)
+                .map(ApiResponse::ok)
+                .orElse(ApiResponse.fail(400, "任务不存在、非失败状态或无权重试"));
     }
 }

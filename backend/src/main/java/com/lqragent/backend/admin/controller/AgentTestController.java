@@ -113,6 +113,13 @@ public class AgentTestController {
         return orchestratorTestService.runIntentSuite(uid);
     }
 
+    /** 学习者上下文摘要（profile + mastery + memory） */
+    @GetMapping("/learner-context")
+    public Map<String, Object> getLearnerContext(@RequestParam(defaultValue = "1") Long userId) {
+        var ctx = orchestratorTestService.getLearnerContext(userId);
+        return Map.of("success", true, "context", ctx);
+    }
+
     /** Pipeline 任务状态 */
     @GetMapping("/pipeline-task/{taskId}")
     public Map<String, Object> getPipelineTask(@PathVariable String taskId) {
@@ -126,6 +133,24 @@ public class AgentTestController {
         return orchestratorTestService.getLatestPipelineTask(userId)
                 .map(t -> Map.<String, Object>of("success", true, "task", t))
                 .orElse(Map.of("success", false, "error", "无任务记录"));
+    }
+
+    /** 从 failed_step 断点重试（同步等待） */
+    @PostMapping("/pipeline-task/{taskId}/retry")
+    public Map<String, Object> retryPipelineTask(
+            @PathVariable String taskId,
+            @RequestParam(defaultValue = "1") Long userId) {
+        return orchestratorTestService.retryPipelineTask(taskId, userId, true)
+                .map(t -> Map.<String, Object>of("success", true, "task", t))
+                .orElse(Map.of("success", false, "error", "重试失败：任务不存在、非 FAILED 或无 failed_step"));
+    }
+
+    /** 构造 FAILED 任务（step1 成功 + step2 失败），供断点重试联调 */
+    @PostMapping("/pipeline-task/seed-failed")
+    public Map<String, Object> seedFailedPipelineTask(@RequestParam(defaultValue = "1") Long userId) {
+        return orchestratorTestService.seedFailedPipelineTask(userId)
+                .map(t -> Map.<String, Object>of("success", true, "task", t))
+                .orElse(Map.of("success", false, "error", "构造失败任务失败"));
     }
 
     // ===== 通用 Agent 测试（增强版） =====
@@ -227,12 +252,12 @@ public class AgentTestController {
 
     /**
      * 模拟答题提交
-     * mode=legacy（默认）→ EffectAssessmentService
-     * mode=loop → learning_loop Pipeline（与线上一致）
+     * mode=loop（默认）→ learning_loop Pipeline（与线上一致）
+     * mode=legacy → EffectAssessmentService
      */
     @PostMapping("/quiz-submit")
     public Map<String, Object> testQuizSubmit(@RequestBody Map<String, Object> body) {
-        String mode = String.valueOf(body.getOrDefault("mode", "legacy"));
+        String mode = String.valueOf(body.getOrDefault("mode", "loop"));
 
         if ("loop".equalsIgnoreCase(mode)) {
             Long userId = body.containsKey("userId")
@@ -248,6 +273,8 @@ public class AgentTestController {
             Map<String, Object> data = new HashMap<>();
             data.put("success", loop.success());
             data.put("mode", "loop");
+            data.put("expectedStepIds", loop.expectedStepIds());
+            data.put("stepsAligned", loop.stepsAligned());
             data.put("stepResults", loop.stepResults());
             data.put("durationMs", loop.durationMs());
             data.put("error", loop.error());

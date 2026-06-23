@@ -78,8 +78,16 @@ public class PlanPromptProvider {
     }
 
     public List<Map<String, Object>> buildUserMessages(String userMessage, String chatHistory) {
+        return buildUserMessages(userMessage, chatHistory, null);
+    }
+
+    public List<Map<String, Object>> buildUserMessages(String userMessage, String chatHistory,
+                                                       String learnerContext) {
         String catalog = cardRegistry.buildCatalog();
         StringBuilder user = new StringBuilder();
+        if (learnerContext != null && !learnerContext.isBlank()) {
+            user.append("学习者上下文（规划时请参考）：\n").append(learnerContext.trim()).append("\n\n");
+        }
         if (chatHistory != null && !chatHistory.isBlank()) {
             user.append("对话历史（仅供理解上下文）：\n").append(chatHistory).append("\n\n");
         }

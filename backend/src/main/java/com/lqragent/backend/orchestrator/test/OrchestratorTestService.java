@@ -5,36 +5,40 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 
 import com.lqragent.backend.agents.aiserver.tools.AiServerToolFactory;
 import com.lqragent.backend.agents.base.AgentTool;
 import com.lqragent.backend.chat.proxy.AiServerWsProxy;
+import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.orchestrator.OrchestratorCore;
 import com.lqragent.backend.orchestrator.card.AgentCardRegistry;
-import com.lqragent.backend.orchestrator.context.TaskContext;
+import com.lqragent.backend.orchestrator.context.LearnerContextDto;
+import com.lqragent.backend.orchestrator.context.LearnerContextService;
 import com.lqragent.backend.orchestrator.pipeline.PipelineConfig;
+import com.lqragent.backend.orchestrator.pipeline.PipelineStep;
 import com.lqragent.backend.orchestrator.pipeline.PipelineEngine;
 import com.lqragent.backend.orchestrator.pipeline.PipelineResult;
 import com.lqragent.backend.orchestrator.pipeline.PipelineTemplates;
 import com.lqragent.backend.orchestrator.pipeline.StepResult;
 import com.lqragent.backend.orchestrator.pipeline.entity.PipelineTask;
+import com.lqragent.backend.orchestrator.pipeline.service.PipelineRetryService;
 import com.lqragent.backend.orchestrator.pipeline.service.PipelineTaskService;
 import com.lqragent.backend.orchestrator.planning.PlanResult;
 import com.lqragent.backend.orchestrator.test.dto.OrchestratorTestDtos.AgentCardDto;
 import com.lqragent.backend.orchestrator.test.dto.OrchestratorTestDtos.AgentRunTestResult;
 import com.lqragent.backend.orchestrator.test.dto.OrchestratorTestDtos.AiServerToolDto;
 import com.lqragent.backend.orchestrator.test.dto.OrchestratorTestDtos.CapabilityTestResult;
-import com.lqragent.backend.orchestrator.test.dto.OrchestratorTestDtos.IntentCaseResult;
+import com.lqragent.backend.orchestrator.test.intent.IntentSuiteRunner;
 import com.lqragent.backend.orchestrator.test.dto.OrchestratorTestDtos.IntentSuiteResult;
 import com.lqragent.backend.orchestrator.test.dto.OrchestratorTestDtos.LearningLoopTestResult;
 import com.lqragent.backend.orchestrator.test.dto.OrchestratorTestDtos.PipelineTaskStatusDto;
 import com.lqragent.backend.orchestrator.test.dto.OrchestratorTestDtos.PipelineTestResult;
 import com.lqragent.backend.orchestrator.test.dto.OrchestratorTestDtos.PlanTestResult;
 import com.lqragent.backend.orchestrator.test.dto.OrchestratorTestDtos.StepResultDto;
-import com.lqragent.backend.quiz.entity.QuestionBank;
-import com.lqragent.backend.quiz.repository.QuestionBankRepository;
+import com.lqragent.backend.quiz.service.QuizService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -53,7 +57,10 @@ public class OrchestratorTestService {
     private final AiServerWsProxy aiServerWsProxy;
     private final AiServerToolFactory aiServerToolFactory;
     private final PipelineTaskService pipelineTaskService;
-    private final QuestionBankRepository questionBankRepository;
+    private final PipelineRetryService pipelineRetryService;
+    private final QuizService quizService;
+    private final IntentSuiteRunner intentSuiteRunner;
+    private final LearnerContextService learnerContextService;
 
     /**
      * 仅意图规划（不执行 Pipeline）
@@ -197,93 +204,63 @@ public class OrchestratorTestService {
     }
 
     /**
-     * 同步执行 learning_loop Pipeline（与 QuizService 线上逻辑一致）
+     * 同步执行 learning_loop Pipeline（复用 QuizService 线上逻辑）
      */
     public LearningLoopTestResult runLearningLoop(Long userId, Long questionId,
                                                    String answer, boolean correct, int score) {
         long start = System.currentTimeMillis();
         try {
-            QuestionBank question = questionBankRepository.findById(questionId)
-                    .orElseThrow(() -> new IllegalArgumentException("题目不存在: " + questionId));
-
-            PipelineConfig config = PipelineTemplates.learningLoop();
-            TaskContext context = new TaskContext(
-                    "test-loop-" + System.currentTimeMillis(),
-                    String.valueOf(userId),
-                    "test-learning-loop",
-                    "测试学习闭环"
-            );
-
-            Map<String, Object> quizSubmission = new LinkedHashMap<>();
-            quizSubmission.put("userId", userId);
-            quizSubmission.put("questionId", question.getId());
-            quizSubmission.put("kpId", question.getKnowledgePoint());
-            quizSubmission.put("question", question.getTitle());
-            quizSubmission.put("questionType", question.getQuestionType());
-            quizSubmission.put("answer", answer != null ? answer : "");
-            quizSubmission.put("correctAnswer", question.getCorrectAnswer());
-            quizSubmission.put("correct", correct);
-            quizSubmission.put("score", score);
-            quizSubmission.put("analysis", question.getAnalysis());
-            context.setResult("quiz_submission", Map.of("answers", quizSubmission, "quiz", quizSubmission));
-
-            PipelineResult result = pipelineEngine.execute(config, context);
-            List<StepResultDto> steps = mapStepResults(result.getStepResults());
-
-            return new LearningLoopTestResult(
-                    result.isSuccess(),
-                    steps,
-                    System.currentTimeMillis() - start,
-                    result.isSuccess() ? null : result.getErrorMessage()
-            );
+            PipelineResult result = quizService.executeLearningLoopForQuestion(
+                    userId, questionId, answer, correct, score, null, false);
+            return toLearningLoopTestResult(result, start);
         } catch (Exception e) {
             log.error("[OrchestratorTest] learning loop failed: {}", e.getMessage(), e);
             return new LearningLoopTestResult(false, List.of(),
+                    QuizService.LEARNING_LOOP_STEP_IDS, false,
                     System.currentTimeMillis() - start, e.getMessage());
         }
     }
 
-    public IntentSuiteResult runIntentSuite(String userId) {
-        long start = System.currentTimeMillis();
-        List<IntentCaseDefinition> cases = buildIntentCases();
-        List<IntentCaseResult> results = new ArrayList<>();
-        int passed = 0;
-
-        for (IntentCaseDefinition c : cases) {
-            PlanResult plan = orchestratorCore.planOnly(userId, c.input(), null);
-            String actualType = plan.type().name();
-            List<String> actualAgents = OrchestratorTestSupport.agentIdsFromPlan(plan);
-
-            boolean typeOk = c.expectedPlanTypes().contains(actualType)
-                    || (c.expectedPlanTypes().contains("PIPELINE")
-                    && ("PLAN".equals(actualType) || "PIPELINE".equals(actualType)));
-
-            boolean agentOk = true;
-            if (c.expectedAgentIds() != null && !c.expectedAgentIds().isEmpty()) {
-                agentOk = c.expectedAgentIds().stream().anyMatch(actualAgents::contains);
-            }
-
-            boolean casePassed = typeOk && agentOk;
-            if (casePassed) passed++;
-
-            results.add(new IntentCaseResult(
-                    c.input(),
-                    casePassed,
-                    String.join("|", c.expectedPlanTypes()),
-                    actualType,
-                    c.expectedAgentIds(),
-                    actualAgents,
-                    casePassed ? "OK" : describeIntentFailure(typeOk, agentOk)
-            ));
+    private LearningLoopTestResult toLearningLoopTestResult(PipelineResult result, long startMs) {
+        List<StepResultDto> steps = mapStepResults(result.getStepResults());
+        boolean stepsAligned = isLearningLoopStepsAligned(result.getStepResults());
+        boolean success = result.isSuccess() && stepsAligned;
+        String error = null;
+        if (!result.isSuccess()) {
+            error = result.getErrorMessage();
+        } else if (!stepsAligned) {
+            error = "步骤序列不符合 learning_loop 约定: 期望 "
+                    + QuizService.LEARNING_LOOP_STEP_IDS
+                    + "，实际 " + steps.stream().map(StepResultDto::stepId).toList();
         }
-
-        return new IntentSuiteResult(
-                cases.size(),
-                passed,
-                cases.size() - passed,
-                System.currentTimeMillis() - start,
-                results
+        return new LearningLoopTestResult(
+                success,
+                steps,
+                QuizService.LEARNING_LOOP_STEP_IDS,
+                stepsAligned,
+                System.currentTimeMillis() - startMs,
+                error
         );
+    }
+
+    private boolean isLearningLoopStepsAligned(List<StepResult> stepResults) {
+        if (stepResults == null || stepResults.size() != QuizService.LEARNING_LOOP_STEP_IDS.size()) {
+            return false;
+        }
+        for (int i = 0; i < QuizService.LEARNING_LOOP_STEP_IDS.size(); i++) {
+            if (!QuizService.LEARNING_LOOP_STEP_IDS.get(i).equals(stepResults.get(i).getStepId())) {
+                return false;
+            }
+        }
+        return stepResults.stream().allMatch(StepResult::isSuccess);
+    }
+
+    public IntentSuiteResult runIntentSuite(String userId) {
+        return intentSuiteRunner.run(userId, orchestratorCore::planOnly);
+    }
+
+    public LearnerContextDto getLearnerContext(Long userId) {
+        return learnerContextService.buildForUser(userId);
     }
 
     public Optional<PipelineTaskStatusDto> getPipelineTaskStatus(String taskId) {
@@ -292,6 +269,46 @@ public class OrchestratorTestService {
 
     public Optional<PipelineTaskStatusDto> getLatestPipelineTask(Long userId) {
         return pipelineTaskService.findLatestByUserId(userId).map(this::toTaskStatus);
+    }
+
+    /** 从 failed_step 断点重试（sync=true 时等待完成，供控制台使用） */
+    public Optional<PipelineTaskStatusDto> retryPipelineTask(String taskId, Long userId, boolean sync) {
+        var result = sync
+                ? pipelineRetryService.retrySync(taskId, userId, 180_000)
+                : pipelineRetryService.retryAsync(taskId, userId);
+        return result.flatMap(d -> pipelineTaskService.findByTaskId(d.getTaskId()).map(this::toTaskStatus));
+    }
+
+    /**
+     * 构造一条 FAILED 任务（step1 已成功，step2 失败），供断点重试测试
+     */
+    public Optional<PipelineTaskStatusDto> seedFailedPipelineTask(Long userId) {
+        String taskId = UUID.randomUUID().toString();
+        PipelineConfig config = PipelineConfig.builder()
+                .pipelineId("test_retry_" + taskId.substring(0, 8))
+                .name("断点重试测试")
+                .parallel(false)
+                .steps(List.of(
+                        PipelineStep.builder()
+                                .stepId("step1")
+                                .agentId(AgentIds.QA)
+                                .action("answer")
+                                .build(),
+                        PipelineStep.builder()
+                                .stepId("step2")
+                                .agentId(AgentIds.QA)
+                                .action("answer")
+                                .dependsOn(List.of("step1"))
+                                .build()
+                ))
+                .build();
+
+        pipelineTaskService.createTask(taskId, userId, config.getPipelineId(),
+                config.getName(), "测试断点重试：什么是闭包", config.getSteps().size(), config);
+        pipelineTaskService.recordStepResult(taskId, "step1", AgentIds.QA, true,
+                Map.of("success", true, "content", "闭包是函数与其词法环境的组合"), 120);
+        pipelineTaskService.markFailed(taskId, "step2 simulated failure for retry test", "step2");
+        return pipelineTaskService.findByTaskId(taskId).map(this::toTaskStatus);
     }
 
     // ==================== internal ====================
@@ -371,32 +388,8 @@ public class OrchestratorTestService {
                 task.getStepCount() != null ? task.getStepCount() : 0,
                 task.getCompletedSteps() != null ? task.getCompletedSteps() : 0,
                 task.getCurrentStep(),
+                task.getFailedStep(),
                 task.getErrorMessage()
-        );
-    }
-
-    private static String describeIntentFailure(boolean typeOk, boolean agentOk) {
-        if (!typeOk && !agentOk) return "planType 与 agentId 均不符合";
-        if (!typeOk) return "planType 不符合";
-        return "缺少期望 agentId";
-    }
-
-    private record IntentCaseDefinition(
-            String input,
-            List<String> expectedPlanTypes,
-            List<String> expectedAgentIds
-    ) {}
-
-    private static List<IntentCaseDefinition> buildIntentCases() {
-        return List.of(
-                new IntentCaseDefinition("你好", List.of("SIMPLE"), List.of()),
-                new IntentCaseDefinition("你能做什么", List.of("SIMPLE"), List.of()),
-                new IntentCaseDefinition("什么是 Python 装饰器", List.of("SIMPLE", "PLAN", "PIPELINE"), List.of("qa_agent")),
-                new IntentCaseDefinition("帮我学 Python", List.of("PLAN", "PIPELINE", "CLARIFY"), List.of("learning_path")),
-                new IntentCaseDefinition("出 5 道闭包练习题", List.of("PLAN", "PIPELINE"), List.of("quiz_agent")),
-                new IntentCaseDefinition("用视频解释什么是 Agent", List.of("PLAN", "PIPELINE"), List.of("media_gen")),
-                new IntentCaseDefinition("画一张装饰器示意图", List.of("PLAN", "PIPELINE"), List.of("media_gen")),
-                new IntentCaseDefinition("生成 Python 学习路线图", List.of("PLAN", "PIPELINE"), List.of("learning_path"))
         );
     }
 }

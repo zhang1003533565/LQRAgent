@@ -27,6 +27,7 @@ import com.lqragent.backend.orchestrator.artifact.ArtifactExtractor;
 import com.lqragent.backend.orchestrator.artifact.ArtifactKind;
 import com.lqragent.backend.orchestrator.card.AgentCard;
 import com.lqragent.backend.orchestrator.card.AgentCardRegistry;
+import com.lqragent.backend.orchestrator.context.LearnerContextService;
 import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
@@ -65,6 +66,7 @@ public class OrchestratorCore {
     private final AgentCardRegistry agentCardRegistry;
     private final LearningPathService learningPathService;
     private final PipelineTaskService pipelineTaskService;
+    private final LearnerContextService learnerContextService;
     private final ObjectMapper mapper = new ObjectMapper();
 
     // 任务状态跟踪（用于 learn 流程的 WebSocket 推送）
@@ -75,7 +77,8 @@ public class OrchestratorCore {
                            PlanningAgent planningAgent, PipelineEngine pipelineEngine,
                            AgentCardRegistry agentCardRegistry,
                            LearningPathService learningPathService,
-                           PipelineTaskService pipelineTaskService) {
+                           PipelineTaskService pipelineTaskService,
+                           LearnerContextService learnerContextService) {
         this.streams = streams;
         this.runLogService = runLogService;
         this.llmClient = llmClient;
@@ -85,6 +88,7 @@ public class OrchestratorCore {
         this.agentCardRegistry = agentCardRegistry;
         this.learningPathService = learningPathService;
         this.pipelineTaskService = pipelineTaskService;
+        this.learnerContextService = learnerContextService;
     }
 
     @PostConstruct
@@ -149,7 +153,9 @@ public class OrchestratorCore {
      */
     public PlanResult planOnly(String userId, String message, String chatHistory) {
         log.info("[Orchestrator] planOnly: userId={}, msg={}", userId, message);
-        PlanResult plan = planningAgent.decompose(message, userId, chatHistory);
+        Long uid = parseUserId(userId);
+        String learnerContext = uid != null ? learnerContextService.buildPromptBlock(uid) : null;
+        PlanResult plan = planningAgent.decompose(message, userId, chatHistory, learnerContext);
 
         // 阶段二新增：将动态 TaskPlan 转为 PipelineConfig
         if (plan.isPlan() && plan.taskPlan() != null) {
@@ -197,7 +203,9 @@ public class OrchestratorCore {
                               java.util.function.Consumer<Map<String, Object>> eventCallback) {
         log.info("[Orchestrator] handleMessage: userId={}, msg={}", userId, message);
 
-        PlanResult plan = planningAgent.decompose(message, userId);
+        Long uid = parseUserId(userId);
+        String learnerContext = uid != null ? learnerContextService.buildPromptBlock(uid) : null;
+        PlanResult plan = planningAgent.decompose(message, userId, null, learnerContext);
 
         // 阶段二新增：将动态 TaskPlan 转为 PipelineConfig
         if (plan.isPlan() && plan.taskPlan() != null) {
@@ -314,7 +322,7 @@ public class OrchestratorCore {
         final Long uid = parseUserId(userId);
         if (uid != null) {
             pipelineTaskService.createTask(taskId, uid, config.getPipelineId(),
-                    config.getName(), message, config.getSteps().size());
+                    config.getName(), message, config.getSteps().size(), config);
         }
 
         // 推送进度：准备开始
@@ -329,6 +337,9 @@ public class OrchestratorCore {
         ));
 
         TaskContext context = new TaskContext(taskId, userId, sessionId, message);
+        if (uid != null) {
+            learnerContextService.enrichTaskContext(context, uid);
+        }
 
         // 在后台线程执行 Pipeline，不阻塞 WebSocket 线程
         Thread executor = new Thread(() -> {
@@ -365,7 +376,8 @@ public class OrchestratorCore {
                     ));
                 } else {
                     if (uid != null) {
-                        pipelineTaskService.markFailed(taskId, result.getErrorMessage());
+                        pipelineTaskService.markFailed(taskId, result.getErrorMessage(),
+                                findFailedStepId(result));
                     }
                     eventCallback.accept(Map.of(
                             "type", "pipeline_error",
@@ -375,7 +387,7 @@ public class OrchestratorCore {
             } catch (Exception e) {
                 log.error("[Orchestrator] pipeline execution failed: {}", e.getMessage(), e);
                 if (uid != null) {
-                    pipelineTaskService.markFailed(taskId, e.getMessage());
+                    pipelineTaskService.markFailed(taskId, e.getMessage(), null);
                 }
                 eventCallback.accept(Map.of(
                         "type", "pipeline_error",
@@ -593,7 +605,7 @@ public class OrchestratorCore {
      * <p>
      * LLM 输出的 TaskStep 序列 → PipelineStep 序列，由 PipelineEngine 执行
      */
-    private PipelineConfig buildPipelineFromPlan(TaskPlan plan) {
+    public PipelineConfig buildPipelineFromPlan(TaskPlan plan) {
         List<com.lqragent.backend.orchestrator.pipeline.PipelineStep> pipelineSteps = new java.util.ArrayList<>();
         for (TaskStep ts : plan.steps()) {
             pipelineSteps.add(com.lqragent.backend.orchestrator.pipeline.PipelineStep.builder()
@@ -633,6 +645,17 @@ public class OrchestratorCore {
             case INTERVENTION -> PipelineTemplates.intervention();
             default -> null;
         };
+    }
+
+    private String findFailedStepId(PipelineResult result) {
+        if (result.getStepResults() == null) {
+            return null;
+        }
+        return result.getStepResults().stream()
+                .filter(r -> !r.isSuccess())
+                .map(StepResult::getStepId)
+                .findFirst()
+                .orElse(null);
     }
 
     private void sendTask(String taskId, String agentId, String action, Map<String, Object> payload) {

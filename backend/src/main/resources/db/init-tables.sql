@@ -522,3 +522,40 @@ SET @sql_fix_prompt_columns := IF(
 PREPARE stmt_fix_prompt_columns FROM @sql_fix_prompt_columns;
 EXECUTE stmt_fix_prompt_columns;
 DEALLOCATE PREPARE stmt_fix_prompt_columns;
+
+-- pipeline_task.failed_step / pipeline_config_json（JPA ddl-auto=update 也会加列，此处供旧库补丁）
+SET @add_pipeline_failed_step := (
+    SELECT COUNT(*) = 1 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'pipeline_task'
+) AND (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'pipeline_task'
+      AND column_name = 'failed_step'
+);
+SET @sql_add_pipeline_failed_step := IF(
+    @add_pipeline_failed_step,
+    'ALTER TABLE `pipeline_task` ADD COLUMN `failed_step` VARCHAR(64) NULL COMMENT ''失败步骤ID（断点重试）'' AFTER `error_message`',
+    'SELECT ''skip: pipeline_task.failed_step exists or table missing'''
+);
+PREPARE stmt_add_pipeline_failed_step FROM @sql_add_pipeline_failed_step;
+EXECUTE stmt_add_pipeline_failed_step;
+DEALLOCATE PREPARE stmt_add_pipeline_failed_step;
+
+SET @add_pipeline_config_json := (
+    SELECT COUNT(*) = 1 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'pipeline_task'
+) AND (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'pipeline_task'
+      AND column_name = 'pipeline_config_json'
+);
+SET @sql_add_pipeline_config_json := IF(
+    @add_pipeline_config_json,
+    'ALTER TABLE `pipeline_task` ADD COLUMN `pipeline_config_json` TEXT NULL COMMENT ''Pipeline 配置快照（JSON）'' AFTER `failed_step`',
+    'SELECT ''skip: pipeline_task.pipeline_config_json exists or table missing'''
+);
+PREPARE stmt_add_pipeline_config_json FROM @sql_add_pipeline_config_json;
+EXECUTE stmt_add_pipeline_config_json;
+DEALLOCATE PREPARE stmt_add_pipeline_config_json;

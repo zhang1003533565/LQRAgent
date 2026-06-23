@@ -30,6 +30,7 @@ public class PipelineTaskDto {
     private Integer completedSteps;
     private List<StepProgress> stepProgressList;
     private String errorMessage;
+    private String failedStep;
     private Long durationMs;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

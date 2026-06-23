@@ -78,6 +78,8 @@ public final class OrchestratorTestDtos {
     public record LearningLoopTestResult(
             boolean success,
             List<StepResultDto> stepResults,
+            List<String> expectedStepIds,
+            boolean stepsAligned,
             long durationMs,
             String error
     ) {}
@@ -119,6 +121,7 @@ public final class OrchestratorTestDtos {
             int stepCount,
             int completedSteps,
             String currentStep,
+            String failedStep,
             String errorMessage
     ) {}
 

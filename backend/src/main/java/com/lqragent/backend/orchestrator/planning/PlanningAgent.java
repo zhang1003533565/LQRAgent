@@ -44,6 +44,10 @@ public class PlanningAgent {
     }
 
     public PlanResult decompose(String message, String userId, String chatHistory) {
+        return decompose(message, userId, chatHistory, null);
+    }
+
+    public PlanResult decompose(String message, String userId, String chatHistory, String learnerContext) {
         log.info("[PlanningAgent v4] decomposing: {}", message);
 
         // 1. 快通道：明确的问候/帮助（轻量正则，免去一次 LLM 调用）
@@ -59,7 +63,8 @@ public class PlanningAgent {
         // 2. LLM 规划
         try {
             String systemPrompt = promptProvider.buildSystemPrompt();
-            List<Map<String, Object>> messages = promptProvider.buildUserMessages(message, chatHistory);
+            List<Map<String, Object>> messages = promptProvider.buildUserMessages(
+                    message, chatHistory, learnerContext);
             LlmClient.LlmResponse resp = llmClient.chat(systemPrompt, messages, PlanTools.all());
 
             if (!resp.isSuccess()) {

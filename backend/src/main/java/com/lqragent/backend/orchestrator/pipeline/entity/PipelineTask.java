@@ -72,6 +72,14 @@ public class PipelineTask {
     @Comment("失败原因")
     private String errorMessage;
 
+    @Column(name = "failed_step", length = 64)
+    @Comment("失败步骤ID（用于断点重试）")
+    private String failedStep;
+
+    @Column(name = "pipeline_config_json", columnDefinition = "TEXT")
+    @Comment("Pipeline 配置快照（JSON，用于重试）")
+    private String pipelineConfigJson;
+
     @Column(name = "duration_ms")
     @Comment("总耗时（毫秒）")
     private Long durationMs;

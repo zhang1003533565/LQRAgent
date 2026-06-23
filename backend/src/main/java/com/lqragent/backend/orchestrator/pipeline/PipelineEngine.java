@@ -131,15 +131,44 @@ public class PipelineEngine {
      * 执行 Pipeline（带步骤回调，用于异步模式）
      */
     public PipelineResult execute(PipelineConfig config, TaskContext context, StepCallback callback) {
+        return executeInternal(config, context, callback, null, List.of());
+    }
+
+    /**
+     * 从指定步骤断点重试（已成功步骤写入 context，不再重复执行）
+     */
+    public PipelineResult executeFromStep(PipelineConfig config, TaskContext context,
+                                          String fromStepId, List<StepResult> completedResults,
+                                          StepCallback callback) {
+        return executeInternal(config, context, callback, fromStepId, completedResults);
+    }
+
+    private PipelineResult executeInternal(PipelineConfig config, TaskContext context,
+                                           StepCallback callback, String fromStepId,
+                                           List<StepResult> completedResults) {
         long startTime = System.currentTimeMillis();
         String traceId = context.getTaskId();
         List<StepResult> allResults = new CopyOnWriteArrayList<>();
-        
-        log.info("[Pipeline] start(async): {}, steps={}", 
-                config.getName(), config.getSteps().size());
+
+        if (completedResults != null) {
+            for (StepResult sr : completedResults) {
+                if (sr.isSuccess()) {
+                    allResults.add(sr);
+                    if (sr.getData() != null) {
+                        context.setResult(sr.getStepId(), sr.getData());
+                    }
+                }
+            }
+        }
+
+        log.info("[Pipeline] start(fromStep={}): {}, steps={}, restored={}",
+                fromStepId, config.getName(), config.getSteps().size(), allResults.size());
 
         try {
             ExecutionGraph graph = buildGraph(config);
+            for (StepResult sr : allResults) {
+                graph.markCompleted(sr.getStepId(), true);
+            }
 
             while (graph.hasReadySteps()) {
                 List<PipelineStep> readySteps = graph.getReadySteps();
@@ -148,8 +177,7 @@ public class PipelineEngine {
                     StepResult result = executeStep(step, context, traceId);
                     allResults.add(result);
                     graph.markCompleted(step.getStepId(), result.isSuccess());
-                    
-                    // 步骤完成回调
+
                     if (callback != null) {
                         try {
                             callback.onStepComplete(
@@ -166,8 +194,8 @@ public class PipelineEngine {
             long totalDuration = System.currentTimeMillis() - startTime;
 
             if (allSuccess) {
-                Map<String, Object> output = allResults.isEmpty() ? 
-                        Map.of() : allResults.get(allResults.size() - 1).getData();
+                Map<String, Object> output = allResults.isEmpty()
+                        ? Map.of() : allResults.get(allResults.size() - 1).getData();
                 return PipelineResult.success(allResults, output, totalDuration);
             } else {
                 String errorMsg = allResults.stream()
@@ -180,7 +208,7 @@ public class PipelineEngine {
 
         } catch (Exception e) {
             long totalDuration = System.currentTimeMillis() - startTime;
-            log.error("[Pipeline] async execution failed: {}", e.getMessage());
+            log.error("[Pipeline] execution failed: {}", e.getMessage());
             return PipelineResult.failure(e.getMessage(), allResults, totalDuration);
         }
     }

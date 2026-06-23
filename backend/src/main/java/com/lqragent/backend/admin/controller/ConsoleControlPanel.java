@@ -121,6 +121,7 @@ public class ConsoleControlPanel implements ApplicationRunner {
             case "loop" -> handleLearningLoop(args);
             case "intent" -> handleIntentSuite();
             case "pipeline-status", "ptask" -> handlePipelineTaskStatus(args);
+            case "retry" -> handleRetry(args);
             case "quit", "q", "exit" -> {
                 running.set(false);
                 System.out.println("[Console] 已退出菜单（后端与 AI 服务继续运行）");
@@ -385,6 +386,8 @@ public class ConsoleControlPanel implements ApplicationRunner {
         boolean correct = p.length >= 3 && "true".equalsIgnoreCase(p[2]);
         System.out.println("[loop] learning_loop questionId=" + questionId + " score=" + score);
         var r = orchestratorTestService.runLearningLoop(1L, questionId, "测试答案", correct, score);
+        System.out.println("  expected: " + r.expectedStepIds());
+        System.out.println("  aligned : " + r.stepsAligned());
         if (r.stepResults() != null) {
             for (StepResultDto s : r.stepResults()) {
                 System.out.printf("  [%s] %s -> %s%n",
@@ -426,6 +429,21 @@ public class ConsoleControlPanel implements ApplicationRunner {
         );
     }
 
+    private void handleRetry(String taskId) {
+        if (taskId.isBlank()) {
+            System.out.println("用法: retry <taskId>");
+            return;
+        }
+        System.out.println("[Retry] 从失败步骤重试 taskId=" + taskId + " ...");
+        orchestratorTestService.retryPipelineTask(taskId, 1L, true).ifPresentOrElse(
+                t -> {
+                    printPipelineTask(t);
+                    System.out.println("  重试完成，状态: " + t.status());
+                },
+                () -> System.out.println("  重试失败：任务不存在、非 FAILED 状态或无 failed_step")
+        );
+    }
+
     private void printPipelineTask(com.lqragent.backend.orchestrator.test.dto.OrchestratorTestDtos.PipelineTaskStatusDto t) {
         System.out.println("  taskId     : " + t.taskId());
         System.out.println("  status     : " + t.status());
@@ -433,6 +451,9 @@ public class ConsoleControlPanel implements ApplicationRunner {
         System.out.println("  goal       : " + truncate(t.goal(), 80));
         System.out.println("  progress   : " + t.completedSteps() + "/" + t.stepCount());
         System.out.println("  current    : " + t.currentStep());
+        if (t.failedStep() != null && !t.failedStep().isBlank()) {
+            System.out.println("  failedStep : " + t.failedStep());
+        }
         if (t.errorMessage() != null && !t.errorMessage().isBlank()) {
             System.out.println("  error      : " + t.errorMessage());
         }
@@ -449,8 +470,11 @@ public class ConsoleControlPanel implements ApplicationRunner {
                   POST /api/test/capability/{name} 测试 ai-server capability
                   POST /api/test/learning-loop    学习闭环 Pipeline
                   POST /api/test/intent-suite     意图回归测试
+                  GET  /api/test/learner-context  学习者上下文摘要
                   GET  /api/test/pipeline-task/latest
+                  POST /api/test/pipeline-task/{taskId}/retry
                 --- 其他 REST ---
+                  POST /api/pipeline/tasks/{taskId}/retry  重试失败任务（需 JWT）
                   POST /api/auth/login            登录
                   POST /admin/agent-test          管理后台 Agent 测试（需 JWT）
                 --- 常用配置键 ---
@@ -482,6 +506,7 @@ public class ConsoleControlPanel implements ApplicationRunner {
                   loop <qid> <score> [true|false]  测试 learning_loop
                   intent                意图回归测试集
                   pipeline-status [taskId]  查看 Pipeline 任务状态
+                  retry <taskId>            从失败步骤断点重试
                   config / c            列出全部配置
                   set <键> <值>         保存配置到 sys_config
                   users / u             查看系统用户
