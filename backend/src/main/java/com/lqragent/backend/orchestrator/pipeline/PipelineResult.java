@@ -50,10 +50,18 @@ public class PipelineResult {
      * 创建失败结果
      */
     public static PipelineResult failure(String errorMessage, long totalDurationMs) {
+        return failure(errorMessage, List.of(), totalDurationMs);
+    }
+
+    /**
+     * 创建失败结果（保留已完成步骤，便于提取 artifact）
+     */
+    public static PipelineResult failure(String errorMessage, List<StepResult> stepResults,
+                                         long totalDurationMs) {
         return PipelineResult.builder()
                 .success(false)
                 .errorMessage(errorMessage)
-                .stepResults(List.of())
+                .stepResults(stepResults != null ? stepResults : List.of())
                 .totalDurationMs(totalDurationMs)
                 .build();
     }

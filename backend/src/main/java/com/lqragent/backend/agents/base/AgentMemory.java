@@ -88,9 +88,10 @@ public class AgentMemory {
     }
 
     /**
-     * 记录 Agent 回复（带 metadata，如 ragSources）
+     * 记录 Agent 回复（带 metadata，如 ragSources / imageUrl）
+     * @return 持久化后的消息 ID，未持久化时返回 null
      */
-    public void addAgentResponse(Long userId, Long sessionId, String content, String agent,
+    public Long addAgentResponse(Long userId, Long sessionId, String content, String agent,
                                  Map<String, Object> metadata) {
         userMemories.computeIfAbsent(userId, k -> new ArrayList<>())
                 .add(new MemoryEntry("assistant", content, agent));
@@ -98,15 +99,18 @@ public class AgentMemory {
 
         if (sessionId != null) {
             try {
+                ChatMessage saved;
                 if (metadata != null && !metadata.isEmpty()) {
-                    historyService.saveMessage(sessionId, userId, "assistant", content, agent, metadata);
+                    saved = historyService.saveMessage(sessionId, userId, "assistant", content, agent, metadata);
                 } else {
-                    historyService.saveMessage(sessionId, userId, "assistant", content, agent);
+                    saved = historyService.saveMessage(sessionId, userId, "assistant", content, agent);
                 }
+                return saved.getId();
             } catch (Exception e) {
                 log.warn("[AgentMemory] save agent response failed: {}", e.getMessage());
             }
         }
+        return null;
     }
     
     /**

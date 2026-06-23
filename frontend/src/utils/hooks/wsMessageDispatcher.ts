@@ -1,4 +1,4 @@
-import { useChatStore } from '@/utils/store/chatStore'
+import { useChatStore, flushPendingChunks } from '@/utils/store/chatStore'
 import { useAgentTraceStore } from '@/utils/store/agentTraceStore'
 import { useArtifactStore } from '@/utils/store/artifactStore'
 import { usePathStore } from '@/utils/store/pathStore'
@@ -11,8 +11,26 @@ import type { LearningPathArtifactPayload } from '@/utils/types/artifact'
 import type { MultiCardBlock } from '@/utils/types/multi-card'
 import type { ProfileSummary } from '@/utils/types/profile'
 
+function isDbMessageId(id: string): boolean {
+  return /^\d+$/.test(id)
+}
+
 function saveMessageMetadata(messageId: string, metadata: Record<string, unknown>) {
+  if (!isDbMessageId(messageId)) return
   chatApi.updateMessageMetadata(messageId, metadata).catch(() => {})
+}
+
+function syncAssistantMessageId(dbMessageId: string) {
+  const msgs = useChatStore.getState().messages
+  const last = [...msgs].reverse().find((m) => m.role === 'assistant')
+  if (!last || last.id === dbMessageId) return
+
+  useChatStore.setState((state) => ({
+    messages: state.messages.map((m) => {
+      if (m.id !== last.id) return m
+      return { ...m, id: dbMessageId }
+    }),
+  }))
 }
 
 function handleArtifact(kind: ArtifactKind, payload: unknown) {
@@ -213,18 +231,72 @@ export function dispatchWsMessage(data: WsRawMessage) {
       }
       break
     case 'done': {
+      flushPendingChunks()
       const msgs = useChatStore.getState().messages
       const last = [...msgs].reverse().find((m) => m.role === 'assistant')
+      const dbMessageId = data.message_id != null ? String(data.message_id) : null
+
       if (last) {
-        if (!last.content?.trim()) {
+        const hasArtifact = Boolean(
+          last.imageUrl ||
+          last.videoUrl ||
+          last.quizData ||
+          last.diagramCode ||
+          last.cards?.length ||
+          last.contentType === 'image' ||
+          last.contentType === 'video' ||
+          last.contentType === 'quiz' ||
+          last.contentType === 'diagram' ||
+          last.contentType === 'learning_path' ||
+          last.contentType === 'multi_card',
+        )
+
+        if (!last.content?.trim() && !hasArtifact) {
           updateMessage(last.id, {
             content: '回答生成失败或超时，请重试。',
             streaming: false,
           })
         } else {
-          setStreaming(last.id, false)
+          if (!last.content?.trim() && hasArtifact) {
+            const fallback = last.imageUrl
+              ? '图片已生成。'
+              : last.videoUrl
+                ? '视频已生成。'
+                : ''
+            updateMessage(last.id, {
+              ...(fallback ? { content: fallback } : {}),
+              streaming: false,
+            })
+          } else if (last.imageUrl && last.contentType === 'image' && last.content && last.content.length > 120) {
+            updateMessage(last.id, { content: '图片已生成。', streaming: false })
+          } else {
+            setStreaming(last.id, false)
+          }
         }
       }
+
+      if (dbMessageId) {
+        syncAssistantMessageId(dbMessageId)
+        const synced = useChatStore.getState().messages
+          .slice()
+          .reverse()
+          .find((m) => m.role === 'assistant')
+        if (synced && (synced.imageUrl || synced.videoUrl || synced.quizData || synced.diagramCode)) {
+          saveMessageMetadata(dbMessageId, {
+            contentType: synced.contentType,
+            imageUrl: synced.imageUrl,
+            videoUrl: synced.videoUrl,
+            quizData: synced.quizData,
+            diagramCode: synced.diagramCode,
+            diagramFormat: synced.diagramFormat,
+            ragSources: synced.ragSources,
+            ...(synced.imageUrl && synced.content && synced.content.length > 120
+              ? { content: '图片已生成。' }
+              : {}),
+          })
+        }
+      }
+
       useChatStore.getState().bumpSessionList()
       break
     }

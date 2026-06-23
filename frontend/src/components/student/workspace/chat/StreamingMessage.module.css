@@ -39,6 +39,15 @@
   max-width: 72%;
 }
 
+.quizContent {
+  max-width: min(96%, 760px);
+}
+
+.quizBubble {
+  padding: 10px 12px;
+  overflow: visible;
+}
+
 .bubble {
   padding: 14px 18px;
   border-radius: 16px;

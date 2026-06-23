@@ -1,8 +1,10 @@
 .card {
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  overflow: hidden;
+  overflow: visible;
   background: #fff;
+  width: 100%;
+  min-width: 0;
 }
 
 .header {
@@ -78,6 +80,73 @@
   line-height: 1.6;
 }
 
+.stemMarkdown {
+  font-size: 14px;
+  color: #1e293b;
+  line-height: 1.65;
+  margin-bottom: 12px;
+  word-break: break-word;
+}
+
+.stemMarkdown :global(p) {
+  margin: 0 0 8px;
+}
+
+.stemMarkdown :global(p:last-child) {
+  margin-bottom: 0;
+}
+
+.stemMarkdown :global(ul),
+.stemMarkdown :global(ol) {
+  margin: 6px 0 10px;
+  padding-left: 20px;
+}
+
+.inlineCode {
+  background: rgba(15, 23, 42, 0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #be123c;
+}
+
+.codeBlock {
+  margin: 10px 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #334155;
+  background: #1e293b;
+}
+
+.codeLang {
+  display: block;
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  background: #0f172a;
+  text-transform: lowercase;
+  border-bottom: 1px solid #334155;
+}
+
+.codePre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #e2e8f0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.codePre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+  white-space: pre;
+}
+
 .options {
   display: flex;
   flex-direction: column;
@@ -128,6 +197,13 @@
   border-color: #3b82f6;
 }
 
+.codeTextarea {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  background: #f8fafc;
+}
+
 .explanation {
   margin-top: 8px;
   padding: 10px 14px;
@@ -173,5 +249,4 @@
 
 .resultContent {
   margin-top: 8px;
-  white-space: pre-wrap;
 }

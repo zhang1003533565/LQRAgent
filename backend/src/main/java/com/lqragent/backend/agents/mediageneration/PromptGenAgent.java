@@ -25,19 +25,24 @@ public class PromptGenAgent extends BaseAgent {
 
     @Override
     protected String getSystemPrompt() {
-        // 阶段三：硬约束系统提示词，避免 LLM 输出脚本/九宫格
+        // 教学向媒体 Prompt：说明用途即可，布局交给生图模型自由发挥
         return """
                 你是媒体生成 Prompt 工程师，只产出可直接喂给图片/视频生成模型的 Prompt。
 
                 硬性约束：
-                1. 严禁输出任何分镜表、脚本表格、视频脚本、台词、旁白
+                1. 严禁输出分镜表、脚本表格、视频脚本、台词、旁白
                 2. 严禁输出 markdown 标题、列表、表格
-                3. 必须直接输出最终 Prompt 文本（一段话），用英文表达视觉风格关键词，用中文描述场景内容
-                4. 图片 Prompt：单一连贯场景、中心构图、扁平现代教育插画风格、清晰视觉层次
-                   必须显式追加：no nine-grid, no multi-panel layout, no collage, no comic panels, no storyboard, no split screen
-                5. 视频 Prompt：3-15 秒短片、明确镜头与主体动作，禁止"分镜""脚本""旁白"等词
+                3. 必须直接输出最终 Prompt 文本（一段话），英文描述风格与构图，中文描述教学场景与知识点
+                4. 图片 Prompt：面向教学场景，风格清晰易懂，突出要讲解的概念
+                5. 视频 Prompt：3-15 秒短片、明确镜头与主体动作
                 6. Prompt 长度 50-200 字
-                7. 不要包含解释性的"以下是 Prompt:"等前后缀，直接输出 Prompt 本体
+                7. 不要包含「以下是 Prompt:」等前后缀，直接输出 Prompt 本体
+
+                图片构图（重要，用正面描述，不要堆砌 no xxx 负面词）：
+                - 默认「单幅统一画面」：one cohesive scene / single unified illustration，一个主体或一个场景
+                - 用户要装饰/渲染/插画/海报/艺术图 → 强调 decorative render / artistic illustration，避免 infographic、icon grid、storyboard
+                - 用户要示意图且含代码/流程/对比 → 用「中心构图 + 少量标注」的单场景，不要多个独立方块排成矩阵
+                - 禁止在 Prompt 末尾追加 no nine-grid、no multi-panel 等一长串否定词（生图模型往往忽略）
                 """;
     }
 
@@ -71,7 +76,7 @@ public class PromptGenAgent extends BaseAgent {
         if ("video".equalsIgnoreCase(mediaType)) {
             sb.append("请输出一段直接可用的视频生成 Prompt（3-15 秒短片，单镜头/主体动作描述），禁止任何脚本表格或台词。");
         } else {
-            sb.append("请输出一段直接可用的图片生成 Prompt，禁止九宫格/多面板布局。");
+            sb.append("请输出一段直接可用的图片生成 Prompt，面向教学场景，布局与风格可自由发挥。");
         }
         return sb.toString();
     }
@@ -95,7 +100,7 @@ public class PromptGenAgent extends BaseAgent {
         return new AgentCard(
                 AgentIds.PROMPT_GEN,
                 "媒体 Prompt 生成",
-                "为图片/视频媒体生成标准化提示词，避免九宫格等不符合预期布局",
+                "为图片/视频媒体生成教学向提示词",
                 List.of("prompt", "media_prompt", "prompt_engineering"),
                 List.of(),
                 List.of("text"),

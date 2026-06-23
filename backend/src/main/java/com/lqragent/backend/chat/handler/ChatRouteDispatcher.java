@@ -17,6 +17,7 @@ import com.lqragent.backend.agents.path.service.LearningPathService;
 import com.lqragent.backend.agents.mediageneration.service.MediaGenerationService;
 import com.lqragent.backend.agents.mediageneration.service.PromptGenerationService;
 import com.lqragent.backend.agents.qa.QaAgent;
+import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.orchestrator.OrchestratorCore;
 import com.lqragent.backend.orchestrator.artifact.Artifact;
 import com.lqragent.backend.orchestrator.artifact.ArtifactExtractor;
@@ -30,6 +31,7 @@ import com.lqragent.backend.orchestrator.pipeline.PipelineEngine;
 import com.lqragent.backend.orchestrator.pipeline.PipelineResult;
 import com.lqragent.backend.orchestrator.pipeline.PipelineTemplates;
 import com.lqragent.backend.orchestrator.pipeline.StepResult;
+import com.lqragent.backend.orchestrator.pipeline.StepStreamPolicy;
 import com.lqragent.backend.orchestrator.planning.PlanIntent;
 import com.lqragent.backend.orchestrator.planning.PlanResult;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
@@ -149,53 +151,66 @@ public class ChatRouteDispatcher {
     private PipelineEngine.StepCallback buildStepCallback(WebSocketSession wsSession,
                                                            Long userId, String sessionId, WsSender sender,
                                                            AtomicBoolean contentStreamed) {
-        return (stepId, agentId, success, stepData) -> {
-            try {
-                if (!success) {
-                    log.debug("[WS] step {} ({}) failed", stepId, agentId);
-                    sender.sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
-                            .put("agent", agentId)
-                            .put("label", "执行失败")
-                            .put("status", "failed")
-                            .toString());
-                    return;
-                }
-                sender.sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
-                        .put("agent", agentId)
-                        .put("label", "已完成")
-                        .put("status", "done")
-                        .toString());
-
-                if (stepData != null) {
-                    sendStepArtifacts(wsSession, agentId, stepData, userId, sender);
-                }
-
-                // 只把最终产出步骤的内容发给用户，中间分析步骤（画像/内容分析/Prompt 工程等）不发
-                if (success && stepData != null
-                        && !agentId.contains("profile")
-                        && !agentId.contains("content_analysis")
-                        && !agentId.contains("quality")
-                        && !agentId.contains("knowledge_state")
-                        && !agentId.contains("difficulty")
-                        && !agentId.contains("learning_style")
-                        // 阶段三修复：prompt_gen 是内部加工步骤，输出的 Prompt 不能当回答给用户
-                        && !agentId.contains("prompt_gen")
-                        // 媒体生成步骤的"图片已生成/视频已生成"提示也不重复发，artifact 已经渲染
-                        && !agentId.contains("media_gen")) {
-                    String stepContent = extractStepContent(agentId, stepData);
-                    if (stepContent != null && !stepContent.isBlank()) {
-                        sender.sendEvent(wsSession, "chunk", stepContent);
-                        contentStreamed.set(true);
-                    }
-                }
-            } catch (Exception e) {
-                log.error("[WS] step callback error: {}", e.getMessage(), e);
-            }
-        };
+        return (stepId, agentId, success, stepData) ->
+                handleStepComplete(wsSession, agentId, success, stepData, userId, sender,
+                        contentStreamed, null);
     }
 
-    private void sendStepArtifacts(WebSocketSession wsSession, String agentId,
-                                   Map<String, Object> stepData, Long userId, WsSender sender) {
+    /**
+     * Pipeline 单步完成：推送 agent_step、Artifact、可选 chunk。
+     * Pipeline 与 QA 路径共用，避免重复逻辑。
+     *
+     * @param memoryBuffer 非 null 时把已推送的 chunk 文本追加进去（供 QA 记忆存储）
+     */
+    private void handleStepComplete(WebSocketSession wsSession, String agentId, boolean success,
+                                    Map<String, Object> stepData, Long userId, WsSender sender,
+                                    AtomicBoolean contentStreamed, StringBuilder memoryBuffer) {
+        try {
+            if (!success) {
+                log.debug("[WS] step ({}) failed", agentId);
+                sender.sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
+                        .put("agent", agentId)
+                        .put("label", "执行失败")
+                        .put("status", "failed")
+                        .toString());
+                return;
+            }
+            sender.sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
+                    .put("agent", agentId)
+                    .put("label", "已完成")
+                    .put("status", "done")
+                    .toString());
+
+            if (stepData == null) {
+                return;
+            }
+
+            List<Artifact> artifacts = sendStepArtifacts(wsSession, agentId, stepData, userId, sender);
+            if (StepStreamPolicy.shouldStreamContent(agentId, stepData, artifacts)) {
+                String stepContent = extractStepContent(agentId, stepData);
+                if (stepContent != null && !stepContent.isBlank()) {
+                    sender.sendEvent(wsSession, "chunk", stepContent);
+                    if (contentStreamed != null) {
+                        contentStreamed.set(true);
+                    }
+                    if (memoryBuffer != null) {
+                        synchronized (memoryBuffer) {
+                            if (memoryBuffer.length() > 0) {
+                                memoryBuffer.append("\n\n");
+                            }
+                            memoryBuffer.append(stepContent);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("[WS] step callback error: {}", e.getMessage(), e);
+        }
+    }
+
+    /** 从步骤数据提取 Artifact 并推送 WS；返回已识别产物供流式策略判断 */
+    private List<Artifact> sendStepArtifacts(WebSocketSession wsSession, String agentId,
+                                             Map<String, Object> stepData, Long userId, WsSender sender) {
         List<Artifact> artifacts = ArtifactExtractor.fromStepData(agentId, stepData);
         boolean sentLearningPath = false;
         for (Artifact artifact : artifacts) {
@@ -205,15 +220,14 @@ public class ChatRouteDispatcher {
             }
         }
 
-        // 工具未嵌入路径结构时，仍从 LearningPathService 拉取当前路径
-        if (!sentLearningPath && agentId.contains("learning_path")) {
-            sendLegacyLearningPathArtifact(wsSession, userId, sender);
+        if (!sentLearningPath && AgentIds.LEARNING_PATH.equals(agentId)) {
+            enrichLearningPathFromService(wsSession, userId, sender);
         }
 
-        // 向后兼容：Extractor 未识别时走旧逻辑
         if (artifacts.isEmpty()) {
-            sendLegacyArtifacts(wsSession, agentId, stepData, userId, sender);
+            log.debug("[WS] no artifacts extracted for agent {}", agentId);
         }
+        return artifacts;
     }
 
     private void sendArtifactEvent(WebSocketSession wsSession, Artifact artifact, WsSender sender) {
@@ -263,7 +277,172 @@ public class ChatRouteDispatcher {
         return Map.of("ragSources", ragSources);
     }
 
-    private void sendLegacyLearningPathArtifact(WebSocketSession wsSession, Long userId, WsSender sender) {
+    private Map<String, Object> mergeAssistantMetadata(PipelineResult pipelineResult,
+                                                       List<Map<String, Object>> ragSources) {
+        Map<String, Object> metadata = new java.util.LinkedHashMap<>();
+        Map<String, Object> ragMeta = ragMetadata(ragSources);
+        if (ragMeta != null) {
+            metadata.putAll(ragMeta);
+        }
+        metadata.putAll(extractArtifactMetadataFromPipeline(pipelineResult));
+        return metadata.isEmpty() ? null : metadata;
+    }
+
+    private Map<String, Object> extractArtifactMetadataFromPipeline(PipelineResult pipelineResult) {
+        Map<String, Object> meta = new java.util.LinkedHashMap<>();
+        if (pipelineResult == null) {
+            return meta;
+        }
+        for (Artifact artifact : ArtifactExtractor.collectFromPipeline(pipelineResult)) {
+            mergeArtifactIntoPersistMeta(meta, artifact);
+        }
+        // 兜底：逐步扫描 artifactKind / url 字段（避免 List<Artifact> 类型丢失）
+        if (pipelineResult.getStepResults() != null) {
+            for (var sr : pipelineResult.getStepResults()) {
+                if (!sr.isSuccess() || sr.getData() == null) {
+                    continue;
+                }
+                scanStepDataForMediaMeta(sr.getData(), meta);
+            }
+        }
+        return meta;
+    }
+
+    private void mergeArtifactIntoPersistMeta(Map<String, Object> meta, Artifact artifact) {
+        if (artifact == null || artifact.getKind() == null) {
+            return;
+        }
+        Map<String, Object> payload = artifact.getPayload();
+        switch (artifact.getKind()) {
+            case IMAGE -> {
+                meta.put("contentType", "image");
+                if (payload != null && payload.get("url") != null) {
+                    meta.put("imageUrl", String.valueOf(payload.get("url")));
+                }
+            }
+            case VIDEO -> {
+                meta.put("contentType", "video");
+                if (payload != null && payload.get("url") != null) {
+                    meta.put("videoUrl", String.valueOf(payload.get("url")));
+                }
+            }
+            case QUIZ -> {
+                meta.put("contentType", "quiz");
+                if (payload != null) {
+                    meta.put("quizData", payload);
+                }
+            }
+            case DIAGRAM -> {
+                meta.put("contentType", "diagram");
+                if (payload != null) {
+                    if (payload.get("diagram") != null) {
+                        meta.put("diagramCode", String.valueOf(payload.get("diagram")));
+                    }
+                    meta.put("diagramFormat", payload.get("format") != null
+                            ? String.valueOf(payload.get("format")) : "mermaid");
+                }
+            }
+            case LEARNING_PATH -> meta.put("contentType", "learning_path");
+            default -> { }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void scanStepDataForMediaMeta(Map<String, Object> data, Map<String, Object> meta) {
+        Object kind = data.get("artifactKind");
+        Object payloadObj = data.get("artifactPayload");
+        if (payloadObj instanceof Map<?, ?> payloadMap) {
+            Map<String, Object> payload = (Map<String, Object>) payloadMap;
+            String wire = kind != null ? String.valueOf(kind) : "";
+            if (("media_image".equals(wire) || "image".equals(wire)) && payload.get("url") != null) {
+                meta.put("contentType", "image");
+                meta.put("imageUrl", String.valueOf(payload.get("url")));
+            } else if (("video".equals(wire) || "media_video".equals(wire)) && payload.get("url") != null) {
+                meta.put("contentType", "video");
+                meta.put("videoUrl", String.valueOf(payload.get("url")));
+            }
+        }
+        for (String key : List.of("imageUrl", "mediaUrl", "url", "videoUrl")) {
+            Object v = data.get(key);
+            if (v == null || String.valueOf(v).isBlank()) {
+                continue;
+            }
+            String s = String.valueOf(v).trim();
+            if (!s.startsWith("http") && !s.startsWith("data:")) {
+                continue;
+            }
+            if ("videoUrl".equals(key) || s.endsWith(".mp4") || s.endsWith(".webm")) {
+                meta.put("contentType", "video");
+                meta.put("videoUrl", s);
+            } else if (!meta.containsKey("imageUrl")) {
+                meta.put("contentType", "image");
+                meta.put("imageUrl", s);
+            }
+        }
+    }
+
+    private String buildAssistantPersistContent(PipelineResult pipelineResult, Map<String, Object> metadata) {
+        if (metadata != null) {
+            if (metadata.get("imageUrl") != null) {
+                return "图片已生成。";
+            }
+            if (metadata.get("videoUrl") != null) {
+                return "视频已生成。";
+            }
+            if (metadata.get("quizData") != null) {
+                return "题目已生成。";
+            }
+            if (metadata.get("diagramCode") != null) {
+                return "图表已生成。";
+            }
+            if ("learning_path".equals(metadata.get("contentType"))) {
+                return "学习路径已生成。";
+            }
+        }
+        StringBuilder allContent = new StringBuilder();
+        List<StepResult> stepResults = pipelineResult != null ? pipelineResult.getStepResults() : null;
+        if (stepResults != null) {
+            for (var sr : stepResults) {
+                if (!sr.isSuccess() || sr.getData() == null) {
+                    continue;
+                }
+                String agentId = sr.getAgentId();
+                if (StepStreamPolicy.isInternalStep(agentId) || StepStreamPolicy.isArtifactRenderedStep(agentId)) {
+                    continue;
+                }
+                String stepContent = extractStepContent(agentId, sr.getData());
+                if (stepContent != null && !stepContent.isBlank()
+                        && !StepStreamPolicy.isStatusOnlyText(stepContent)) {
+                    if (allContent.length() > 0) {
+                        allContent.append("\n\n");
+                    }
+                    allContent.append(stepContent);
+                }
+            }
+        }
+        return allContent.isEmpty() ? "任务执行完成。" : allContent.toString();
+    }
+
+    private Map<String, Object> imageMetadata(String imageUrl) {
+        if (imageUrl == null || imageUrl.isBlank()) {
+            return null;
+        }
+        Map<String, Object> meta = new java.util.LinkedHashMap<>();
+        meta.put("contentType", "image");
+        meta.put("imageUrl", imageUrl);
+        return meta;
+    }
+
+    private void sendDone(WebSocketSession session, String sessionId, Long messageId, WsSender sender) {
+        var node = objectMapper.createObjectNode().put("session_id", sessionId);
+        if (messageId != null) {
+            node.put("message_id", messageId);
+        }
+        sender.sendEvent(session, "done", node.toString());
+    }
+
+    /** LearningPath 工具未返回 nodes 时，从 DB 拉取当前路径补发 artifact */
+    private void enrichLearningPathFromService(WebSocketSession wsSession, Long userId, WsSender sender) {
         try {
             java.util.Optional<LearningPathDto> pathOpt = learningPathService.getCurrentPath(userId);
             if (pathOpt.isPresent()) {
@@ -282,118 +461,14 @@ public class ChatRouteDispatcher {
         }
     }
 
-    /** 向后兼容：Extractor 无法识别时的 agentId 硬编码分支 */
-    private void sendLegacyArtifacts(WebSocketSession wsSession, String agentId,
-                                     Map<String, Object> stepData, Long userId, WsSender sender) {
-        if (agentId.contains("diagram")) {
-            Object contentObj = stepData.get("content");
-            if (contentObj != null) {
-                String diagramCode = String.valueOf(contentObj);
-                String format = "mermaid";
-                int start = diagramCode.indexOf("```mermaid");
-                if (start >= 0) {
-                    start = diagramCode.indexOf('\n', start) + 1;
-                    int end = diagramCode.indexOf("```", start);
-                    if (end > start) {
-                        diagramCode = diagramCode.substring(start, end).trim();
-                    }
-                }
-                var diagPayload = objectMapper.createObjectNode()
-                        .put("diagram", diagramCode)
-                        .put("format", format);
-                sender.sendEvent(wsSession, "artifact", objectMapper.createObjectNode()
-                        .put("kind", "diagram")
-                        .set("payload", diagPayload)
-                        .toString());
-            }
-        }
-
-        // RAG 引用来源 artifact
-        Object ragSourcesObj = stepData.get("ragSources");
-        if (ragSourcesObj instanceof java.util.List<?> sourcesList && !sourcesList.isEmpty()) {
-            try {
-                var sourcesArray = objectMapper.valueToTree(sourcesList);
-                sender.sendEvent(wsSession, "artifact", objectMapper.createObjectNode()
-                        .put("kind", "rag_sources")
-                        .set("payload", sourcesArray)
-                        .toString());
-            } catch (Exception e) {
-                log.warn("[WS] async: failed to send rag_sources artifact: {}", e.getMessage());
-            }
-        }
-
-        // 题目生成 artifact
-        if (agentId.contains("quiz")) {
-            try {
-                Object quizData = stepData.get("data");
-                if (quizData == null) quizData = stepData.get("content");
-                if (quizData != null) {
-                    String quizStr = String.valueOf(quizData);
-                    com.fasterxml.jackson.databind.JsonNode quizNode = objectMapper.readTree(
-                            quizStr.trim().startsWith("{") ? quizStr : "{}");
-                    if (quizNode.has("data") && quizNode.path("data").has("questions")) {
-                        quizNode = quizNode.path("data");
-                    }
-                    if (quizNode.has("questions") || quizNode.has("title")) {
-                        sender.sendEvent(wsSession, "artifact", objectMapper.createObjectNode()
-                                .put("kind", "quiz")
-                                .set("payload", quizNode)
-                                .toString());
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("[WS] async: failed to send quiz artifact: {}", e.getMessage());
-            }
-        }
-
-        // 媒体生成 artifact：兼容 imageUrl/videoUrl/mediaUrl/url/content 等返回格式
-        if (agentId.contains("media") || agentId.contains("video")) {
-            try {
-                Object mediaUrl = stepData.get("mediaUrl");
-                if (mediaUrl == null) mediaUrl = stepData.get("imageUrl");
-                if (mediaUrl == null) mediaUrl = stepData.get("videoUrl");
-                if (mediaUrl == null) mediaUrl = stepData.get("url");
-                if (mediaUrl == null) mediaUrl = stepData.get("content");
-                String url = mediaUrl == null ? "" : String.valueOf(mediaUrl).trim();
-                if (url.startsWith("{") && url.endsWith("}")) {
-                    var node = objectMapper.readTree(url);
-                    url = node.path("mediaUrl").asText(node.path("imageUrl").asText(node.path("videoUrl").asText(node.path("url").asText(""))));
-                }
-                if (url.startsWith("http") || url.startsWith("data:")) {
-                    boolean isVideo = agentId.contains("video") || url.endsWith(".mp4") || url.endsWith(".webm") || url.endsWith(".mov");
-                    var mediaPayload = objectMapper.createObjectNode()
-                            .put("url", url)
-                            .put("mediaType", isVideo ? "video" : "image");
-                    sender.sendEvent(wsSession, "artifact", objectMapper.createObjectNode()
-                            .put("kind", isVideo ? "video" : "media_image")
-                            .set("payload", mediaPayload)
-                            .toString());
-                }
-            } catch (Exception e) {
-                log.warn("[WS] async: failed to send media artifact: {}", e.getMessage());
-            }
-        }
-    }
-
     private void handlePipelineSuccess(WebSocketSession session, PipelineResult pipelineResult,
                                        Long userId, String sessionId, String agent, WsSender sender,
                                        AtomicBoolean contentStreamed) {
         // 步骤回调已逐步发送了 chunk + agent_step + artifact，这里只发 done 结束消息
-        // 拼合所有步骤内容仅用于记忆存储，不再重复发给前端
-        StringBuilder allContent = new StringBuilder();
-        List<StepResult> stepResults = pipelineResult.getStepResults();
-        if (stepResults != null) {
-            for (var sr : stepResults) {
-                if (sr.isSuccess() && sr.getData() != null) {
-                    String stepContent = extractStepContent(sr.getAgentId(), sr.getData());
-                    if (stepContent != null && !stepContent.isBlank()) {
-                        if (allContent.length() > 0) allContent.append("\n\n");
-                        allContent.append(stepContent);
-                    }
-                }
-            }
-        }
-        String finalContent = allContent.isEmpty() ? "任务执行完成。" : allContent.toString();
+        // 拼合步骤内容仅用于记忆存储：排除 prompt 工程等内部步骤，有图片时只存短文案
+        Map<String, Object> metadata = mergeAssistantMetadata(pipelineResult,
+                extractRagSourcesFromPipeline(pipelineResult));
+        String finalContent = buildAssistantPersistContent(pipelineResult, metadata);
 
         if (!contentStreamed.get() && !finalContent.isBlank()) {
             sender.sendEvent(session, "chunk", finalContent);
@@ -405,14 +480,19 @@ public class ChatRouteDispatcher {
                 .put("label", "全部完成")
                 .put("status", "done")
                 .toString());
+        // RAG artifact 已在步骤回调中推送；此处持久化 metadata（含 imageUrl 等）
         List<Map<String, Object>> ragSources = extractRagSourcesFromPipeline(pipelineResult);
-        sendRagSourcesArtifact(session, ragSources, sender);
-
-        sender.sendEvent(session, "done", objectMapper.createObjectNode()
-                .put("session_id", sessionId)
-                .toString());
-        agentMemory.addAgentResponse(userId, Long.parseLong(sessionId), finalContent, agent,
-                ragMetadata(ragSources));
+        if (metadata == null) {
+            metadata = mergeAssistantMetadata(pipelineResult, ragSources);
+        } else if (ragSources != null && !ragSources.isEmpty()) {
+            Map<String, Object> ragMeta = ragMetadata(ragSources);
+            if (ragMeta != null) {
+                metadata.putAll(ragMeta);
+            }
+        }
+        Long messageId = agentMemory.addAgentResponse(userId, Long.parseLong(sessionId), finalContent, agent,
+                metadata);
+        sendDone(session, sessionId, messageId, sender);
         triggerProfileExtractionAsync(userId, sessionId, session, sender);
     }
 
@@ -420,6 +500,18 @@ public class ChatRouteDispatcher {
                                        Long userId, String sessionId, String content,
                                        String pipelineId, WsSender sender) {
         String errorMsg = pipelineResult.getErrorMessage();
+
+        // 后续步骤失败但媒体/图表已生成：仍按成功展示
+        Map<String, Object> partialMeta = extractArtifactMetadataFromPipeline(pipelineResult);
+        if (partialMeta.get("imageUrl") != null || partialMeta.get("videoUrl") != null) {
+            String msg = partialMeta.get("imageUrl") != null ? "图片已生成。" : "视频已生成。";
+            sender.sendEvent(session, "chunk", msg);
+            Long messageId = agentMemory.addAgentResponse(userId, Long.parseLong(sessionId),
+                    msg, pipelineId + "_partial", partialMeta);
+            sendDone(session, sessionId, messageId, sender);
+            triggerProfileExtractionAsync(userId, sessionId, session, sender);
+            return;
+        }
 
         // 学习路径 pipeline 回退：直接生成
         if ("learning_path".equals(pipelineId)) {
@@ -470,11 +562,9 @@ public class ChatRouteDispatcher {
                 String mode = isMock ? "占位图（provider=" + provider + ", key=" + (keySet ? "已配置" : "未配置") + "）" : "真实图片";
                 String msg = "已生成示意图 —— " + mode + "\n\n提示词：" + imagePrompt;
                 sender.sendEvent(session, "chunk", msg);
-                sender.sendEvent(session, "done", objectMapper.createObjectNode()
-                        .put("session_id", sessionId)
-                        .toString());
-                agentMemory.addAgentResponse(userId, Long.parseLong(sessionId),
-                        msg, "diagram_fallback_image");
+                Long messageId = agentMemory.addAgentResponse(userId, Long.parseLong(sessionId),
+                        msg, "diagram_fallback_image", imageMetadata(imageUrl));
+                sendDone(session, sessionId, messageId, sender);
                 triggerProfileExtractionAsync(userId, sessionId, session, sender);
                 return;
             } catch (Exception e2) {
@@ -534,11 +624,9 @@ public class ChatRouteDispatcher {
                 String mode = isMock ? "占位图（provider=" + provider + ", key=" + (keySet ? "已配置" : "未配置") + "）" : "真实图片";
                 String msg = "已生成示意图 —— " + mode + "\n\n提示词：" + imagePrompt;
                 sender.sendEvent(session, "chunk", msg);
-                sender.sendEvent(session, "done", objectMapper.createObjectNode()
-                        .put("session_id", sessionId)
-                        .toString());
-                agentMemory.addAgentResponse(userId, Long.parseLong(sessionId),
-                        msg, "media_fallback");
+                Long messageId = agentMemory.addAgentResponse(userId, Long.parseLong(sessionId),
+                        msg, "media_fallback", imageMetadata(imageUrl));
+                sendDone(session, sessionId, messageId, sender);
                 triggerProfileExtractionAsync(userId, sessionId, session, sender);
                 return;
             } catch (Exception e2) {
@@ -660,7 +748,7 @@ public class ChatRouteDispatcher {
         if (data.containsKey("summary")) return String.valueOf(data.get("summary"));
         if (data.containsKey("result")) return String.valueOf(data.get("result"));
         if (data.containsKey("llm_analysis")) return String.valueOf(data.get("llm_analysis"));
-        if (agentId.contains("learning_path") && data.containsKey("nodes")) {
+        if (AgentIds.LEARNING_PATH.equals(agentId) && data.containsKey("nodes")) {
             return "学习路径已生成，包含 " + data.get("nodeCount") + " 个节点。";
         }
         return null;
@@ -669,14 +757,32 @@ public class ChatRouteDispatcher {
     @SuppressWarnings("unchecked")
     public List<Map<String, Object>> extractRagSourcesFromPipeline(PipelineResult pipelineResult) {
         List<Map<String, Object>> allSources = new java.util.ArrayList<>();
-        if (pipelineResult.getStepResults() == null) return allSources;
+        if (pipelineResult.getStepResults() == null) {
+            return allSources;
+        }
         for (StepResult sr : pipelineResult.getStepResults()) {
-            if (!sr.isSuccess() || sr.getData() == null) continue;
-            Object sourcesObj = sr.getData().get("ragSources");
+            if (!sr.isSuccess() || sr.getData() == null) {
+                continue;
+            }
+            Map<String, Object> data = sr.getData();
+            Object sourcesObj = data.get("ragSources");
             if (sourcesObj instanceof List<?> list) {
                 for (Object item : list) {
                     if (item instanceof Map<?, ?> map) {
                         allSources.add((Map<String, Object>) map);
+                    }
+                }
+            }
+            for (Artifact artifact : ArtifactExtractor.fromStepData(sr.getAgentId(), data)) {
+                if (artifact.getKind() != ArtifactKind.RAG_SOURCES || artifact.getPayload() == null) {
+                    continue;
+                }
+                Object nested = artifact.getPayload().get("sources");
+                if (nested instanceof List<?> nestedList) {
+                    for (Object item : nestedList) {
+                        if (item instanceof Map<?, ?> map) {
+                            allSources.add((Map<String, Object>) map);
+                        }
                     }
                 }
             }
@@ -707,6 +813,7 @@ public class ChatRouteDispatcher {
         String qaResponse = null;
         boolean pipelineSucceeded = false;
         List<Map<String, Object>> ragSources = List.of();
+        PipelineResult qaPipelineResult = null;
 
         // 优先 PipelineEngine（带步骤回调，逐步推送内容）
         try {
@@ -714,64 +821,16 @@ public class ChatRouteDispatcher {
             TaskContext context = new TaskContext("qa-" + System.currentTimeMillis(),
                     String.valueOf(userId), sessionId, content);
 
-            // 使用带回调的执行，每步完成即时推送 chunk + agent_step
             StringBuilder streamedContent = new StringBuilder();
-            PipelineResult pipelineResult = pipelineEngine.execute(qaConfig, context, (stepId, agentId, success, stepData) -> {
-                try {
-                    if (!success) {
-                        sender.sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                                .put("agent", agentId)
-                                .put("label", "执行失败")
-                                .put("status", "failed")
-                                .toString());
-                        return;
-                    }
-                    sender.sendEvent(session, "agent_step", objectMapper.createObjectNode()
-                            .put("agent", agentId)
-                            .put("label", "已完成")
-                            .put("status", "done")
-                            .toString());
-
-                    if (stepData != null) {
-                        Object ragObj = stepData.get("ragSources");
-                        if (ragObj instanceof java.util.List<?> list && !list.isEmpty()) {
-                            try {
-                                var sourcesArray = objectMapper.valueToTree(list);
-                                sender.sendEvent(session, "artifact", objectMapper.createObjectNode()
-                                        .put("kind", "rag_sources")
-                                        .set("payload", sourcesArray)
-                                        .toString());
-                            } catch (Exception e) {
-                                log.warn("[WS] QA step: failed to send rag_sources: {}", e.getMessage());
-                            }
-                        }
-
-                        // 只把最终产出步骤的内容发给用户，中间分析步骤不发
-                        if (!agentId.contains("profile")
-                                && !agentId.contains("content_analysis")
-                                && !agentId.contains("quality")
-                                && !agentId.contains("knowledge_state")
-                                && !agentId.contains("difficulty")
-                                && !agentId.contains("learning_style")
-                                && !agentId.contains("prompt_gen")
-                                && !agentId.contains("media_gen")) {
-                            String stepContent = extractStepContent(agentId, stepData);
-                            if (stepContent != null && !stepContent.isBlank()) {
-                                sender.sendEvent(session, "chunk", stepContent);
-                                synchronized (streamedContent) {
-                                    if (streamedContent.length() > 0) streamedContent.append("\n\n");
-                                    streamedContent.append(stepContent);
-                                }
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    log.error("[WS] QA step callback error: {}", e.getMessage(), e);
-                }
-            });
+            AtomicBoolean qaContentStreamed = new AtomicBoolean(false);
+            PipelineResult pipelineResult = pipelineEngine.execute(qaConfig, context,
+                    (stepId, agentId, success, stepData) -> handleStepComplete(
+                            session, agentId, success, stepData, userId, sender,
+                            qaContentStreamed, streamedContent));
 
             if (pipelineResult.isSuccess()) {
                 pipelineSucceeded = true;
+                qaPipelineResult = pipelineResult;
                 synchronized (streamedContent) {
                     qaResponse = streamedContent.isEmpty() ? null : streamedContent.toString();
                 }
@@ -832,25 +891,17 @@ public class ChatRouteDispatcher {
                 sender.sendEvent(session, "chunk", qaResponse);
             }
 
-            // RAG 引用来源
-            if (!ragSources.isEmpty()) {
-                try {
-                    var sourcesArray = objectMapper.valueToTree(ragSources);
-                    sender.sendEvent(session, "artifact", objectMapper.createObjectNode()
-                            .put("kind", "rag_sources")
-                            .set("payload", sourcesArray)
-                            .toString());
-                } catch (Exception e) {
-                    log.warn("[WS] failed to send rag_sources: {}", e.getMessage());
-                }
+            // Pipeline 路径已在步骤回调推送 rag_sources；QaAgent 回退路径在此补发
+            if (!pipelineSucceeded && !ragSources.isEmpty()) {
+                sendRagSourcesArtifact(session, ragSources, sender);
             }
 
-            sender.sendEvent(session, "done", objectMapper.createObjectNode()
-                    .put("session_id", sessionId)
-                    .toString());
-            agentMemory.addAgentResponse(userId, Long.parseLong(sessionId), qaResponse,
-                    pipelineSucceeded ? "pipeline_qa" : "qa_agent",
-                    ragMetadata(ragSources));
+            Map<String, Object> metadata = pipelineSucceeded && qaPipelineResult != null
+                    ? mergeAssistantMetadata(qaPipelineResult, ragSources)
+                    : ragMetadata(ragSources);
+            Long messageId = agentMemory.addAgentResponse(userId, Long.parseLong(sessionId), qaResponse,
+                    pipelineSucceeded ? "pipeline_qa" : "qa_agent", metadata);
+            sendDone(session, sessionId, messageId, sender);
             triggerProfileExtractionAsync(userId, sessionId, session, sender);
         } else {
             sender.sendEvent(session, "chunk", "抱歉，我暂时无法回答这个问题。");

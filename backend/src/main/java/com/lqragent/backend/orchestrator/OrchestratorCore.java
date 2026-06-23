@@ -1,6 +1,7 @@
 package com.lqragent.backend.orchestrator;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -21,6 +22,10 @@ import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.path.dto.LearningPathDto;
 import com.lqragent.backend.agents.path.service.LearningPathService;
 import com.lqragent.backend.chat.service.AgentRunLogService;
+import com.lqragent.backend.orchestrator.AgentIds;
+import com.lqragent.backend.orchestrator.artifact.Artifact;
+import com.lqragent.backend.orchestrator.artifact.ArtifactExtractor;
+import com.lqragent.backend.orchestrator.artifact.ArtifactKind;
 import com.lqragent.backend.orchestrator.capability.AgentCapability;
 import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
 import com.lqragent.backend.orchestrator.context.TaskContext;
@@ -31,6 +36,7 @@ import com.lqragent.backend.orchestrator.pipeline.PipelineEngine;
 import com.lqragent.backend.orchestrator.pipeline.PipelineResult;
 import com.lqragent.backend.orchestrator.pipeline.PipelineTemplates;
 import com.lqragent.backend.orchestrator.pipeline.StepResult;
+import com.lqragent.backend.orchestrator.pipeline.StepStreamPolicy;
 import com.lqragent.backend.orchestrator.pipeline.service.PipelineTaskService;
 import com.lqragent.backend.orchestrator.planning.PlanIntent;
 import com.lqragent.backend.orchestrator.planning.PlanResult;
@@ -365,19 +371,23 @@ public class OrchestratorCore {
             PipelineResult result = pipelineEngine.execute(config, context);
 
             if (result.isSuccess()) {
-                // 聚合所有步骤结果
                 String aggregated = aggregateResults(config, result);
-                return Map.of(
-                        "route", "pipeline_complete",
-                        "agent", "pipeline_engine",
-                        "response", aggregated,
-                        "stepResults", result.getStepResults() != null
-                                ? result.getStepResults().stream()
-                                    .map(sr -> Map.of("stepId", sr.getStepId(), "agentId", sr.getAgentId(), "success", sr.isSuccess()))
-                                    .toList()
-                                : List.of(),
-                        "durationMs", result.getTotalDurationMs()
-                );
+                List<Artifact> artifacts = ArtifactExtractor.collectFromPipeline(result);
+                Map<String, Object> response = new LinkedHashMap<>();
+                response.put("route", "pipeline_complete");
+                response.put("agent", "pipeline_engine");
+                response.put("response", aggregated);
+                response.put("artifacts", artifacts);
+                response.put("stepResults", result.getStepResults() != null
+                        ? result.getStepResults().stream()
+                            .map(sr -> Map.of(
+                                    "stepId", sr.getStepId(),
+                                    "agentId", sr.getAgentId(),
+                                    "success", sr.isSuccess()))
+                            .toList()
+                        : List.of());
+                response.put("durationMs", result.getTotalDurationMs());
+                return response;
             } else {
                 return Map.of(
                         "route", "pipeline_error",
@@ -457,6 +467,7 @@ public class OrchestratorCore {
                             "type", "pipeline_complete",
                             "pipelineName", config.getName(),
                             "response", aggregated,
+                            "artifacts", ArtifactExtractor.collectFromPipeline(result),
                             "route", "pipeline_complete",
                             "durationMs", result.getTotalDurationMs()
                     ));
@@ -514,7 +525,11 @@ public class OrchestratorCore {
     }
 
     private String extractStepSummary(String agentId, Map<String, Object> data) {
-        // 优先取 summary/result 字段
+        List<Artifact> artifacts = ArtifactExtractor.fromStepData(agentId, data);
+        if (!StepStreamPolicy.shouldStreamContent(agentId, data, artifacts)) {
+            return summarizeFromArtifacts(artifacts);
+        }
+
         if (data.containsKey("summary")) {
             return String.valueOf(data.get("summary"));
         }
@@ -524,26 +539,49 @@ public class OrchestratorCore {
         if (data.containsKey("llm_analysis")) {
             return String.valueOf(data.get("llm_analysis"));
         }
-        // content 字段（Agent 的 LLM 回答）
         if (data.containsKey("content")) {
             Object content = data.get("content");
             if (content != null && !String.valueOf(content).isBlank()) {
                 return String.valueOf(content);
             }
         }
-        // 学习路径特殊处理
-        if (agentId.contains("learning_path") && data.containsKey("nodes")) {
+        if (AgentIds.LEARNING_PATH.equals(agentId) && data.containsKey("nodes")) {
             return "学习路径已生成，包含 " + data.get("nodeCount") + " 个节点。";
         }
-        // 媒体生成特殊处理
-        if (agentId.contains("media_gen") && data.containsKey("imageUrl")) {
-            return "![生成图片](" + data.get("imageUrl") + ")";
+        String fromArtifacts = summarizeFromArtifacts(artifacts);
+        if (fromArtifacts != null) {
+            return fromArtifacts;
         }
-        if (agentId.contains("media_gen") && data.containsKey("videoUrl")) {
-            return "视频已生成: " + data.get("videoUrl");
-        }
-        // 默认：返回 data 的描述
         return "步骤完成 (" + agentId + ")";
+    }
+
+    private String summarizeFromArtifacts(List<Artifact> artifacts) {
+        if (artifacts == null || artifacts.isEmpty()) {
+            return null;
+        }
+        for (Artifact artifact : artifacts) {
+            Map<String, Object> payload = artifact.getPayload();
+            if (payload == null) {
+                continue;
+            }
+            if (artifact.getKind() == ArtifactKind.IMAGE && payload.get("url") != null) {
+                return "![生成图片](" + payload.get("url") + ")";
+            }
+            if (artifact.getKind() == ArtifactKind.VIDEO && payload.get("url") != null) {
+                return "视频已生成: " + payload.get("url");
+            }
+            if (artifact.getKind() == ArtifactKind.LEARNING_PATH) {
+                Object nodeCount = payload.get("nodeCount");
+                if (nodeCount != null) {
+                    return "学习路径已生成，包含 " + nodeCount + " 个节点。";
+                }
+                Object nodes = payload.get("nodes");
+                if (nodes instanceof List<?> list) {
+                    return "学习路径已生成，包含 " + list.size() + " 个节点。";
+                }
+            }
+        }
+        return null;
     }
 
     // ==================== Learn 流程（保留兼容） ====================

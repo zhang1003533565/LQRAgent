@@ -90,8 +90,8 @@ export default function StreamingMessage({ message }: Props) {
       <div className={`${styles.avatar} ${isUser ? styles.userAvatar : styles.aiAvatar}`}>
         {isUser ? '你' : <RobotIcon />}
       </div>
-      <div className={styles.content}>
-        <div className={styles.bubble}>
+      <div className={`${styles.content} ${isQuiz ? styles.quizContent : ''}`}>
+        <div className={`${styles.bubble} ${isQuiz ? styles.quizBubble : ''}`}>
           {isUser ? (
             <p style={{ margin: 0 }}>{message.content}</p>
           ) : isLearningPath ? (

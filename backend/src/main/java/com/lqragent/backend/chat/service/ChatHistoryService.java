@@ -143,7 +143,29 @@ public class ChatHistoryService {
                 log.warn("[ChatHistory] serialize metadata failed: {}", e.getMessage());
             }
         }
-        return saveMessage(sessionId, userId, role, content, agentName, metadataJson);
+        ChatMessage message = ChatMessage.builder()
+                .sessionId(sessionId)
+                .userId(userId)
+                .role(role)
+                .content(content)
+                .agentName(agentName)
+                .metadata(metadataJson)
+                .build();
+        if (metadata != null && metadata.get("contentType") != null) {
+            message.setContentType(String.valueOf(metadata.get("contentType")));
+        }
+        ChatMessage saved = messageRepo.save(message);
+
+        ChatSession session = sessionRepo.findById(sessionId).orElseThrow();
+        session.setUpdatedAt(LocalDateTime.now());
+        if ("user".equals(role)) {
+            session.setTitle(generateTitleFromContent(content));
+        } else if (session.getTitle() == null || session.getTitle().startsWith("新对话")) {
+            session.setTitle(generateTitleFromContent(content));
+        }
+        sessionRepo.save(session);
+
+        return saved;
     }
 
     /**
@@ -232,7 +254,8 @@ public class ChatHistoryService {
             }
         }
         
-        // 合并新 metadata
+        // 合并新 metadata（content 单独写入消息正文，不存入 metadata JSON）
+        Object contentUpdate = metadata.remove("content");
         mergedMetadata.putAll(metadata);
         
         // 保存
@@ -240,6 +263,10 @@ public class ChatHistoryService {
             message.setMetadata(objectMapper.writeValueAsString(mergedMetadata));
         } catch (Exception e) {
             log.warn("[ChatHistory] failed to serialize metadata: {}", e.getMessage());
+        }
+
+        if (contentUpdate != null && !String.valueOf(contentUpdate).isBlank()) {
+            message.setContent(String.valueOf(contentUpdate));
         }
         
         // 如果 metadata 中有 contentType，也更新到实体字段

@@ -76,6 +76,7 @@ public class PipelineEngine {
     public PipelineResult execute(PipelineConfig config, TaskContext context) {
         long startTime = System.currentTimeMillis();
         String traceId = context.getTaskId();
+        List<StepResult> allResults = new CopyOnWriteArrayList<>();
         
         log.info("[Pipeline] start: {}, steps={}, parallel={}", 
                 config.getName(), config.getSteps().size(), config.isParallel());
@@ -83,7 +84,6 @@ public class PipelineEngine {
         try {
             // 构建执行图
             ExecutionGraph graph = buildGraph(config);
-            List<StepResult> allResults = new CopyOnWriteArrayList<>();
 
             // 按拓扑顺序执行
             while (graph.hasReadySteps()) {
@@ -117,13 +117,13 @@ public class PipelineEngine {
                         .map(StepResult::getErrorMessage)
                         .findFirst()
                         .orElse("Unknown error");
-                return PipelineResult.failure(errorMsg, totalDuration);
+                return PipelineResult.failure(errorMsg, allResults, totalDuration);
             }
 
         } catch (Exception e) {
             long totalDuration = System.currentTimeMillis() - startTime;
             log.error("[Pipeline] execution failed: {}", e.getMessage());
-            return PipelineResult.failure(e.getMessage(), totalDuration);
+            return PipelineResult.failure(e.getMessage(), allResults, totalDuration);
         }
     }
 
@@ -133,13 +133,13 @@ public class PipelineEngine {
     public PipelineResult execute(PipelineConfig config, TaskContext context, StepCallback callback) {
         long startTime = System.currentTimeMillis();
         String traceId = context.getTaskId();
+        List<StepResult> allResults = new CopyOnWriteArrayList<>();
         
         log.info("[Pipeline] start(async): {}, steps={}", 
                 config.getName(), config.getSteps().size());
 
         try {
             ExecutionGraph graph = buildGraph(config);
-            List<StepResult> allResults = new CopyOnWriteArrayList<>();
 
             while (graph.hasReadySteps()) {
                 List<PipelineStep> readySteps = graph.getReadySteps();
@@ -175,13 +175,13 @@ public class PipelineEngine {
                         .map(StepResult::getErrorMessage)
                         .findFirst()
                         .orElse("Unknown error");
-                return PipelineResult.failure(errorMsg, totalDuration);
+                return PipelineResult.failure(errorMsg, allResults, totalDuration);
             }
 
         } catch (Exception e) {
             long totalDuration = System.currentTimeMillis() - startTime;
             log.error("[Pipeline] async execution failed: {}", e.getMessage());
-            return PipelineResult.failure(e.getMessage(), totalDuration);
+            return PipelineResult.failure(e.getMessage(), allResults, totalDuration);
         }
     }
 

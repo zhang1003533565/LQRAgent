@@ -9,6 +9,8 @@ import java.util.Set;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lqragent.backend.orchestrator.pipeline.PipelineResult;
+import com.lqragent.backend.orchestrator.pipeline.StepResult;
 
 /**
  * 从 Agent 步骤数据 / 消息内容中统一提取 Artifact 列表。
@@ -43,6 +45,24 @@ public final class ArtifactExtractor {
         }
 
         return List.copyOf(artifacts);
+    }
+
+    /** 聚合 Pipeline 全部步骤产物（去重） */
+    public static List<Artifact> collectFromPipeline(PipelineResult result) {
+        if (result == null || result.getStepResults() == null) {
+            return List.of();
+        }
+        List<Artifact> all = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (StepResult sr : result.getStepResults()) {
+            if (!sr.isSuccess() || sr.getData() == null) {
+                continue;
+            }
+            for (Artifact artifact : fromStepData(sr.getAgentId(), sr.getData())) {
+                addIfNew(all, seen, artifact);
+            }
+        }
+        return List.copyOf(all);
     }
 
     public static List<Artifact> fromMessageContent(String producerAgentId, Map<String, Object> content) {

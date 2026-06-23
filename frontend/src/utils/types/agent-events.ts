@@ -73,6 +73,7 @@ export interface ChunkEvent {
 export interface DoneEvent {
   type: 'done'
   session_id?: string
+  message_id?: number | string
 }
 
 export interface ErrorEvent {
@@ -92,6 +93,7 @@ export interface WsRawMessage {
   detail?: string
   kind?: string
   payload?: unknown
+  message_id?: number | string
   stepId?: string
   agentId?: string
   stepCount?: number

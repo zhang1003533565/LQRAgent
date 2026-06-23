@@ -11,6 +11,11 @@ export type ArtifactKind =
   | 'rag_sources'
   | 'diagram'
   | 'video'
+  | 'text'
+  | 'assessment'
+  | 'weakness_profile'
+  | 'profile'
+  | 'summary'
 
 export interface MediaVideoPayload {
   url: string

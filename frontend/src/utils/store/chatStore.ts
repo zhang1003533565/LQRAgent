@@ -45,6 +45,15 @@ function flushChunk() {
   rafId = null
 }
 
+/** 在 done 等事件前刷掉尚未写入 store 的 chunk，避免误判为空内容 */
+export function flushPendingChunks() {
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId)
+    rafId = null
+  }
+  flushChunk()
+}
+
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   sessionId: null,
@@ -115,14 +124,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
         } else if (msg.metadata && typeof msg.metadata === 'object') {
           metadataParsed = msg.metadata as Record<string, unknown>
         }
+        const imageUrl = (metadataParsed.imageUrl as string) || msg.imageUrl
+        const videoUrl = (metadataParsed.videoUrl as string) || (msg as any).videoUrl
+        const contentType =
+          (metadataParsed.contentType as MessageContentType) ||
+          (msg.contentType as MessageContentType | undefined)
+        let content = msg.content
+        // 历史消息：有图片/视频 metadata 时不展示 prompt 工程的长英文
+        if (imageUrl && contentType === 'image') {
+          if (!content?.trim() || content.length > 120) {
+            content = '图片已生成。'
+          }
+        } else if (videoUrl && contentType === 'video') {
+          if (!content?.trim() || content.length > 120) {
+            content = '视频已生成。'
+          }
+        }
         return {
           id: String(msg.id),
           role: msg.role as 'user' | 'assistant' | 'system',
-          content: msg.content,
-          contentType: (metadataParsed.contentType as MessageContentType) || (msg.contentType as MessageContentType | undefined),
+          content,
+          contentType,
           agentName: msg.agentName,
-          imageUrl: (metadataParsed.imageUrl as string) || msg.imageUrl,
-          videoUrl: (metadataParsed.videoUrl as string) || (msg as any).videoUrl,
+          imageUrl,
+          videoUrl,
           quizData: (metadataParsed.quizData as QuizData) || (msg as any).quizData,
           diagramCode: (metadataParsed.diagramCode as string) || msg.diagramCode,
           diagramFormat: (metadataParsed.diagramFormat as string) || msg.diagramFormat,
