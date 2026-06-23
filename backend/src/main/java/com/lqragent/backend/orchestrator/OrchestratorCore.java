@@ -4,7 +4,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -26,8 +25,8 @@ import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.orchestrator.artifact.Artifact;
 import com.lqragent.backend.orchestrator.artifact.ArtifactExtractor;
 import com.lqragent.backend.orchestrator.artifact.ArtifactKind;
-import com.lqragent.backend.orchestrator.capability.AgentCapability;
-import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
+import com.lqragent.backend.orchestrator.card.AgentCard;
+import com.lqragent.backend.orchestrator.card.AgentCardRegistry;
 import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
@@ -51,7 +50,7 @@ import lombok.extern.slf4j.Slf4j;
  * Orchestrator 调度中枢 v3
  * 接收前端请求 → PlanningAgent LLM拆解 → PipelineEngine DAG执行 → 聚合返回
  * <p>
- * v3 变更：集成 CapabilityRegistry，实现动态能力发现和智能路由
+ * v3 变更：AgentCardRegistry 统一能力发现；PlanningAgent + PipelineEngine 编排
  */
 @Slf4j
 @Service("orchestratorCore")
@@ -63,7 +62,7 @@ public class OrchestratorCore {
     private final AgentMemory agentMemory;
     private final PlanningAgent planningAgent;
     private final PipelineEngine pipelineEngine;
-    private final CapabilityRegistry capabilityRegistry;
+    private final AgentCardRegistry agentCardRegistry;
     private final LearningPathService learningPathService;
     private final PipelineTaskService pipelineTaskService;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -74,7 +73,7 @@ public class OrchestratorCore {
     public OrchestratorCore(RedisStreamsService streams, AgentRunLogService runLogService,
                            LlmClient llmClient, AgentMemory agentMemory,
                            PlanningAgent planningAgent, PipelineEngine pipelineEngine,
-                           CapabilityRegistry capabilityRegistry,
+                           AgentCardRegistry agentCardRegistry,
                            LearningPathService learningPathService,
                            PipelineTaskService pipelineTaskService) {
         this.streams = streams;
@@ -83,106 +82,14 @@ public class OrchestratorCore {
         this.agentMemory = agentMemory;
         this.planningAgent = planningAgent;
         this.pipelineEngine = pipelineEngine;
-        this.capabilityRegistry = capabilityRegistry;
+        this.agentCardRegistry = agentCardRegistry;
         this.learningPathService = learningPathService;
         this.pipelineTaskService = pipelineTaskService;
     }
 
     @PostConstruct
     public void registerOrchestrator() {
-        capabilityRegistry.register(AgentCapability.builder()
-                .agentId(AgentIds.ORCHESTRATOR)
-                .displayName("调度中枢")
-                .description("统一调度中心：任务分解、Agent编排、结果聚合")
-                .actions(List.of("route", "plan", "execute", "aggregate"))
-                .tags(Set.of("orchestrator", "scheduler", "coordinator"))
-                .build());
-
-        // 批量注册所有 Agent 的能力描述（供帮助信息和能力发现使用）
-        registerAgentCapabilities();
-
-        log.info("[OrchestratorCore] registered orchestrator and {} agent capabilities",
-                capabilityRegistry.size());
-    }
-
-    private void registerAgentCapabilities() {
-        capabilityRegistry.register(AgentCapability.builder()
-                .agentId(AgentIds.QA)
-                .displayName("智能问答")
-                .description("智能问答：解答学习问题、知识检索、概念解释")
-                .actions(List.of("search_knowledge", "generate_answer"))
-                .tags(Set.of("qa", "question", "answer"))
-                .build());
-        capabilityRegistry.register(AgentCapability.builder()
-                .agentId(AgentIds.LEARNING_PATH)
-                .displayName("学习路径规划")
-                .description("学习路径规划：生成个性化学习路线和知识图谱")
-                .actions(List.of("generate_path"))
-                .tags(Set.of("learning_path", "path", "plan"))
-                .build());
-        capabilityRegistry.register(AgentCapability.builder()
-                .agentId(AgentIds.RESOURCE)
-                .displayName("学习资源生成")
-                .description("学习资源生成：生成讲义、练习题、代码示例等")
-                .actions(List.of("generate_lesson", "batch_generate"))
-                .tags(Set.of("resource", "lesson", "quiz"))
-                .build());
-        capabilityRegistry.register(AgentCapability.builder()
-                .agentId(AgentIds.PROFILE)
-                .displayName("用户画像")
-                .description("用户画像分析：了解你的学习状态和知识掌握程度")
-                .actions(List.of("get_profile"))
-                .tags(Set.of("profile", "learner"))
-                .build());
-        capabilityRegistry.register(AgentCapability.builder()
-                .agentId(AgentIds.DIAGRAM)
-                .displayName("图表生成")
-                .description("图表生成：生成思维导图、流程图、知识图谱等")
-                .actions(List.of("generate_diagram"))
-                .tags(Set.of("diagram", "mindmap", "flowchart"))
-                .build());
-        capabilityRegistry.register(AgentCapability.builder()
-                .agentId(AgentIds.SUMMARY)
-                .displayName("总结生成")
-                .description("总结生成：生成知识点摘要和复习笔记")
-                .actions(List.of("generate_summary"))
-                .tags(Set.of("summary", "review"))
-                .build());
-        capabilityRegistry.register(AgentCapability.builder()
-                .agentId(AgentIds.QUIZ)
-                .displayName("题目生成")
-                .description("题目生成：按要求或基于知识库资料生成混合题型练习题")
-                .actions(List.of("generate_quiz"))
-                .tags(Set.of("quiz", "question", "exercise", "test"))
-                .build());
-        capabilityRegistry.register(AgentCapability.builder()
-                .agentId(AgentIds.RECOMMENDATION)
-                .displayName("个性化推荐")
-                .description("个性化推荐：根据学习情况推荐资源和方向")
-                .actions(List.of("recommend"))
-                .tags(Set.of("recommendation", "suggest"))
-                .build());
-        capabilityRegistry.register(AgentCapability.builder()
-                .agentId(AgentIds.ASSESSMENT)
-                .displayName("学习评估")
-                .description("学习评估：评估学习效果、批改作业")
-                .actions(List.of("grade"))
-                .tags(Set.of("assessment", "grade", "evaluation"))
-                .build());
-        capabilityRegistry.register(AgentCapability.builder()
-                .agentId(AgentIds.INTERVENTION)
-                .displayName("学习干预")
-                .description("学习干预：分析学习状态并提供干预建议")
-                .actions(List.of("assess_and_intervene"))
-                .tags(Set.of("intervention", "suggest"))
-                .build());
-        capabilityRegistry.register(AgentCapability.builder()
-                .agentId(AgentIds.MEDIA_GEN)
-                .displayName("媒体生成")
-                .description("媒体生成：生成图片、视频等多媒体内容")
-                .actions(List.of("generate_media"))
-                .tags(Set.of("media", "image", "video"))
-                .build());
+        log.info("[OrchestratorCore] ready (agent cards registered at runtime: expect ~20)");
     }
 
     // ==================== 核心入口 ====================
@@ -319,39 +226,24 @@ public class OrchestratorCore {
         return switch (intent) {
             case GREETING -> Map.of("route", "direct", "response",
                     "你好！我是 LQRAgent 智能学习助手，可以帮你解答问题、规划学习路径、生成学习资源。请问有什么可以帮助你的？");
-            case HELP -> Map.of("route", "direct", "response", buildHelpMessage());
+            case HELP -> Map.of("route", "direct", "response", agentCardRegistry.buildHelpMessage());
             case LEARNING_PATH -> Map.of("route", "learning_path", "agent",
-                    capabilityRegistry.matchBestAgent("learning_path"));
+                    agentCardRegistry.matchBestAgent("learning_path"));
             case RESOURCE -> Map.of("route", "resource", "agent",
-                    capabilityRegistry.matchBestAgent("resource"));
+                    agentCardRegistry.matchBestAgent("resource"));
             case QUIZ -> Map.of("route", "resource", "agent",
-                    capabilityRegistry.matchBestAgent("quiz"));
+                    agentCardRegistry.matchBestAgent("quiz"));
             case DIAGRAM -> Map.of("route", "diagram", "agent", AgentIds.DIAGRAM);
             case SUMMARY -> Map.of("route", "summary", "agent", AgentIds.SUMMARY);
             case RECOMMENDATION -> Map.of("route", "recommendation", "agent",
-                    capabilityRegistry.matchBestAgent("recommendation"));
+                    agentCardRegistry.matchBestAgent("recommendation"));
             case ASSESSMENT -> Map.of("route", "assessment", "agent",
-                    capabilityRegistry.matchBestAgent("assessment"));
-            case PROFILE -> Map.of("route", "profile", "agent", "profile_agent", "message", message);
+                    agentCardRegistry.matchBestAgent("assessment"));
+            case PROFILE -> Map.of("route", "profile", "agent", AgentIds.PROFILE, "message", message);
             case INTERVENTION -> Map.of("route", "intervention", "agent",
-                    capabilityRegistry.matchBestAgent("intervention"));
+                    agentCardRegistry.matchBestAgent("intervention"));
             default -> Map.of("route", "qa", "agent", AgentIds.QA, "message", message);
         };
-    }
-
-    /**
-     * 从 CapabilityRegistry 动态构建帮助信息
-     */
-    private String buildHelpMessage() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("我可以帮你做这些事情：\n");
-        int idx = 1;
-        for (AgentCapability cap : capabilityRegistry.getAllCapabilities()) {
-            if (cap.agentId().equals(AgentIds.ORCHESTRATOR)) continue;
-            sb.append(idx++).append(". ").append(cap.description()).append("\n");
-        }
-        sb.append("\n请问有什么可以帮助你的？");
-        return sb.toString();
     }
 
     // ==================== Pipeline 执行 ====================

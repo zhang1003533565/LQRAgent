@@ -1,12 +1,16 @@
 package com.lqragent.backend.orchestrator.card;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
+
+import com.lqragent.backend.orchestrator.AgentIds;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -67,5 +71,81 @@ public class AgentCardRegistry {
             sb.append("\n");
         }
         return sb.toString();
+    }
+
+    /**
+     * 按能力标签精确匹配（capabilities 列表）
+     */
+    public List<AgentCard> findByTag(String tag) {
+        if (tag == null || tag.isBlank()) {
+            return List.of();
+        }
+        String lower = tag.toLowerCase();
+        return cards.values().stream()
+                .filter(c -> c.capabilities() != null
+                        && c.capabilities().stream().anyMatch(t -> t.equalsIgnoreCase(lower)))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 按关键词匹配 agentId、展示名、描述、能力标签
+     */
+    public List<AgentCard> findByKeyword(String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return List.of();
+        }
+        String lower = keyword.toLowerCase();
+        return cards.values().stream()
+                .filter(c -> matchesKeyword(c, lower))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 按意图关键词匹配最佳 Agent（简单请求降级路由）
+     */
+    public String matchBestAgent(String keyword) {
+        List<AgentCard> byTag = findByTag(keyword);
+        if (!byTag.isEmpty()) {
+            return byTag.get(0).agentId();
+        }
+        List<AgentCard> byKeyword = findByKeyword(keyword);
+        if (!byKeyword.isEmpty()) {
+            return byKeyword.get(0).agentId();
+        }
+        return AgentIds.QA;
+    }
+
+    /**
+     * 构建用户帮助信息（HELP 意图）
+     */
+    public String buildHelpMessage() {
+        if (cards.isEmpty()) {
+            return "暂无可用能力，请稍后再试。";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("我可以帮你做这些事情：\n");
+        int idx = 1;
+        for (AgentCard c : cards.values()) {
+            sb.append(idx++).append(". ").append(c.description()).append("\n");
+        }
+        sb.append("\n请问有什么可以帮助你的？");
+        return sb.toString();
+    }
+
+    private static boolean matchesKeyword(AgentCard card, String keyword) {
+        if (card.agentId().toLowerCase().contains(keyword)) {
+            return true;
+        }
+        if (card.displayName().toLowerCase().contains(keyword)) {
+            return true;
+        }
+        if (card.description().toLowerCase().contains(keyword)) {
+            return true;
+        }
+        if (card.capabilities() != null) {
+            return card.capabilities().stream()
+                    .anyMatch(t -> t.toLowerCase().contains(keyword));
+        }
+        return false;
     }
 }

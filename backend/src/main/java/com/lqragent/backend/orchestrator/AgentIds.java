@@ -19,6 +19,7 @@ public final class AgentIds {
     public static final String LEARNING_STYLE = "learning_style_agent";
     
     // 内容生成层
+    public static final String LESSON = "lesson_agent";
     public static final String DIAGRAM = "diagram_agent";
     public static final String SUMMARY = "summary_agent";
     public static final String QUIZ = "quiz_agent";

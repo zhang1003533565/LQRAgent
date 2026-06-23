@@ -11,10 +11,9 @@ import com.lqragent.backend.agents.base.PeerCallContext;
 import com.lqragent.backend.orchestrator.artifact.Artifact;
 import com.lqragent.backend.orchestrator.artifact.ArtifactExtractor;
 import com.lqragent.backend.orchestrator.artifact.ArtifactKind;
-import com.lqragent.backend.orchestrator.capability.AgentCapability;
-import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
 import com.lqragent.backend.orchestrator.card.AgentCard;
 import com.lqragent.backend.orchestrator.card.AgentCardRegistry;
+import com.lqragent.backend.orchestrator.card.ToolSpec;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.orchestrator.message.Performative;
@@ -61,16 +60,13 @@ public abstract class BaseAgent implements AgentInterface {
 
     protected static final int MAX_ITERATIONS = 3;
 
-    /** CapabilityRegistry（CFP 协商协议使用） */
-    protected CapabilityRegistry capabilityRegistry;
+    /** AgentCardRegistry（能力目录 / CFP 协商） */
+    @Autowired(required = false)
+    protected AgentCardRegistry agentCardRegistry;
 
     /** AgentRegistry（PipelineEngine 使用） */
     @Autowired(required = false)
     protected AgentRegistry agentRegistry;
-
-    /** 阶段一新增：AgentCardRegistry（声明式能力目录，供 PlanningAgent v2 使用） */
-    @Autowired(required = false)
-    protected AgentCardRegistry agentCardRegistry;
 
     /** 阶段六新增：Agent 间动态协作上下文 */
     protected final ThreadLocal<Map<String, Object>> currentTaskContext = ThreadLocal.withInitial(HashMap::new);
@@ -83,10 +79,6 @@ public abstract class BaseAgent implements AgentInterface {
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.promptService = promptService;
-    }
-
-    public void setCapabilityRegistry(CapabilityRegistry registry) {
-        this.capabilityRegistry = registry;
     }
 
     public void setAgentRegistry(AgentRegistry registry) {
@@ -638,27 +630,36 @@ public abstract class BaseAgent implements AgentInterface {
     }
 
     protected boolean evaluateCapability(String taskDescription) {
-        if (capabilityRegistry == null) return true;
-        return capabilityRegistry.findById(agentId)
-                .map(cap -> cap.tags().stream().anyMatch(taskDescription.toLowerCase()::contains)
-                        || cap.description().toLowerCase().contains(taskDescription.toLowerCase()))
+        if (agentCardRegistry == null) {
+            return true;
+        }
+        return agentCardRegistry.findById(agentId)
+                .map(card -> card.capabilities().stream()
+                        .anyMatch(tag -> taskDescription.toLowerCase().contains(tag.toLowerCase()))
+                        || card.description().toLowerCase().contains(taskDescription.toLowerCase()))
                 .orElse(false);
     }
 
     protected long estimateDuration(String taskDescription) {
-        if (capabilityRegistry == null) return 30000;
-        return capabilityRegistry.findById(agentId)
-                .map(AgentCapability::avgLatencyMs)
+        if (agentCardRegistry == null) {
+            return 30000;
+        }
+        return agentCardRegistry.findById(agentId)
+                .map(AgentCard::avgLatencyMs)
                 .orElse(30000L);
     }
 
-    protected List<AgentCapability> findCapablePeers(String keyword) {
-        if (capabilityRegistry == null) return List.of();
-        return capabilityRegistry.findByKeyword(keyword);
+    protected List<AgentCard> findCapablePeers(String keyword) {
+        if (agentCardRegistry == null) {
+            return List.of();
+        }
+        return agentCardRegistry.findByKeyword(keyword);
     }
 
-    protected Optional<AgentCapability> getPeerCapability(String peerAgentId) {
-        if (capabilityRegistry == null) return Optional.empty();
-        return capabilityRegistry.findById(peerAgentId);
+    protected Optional<AgentCard> getPeerCard(String peerAgentId) {
+        if (agentCardRegistry == null) {
+            return Optional.empty();
+        }
+        return agentCardRegistry.findById(peerAgentId);
     }
 }
