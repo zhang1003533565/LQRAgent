@@ -6,7 +6,6 @@ import LearningResourcesPage from './LearningResourcesPage'
 import QuizPage from './QuizPage'
 import UploadPage from './UploadPage'
 import ProfilePage from './ProfilePage'
-import ProfileCenterPage from './ProfileCenterPage'
 import KnowledgeGraphPage from './KnowledgeGraphPage'
 
 type RouteState = {

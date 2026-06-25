@@ -1,5 +1,0 @@
-export { default as CoursesView } from './CoursesView'
-export { default as RecordsView } from './RecordsView'
-export { default as KnowledgeView } from './KnowledgeView'
-export { default as NotesView } from './NotesView'
-export { default as SettingsView } from './SettingsView'

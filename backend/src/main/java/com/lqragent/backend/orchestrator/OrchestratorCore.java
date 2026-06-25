@@ -30,7 +30,6 @@ import com.lqragent.backend.orchestrator.card.AgentCardRegistry;
 import com.lqragent.backend.orchestrator.context.LearnerContextService;
 import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
-import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.orchestrator.pipeline.PipelineConfig;
 import com.lqragent.backend.orchestrator.pipeline.PipelineEngine;
 import com.lqragent.backend.orchestrator.pipeline.PipelineResult;
@@ -656,14 +655,6 @@ public class OrchestratorCore {
                 .map(StepResult::getStepId)
                 .findFirst()
                 .orElse(null);
-    }
-
-    private void sendTask(String taskId, String agentId, String action, Map<String, Object> payload) {
-        Map<String, Object> content = new HashMap<>(payload);
-        content.put("action", action);
-        AgentMessage msg = AgentMessage.request(taskId, AgentIds.ORCHESTRATOR, agentId, content);
-        streams.send("stream:agent:" + agentId, msg);
-        log.info("[Orchestrator] sent task to {}: {}", agentId, action);
     }
 
     private void sendToFrontend(WebSocketSession session, Map<String, Object> data) {
