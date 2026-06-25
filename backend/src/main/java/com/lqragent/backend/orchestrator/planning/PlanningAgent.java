@@ -8,6 +8,8 @@ import java.util.Map;
 import org.springframework.stereotype.Component;
 
 import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.base.LlmResponse;
+import com.lqragent.backend.agents.base.ToolCall;
 import com.lqragent.backend.orchestrator.card.AgentCardRegistry;
 
 import lombok.extern.slf4j.Slf4j;
@@ -65,7 +67,7 @@ public class PlanningAgent {
             String systemPrompt = promptProvider.buildSystemPrompt();
             List<Map<String, Object>> messages = promptProvider.buildUserMessages(
                     message, chatHistory, learnerContext);
-            LlmClient.LlmResponse resp = llmClient.chat(systemPrompt, messages, PlanTools.all());
+            LlmResponse resp = llmClient.chat(systemPrompt, messages, PlanTools.all());
 
             if (!resp.isSuccess()) {
                 log.warn("[PlanningAgent v4] LLM 调用失败: {}，兜底 QA", resp.error());
@@ -77,7 +79,7 @@ public class PlanningAgent {
                 return fallbackQa();
             }
 
-            LlmClient.ToolCall tc = resp.toolCalls().get(0);
+            ToolCall tc = resp.toolCalls().get(0);
             return routeByToolCall(tc, message, userId);
 
         } catch (Exception e) {
@@ -86,7 +88,7 @@ public class PlanningAgent {
         }
     }
 
-    private PlanResult routeByToolCall(LlmClient.ToolCall tc, String message, String userId) {
+    private PlanResult routeByToolCall(ToolCall tc, String message, String userId) {
         String toolName = tc.name();
         Map<String, Object> args = tc.parseArguments();
         log.info("[PlanningAgent v4] toolCall: {} args={}", toolName, args);

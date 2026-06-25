@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.agents.base.AgentTool;
 import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.base.LlmResponse;
+import com.lqragent.backend.agents.base.StreamSink;
 import com.lqragent.backend.agents.aiserver.tools.AiServerToolFactory;
 import com.lqragent.backend.agents.base.RagSearchTool;
 import com.lqragent.backend.orchestrator.AgentIds;
@@ -87,6 +89,31 @@ public class QaAgent extends BaseAgent {
     public AgentMessage processWithHistory(AgentMessage request, List<Map<String, Object>> history) {
         prefetchRag(request);
         return executeLlmLoop(request, history);
+    }
+
+    /**
+     * 带对话历史的流式处理（RAG 预取后直出 token 流，不走 tool 循环）
+     */
+    public AgentMessage streamWithHistory(AgentMessage request, List<Map<String, Object>> history, StreamSink sink) {
+        prefetchRag(request);
+        List<Map<String, Object>> messages = new java.util.ArrayList<>();
+        if (history != null) {
+            messages.addAll(history);
+        }
+        messages.add(Map.of("role", "user", "content", buildUserMessage(request)));
+
+        LlmResponse response = llmClient.chatStream(getSystemPrompt(), messages, sink);
+        if (!response.isSuccess() || response.content() == null) {
+            return AgentMessage.error(request.getTaskId(), getAgentId(), response.error());
+        }
+
+        Map<String, Object> content = new java.util.LinkedHashMap<>();
+        content.put("content", response.content());
+        Object ragSources = request.getContent().get("ragSources");
+        if (ragSources != null) {
+            content.put("ragSources", ragSources);
+        }
+        return AgentMessage.inform(request.getTaskId(), getAgentId(), request.getSender(), content);
     }
 
     private static String extractRagContext(String json) {

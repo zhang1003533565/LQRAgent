@@ -1,0 +1,105 @@
+package com.lqragent.backend.orchestrator.planning;
+
+/**
+ * 轻量意图启发式（不调用 LLM），供 Gate / QA 快通道使用
+ */
+public final class IntentHeuristics {
+
+    private IntentHeuristics() {}
+
+    /** 明显问答：可跳过 PlanningAgent 直调 QaAgent */
+    public static boolean isObviousQa(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String m = message.trim();
+        if (isVagueLearningIntent(m) || isExplicitFullLearningPlan(m)) {
+            return false;
+        }
+        if (containsAny(m, "出题", "练习题", "测验", "视频", "图片", "示意图", "海报", "动画", "学习计划", "学习路径", "路线图", "帮我学", "想学", "入门")) {
+            return false;
+        }
+        return containsAny(m, "什么是", "何为", "是什么", "如何", "怎么", "为什么", "怎样", "解释", "含义", "区别", "原理")
+                || m.endsWith("?") || m.endsWith("？");
+    }
+
+    /** 模糊学习意图：想学 X 但缺少细节 */
+    public static boolean isVagueLearningIntent(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String m = message.trim();
+        boolean wantsLearn = containsAny(m, "想学", "帮我学", "学习一下", "入门", "规划", "学习计划", "学习路径", "路线图", "制定计划", "怎么学");
+        if (!wantsLearn) {
+            return false;
+        }
+        return !hasSufficientLearningDetails(m);
+    }
+
+    /** 用户明确要求完整资源/讲义 */
+    public static boolean isExplicitFullLearningPlan(String message) {
+        if (message == null) {
+            return false;
+        }
+        String m = message.trim();
+        if (containsAny(m, "生成讲义", "完整计划", "完整的学习", "全套", "学习资源", "教案", "课件", "完整路径", "讲义")) {
+            return true;
+        }
+        return m.contains("完整") && containsAny(m, "计划", "讲义", "资源", "路径");
+    }
+
+    /** 层 3：用户确认生成讲义/资源 */
+    public static boolean isResourceGenerationConfirm(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        if (isResourceGenerationDecline(message)) {
+            return false;
+        }
+        String m = message.trim().toLowerCase();
+        if (m.equals("y") || m.equals("yes") || m.equals("是") || m.equals("要")
+                || m.equals("好的") || m.equals("好") || m.equals("行")) {
+            return true;
+        }
+        if (containsAny(m, "生成讲义", "生成资源", "要生成", "帮我生成", "开始生成")) {
+            return true;
+        }
+        boolean affirms = containsAny(m, "是的", "好的", "可以", "要", "需要", "确认", "开始", "生成");
+        boolean aboutResources = containsAny(m, "讲义", "资源", "练习题", "教案");
+        return affirms && (aboutResources || m.length() <= 8);
+    }
+
+    /** 层 3：用户拒绝生成资源 */
+    public static boolean isResourceGenerationDecline(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String m = message.trim().toLowerCase();
+        return containsAny(m, "不用", "不要", "不需要", "跳过", "算了", "否", "no", "n")
+                || m.equals("不用了") || m.equals("不要了");
+    }
+
+    /** 消息本身已含足够规划信息 */
+    public static boolean hasSufficientLearningDetails(String message) {
+        if (message == null) {
+            return false;
+        }
+        String m = message.trim().replace('\n', ' ');
+        boolean hasGoal = containsAny(m, "数据分析", "web", "django", "找工作", "就业", "项目", "考研", "考试", "python");
+        boolean hasLevel = containsAny(m, "零基础", "新手", "初学", "有基础", "学过", "入门过", "熟练");
+        boolean hasTime = m.matches(".*\\d+\\s*(个月|月|周|天|year|years).*")
+                || containsAny(m, "三个月", "半年", "一年", "1个月", "2个月", "3个月", "6个月")
+                || m.contains("个月");
+        return (hasLevel && hasTime) || (hasGoal && hasLevel) || (hasGoal && hasTime);
+    }
+
+    private static boolean containsAny(String text, String... needles) {
+        String lower = text.toLowerCase();
+        for (String n : needles) {
+            if (lower.contains(n.toLowerCase())) {
+                return true;
+            }
+        }
+        return false;
+    }
+}

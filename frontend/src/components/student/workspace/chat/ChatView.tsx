@@ -7,7 +7,6 @@ import { chatApi } from '@/api/student/chat'
 import { trackBehavior } from '@/utils/tracker'
 import ChatMessageList from './ChatMessageList'
 import ChatComposer from './ChatComposer'
-import AgentStepsBar from './AgentStepsBar'
 import styles from './ChatView.module.css'
 
 export default function ChatView() {
@@ -60,9 +59,6 @@ export default function ChatView() {
             <span className={styles.statusText}>
               {isConnected ? '已连接' : '连接中'}
             </span>
-          </div>
-          <div className={styles.stepsWrap}>
-            <AgentStepsBar />
           </div>
           <div className={styles.scrollBody}>
             <div className={styles.content}>

@@ -2,6 +2,7 @@ package com.lqragent.backend.chat.handler;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -34,6 +35,9 @@ import com.lqragent.backend.orchestrator.pipeline.StepResult;
 import com.lqragent.backend.orchestrator.pipeline.StepStreamPolicy;
 import com.lqragent.backend.orchestrator.planning.PlanIntent;
 import com.lqragent.backend.orchestrator.planning.PlanResult;
+import com.lqragent.backend.orchestrator.planning.PlanningSessionState;
+import com.lqragent.backend.orchestrator.planning.PlanningSessionStateStore;
+import com.lqragent.backend.agents.base.StreamSink;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 
 import lombok.extern.slf4j.Slf4j;
@@ -62,9 +66,35 @@ public class ChatRouteDispatcher {
     private final PromptGenerationService promptGenerationService;
     private final LearningPathService learningPathService;
     private final AppRuntimeConfig runtimeConfig;
+    private final PlanningSessionStateStore planningSessionStateStore;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private static final String ORCHESTRATOR_STEP_ID = "orchestrator";
+
+    /** Pipeline stepId → 前端展示名（与 frontend STEP_LABELS 对齐） */
+    private static final Map<String, String> PIPELINE_STEP_LABELS = Map.ofEntries(
+            Map.entry("profile", "获取画像"),
+            Map.entry("path_gen", "生成路径"),
+            Map.entry("resources", "生成资源"),
+            Map.entry("effect", "效果评估"),
+            Map.entry("quality", "质量检查"),
+            Map.entry("resource", "资源生成"),
+            Map.entry("diagram", "图表生成"),
+            Map.entry("media_gen", "媒体生成"),
+            Map.entry("prompt_gen", "Prompt 生成"),
+            Map.entry("assessment", "评估批改"),
+            Map.entry("summary", "总结生成"),
+            Map.entry("quiz", "题目生成"),
+            Map.entry("recommendation", "个性化推荐"),
+            Map.entry("intervention", "学习干预"),
+            Map.entry("knowledge", "知识检索"),
+            Map.entry("analysis", "内容分析"),
+            Map.entry("answer", "生成回答"),
+            Map.entry("path_adjust", "路径调整"),
+            Map.entry("resource_push", "资源推送"),
+            Map.entry("content_analysis", "内容分析"),
+            Map.entry("qa", "生成讲解")
+    );
 
     public ChatRouteDispatcher(
             OrchestratorCore orchestratorCore,
@@ -76,7 +106,8 @@ public class ChatRouteDispatcher {
             MediaGenerationService mediaGenerationService,
             PromptGenerationService promptGenerationService,
             LearningPathService learningPathService,
-            AppRuntimeConfig runtimeConfig) {
+            AppRuntimeConfig runtimeConfig,
+            PlanningSessionStateStore planningSessionStateStore) {
         this.orchestratorCore = orchestratorCore;
         this.pipelineEngine = pipelineEngine;
         this.qaAgent = qaAgent;
@@ -87,12 +118,124 @@ public class ChatRouteDispatcher {
         this.promptGenerationService = promptGenerationService;
         this.learningPathService = learningPathService;
         this.runtimeConfig = runtimeConfig;
+        this.planningSessionStateStore = planningSessionStateStore;
+    }
+
+    // ==================== 层 3：资源按需生成 ====================
+
+    /** 用户确认后，基于已有路径跑 resources-only pipeline */
+    public void handleResourceFollowUp(WebSocketSession session, Long userId, String sessionId,
+                                       String originalGoal, WsSender sender) {
+        AtomicBoolean contentStreamed = new AtomicBoolean(false);
+        try {
+            java.util.Optional<LearningPathDto> pathOpt = learningPathService.getCurrentPath(userId);
+            if (pathOpt.isEmpty()) {
+                sender.sendEvent(session, "chunk", "未找到可用的学习路径，请先重新规划学习路径。");
+                sendDone(session, sessionId, null, sender);
+                return;
+            }
+
+            PipelineConfig config = PipelineTemplates.learningPathResourcesOnly();
+            if (runtimeConfig.isStreamProgressEnabled()) {
+                sendPipelineStart(session, config, sender);
+            }
+
+            TaskContext context = new TaskContext(
+                    "resources-" + System.currentTimeMillis(),
+                    String.valueOf(userId), sessionId,
+                    originalGoal != null ? originalGoal : pathOpt.get().getGoal());
+            context.setResult("path_gen", buildPathGenResult(pathOpt.get()));
+
+            PipelineResult pipelineResult = pipelineEngine.execute(config, context,
+                    buildStepCallback(session, userId, sessionId, sender, contentStreamed));
+
+            if (pipelineResult.isSuccess()) {
+                handlePipelineSuccess(session, pipelineResult, userId, sessionId,
+                        config.getPipelineId(), originalGoal, sender, contentStreamed);
+            } else {
+                handlePipelineFailure(session, pipelineResult, userId, sessionId, originalGoal,
+                        config.getPipelineId(), sender);
+            }
+        } catch (Exception e) {
+            log.error("[WS] resource follow-up error: {}", e.getMessage(), e);
+            sender.sendEvent(session, "chunk", "抱歉，讲义生成失败：" + e.getMessage());
+            sendDone(session, sessionId, null, sender);
+            agentMemory.addAgentResponse(userId, Long.parseLong(sessionId),
+                    "抱歉，讲义生成失败：" + e.getMessage(), "learning_path_resources");
+        }
+    }
+
+    /** 用户拒绝生成资源 */
+    public void handleResourceDecline(WebSocketSession session, Long userId, String sessionId, WsSender sender) {
+        String msg = "好的，已跳过讲义生成。您可以随时说「生成讲义」继续。";
+        sender.sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                .put("stepId", ORCHESTRATOR_STEP_ID)
+                .put("agent", ORCHESTRATOR_STEP_ID)
+                .put("label", "已跳过")
+                .put("status", "done")
+                .toString());
+        sender.sendEvent(session, "chunk", msg);
+        Long messageId = agentMemory.addAgentResponse(userId, Long.parseLong(sessionId), msg, "orchestrator", null);
+        sendDone(session, sessionId, messageId, sender);
+    }
+
+    /** 资源确认意图不明确时重新引导 */
+    public void handleResourceConfirmReminder(WebSocketSession session, Long userId, String sessionId,
+                                              WsSender sender) {
+        String msg = "请回复「生成」开始生成讲义，或「不用」跳过。";
+        sender.sendEvent(session, "chunk", msg);
+        Long messageId = agentMemory.addAgentResponse(userId, Long.parseLong(sessionId), msg, "orchestrator", null);
+        sendDone(session, sessionId, messageId, sender);
+    }
+
+    private void sendPipelineStart(WebSocketSession session, PipelineConfig config, WsSender sender) {
+        var root = objectMapper.createObjectNode();
+        root.put("pipelineName", config.getName() != null ? config.getName() : config.getPipelineId());
+        root.put("stepCount", config.getSteps() != null ? config.getSteps().size() : 0);
+        root.put("taskId", UUID.randomUUID().toString());
+        var stepsNode = objectMapper.createArrayNode();
+        if (config.getSteps() != null) {
+            for (var step : config.getSteps()) {
+                var stepNode = objectMapper.createObjectNode();
+                stepNode.put("stepId", step.getStepId());
+                stepNode.put("agentId", step.getAgentId());
+                stepNode.put("action", step.getAction() != null ? step.getAction() : "");
+                stepsNode.add(stepNode);
+            }
+        }
+        root.set("steps", stepsNode);
+        sender.sendEvent(session, "pipeline_start", root.toString());
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> buildPathGenResult(LearningPathDto dto) {
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("success", true);
+        if (dto.getGoal() != null) {
+            result.put("goal", dto.getGoal());
+        }
+        if (dto.getNodes() != null) {
+            result.put("nodes", objectMapper.convertValue(dto.getNodes(), List.class));
+            result.put("nodeCount", dto.getNodes().size());
+        }
+        if (dto.getPlanDescription() != null && !dto.getPlanDescription().isBlank()) {
+            result.put("planDescription", dto.getPlanDescription());
+            result.put("content", dto.getPlanDescription());
+        }
+        if (dto.getPathId() != null) {
+            result.put("pathId", dto.getPathId());
+        }
+        return result;
     }
 
     // ==================== CLARIFY ====================
 
     public void handleClarify(WebSocketSession session, PlanResult plan,
-                              Long userId, String sessionId, WsSender sender) {
+                              Long userId, String sessionId, String originalGoal, WsSender sender) {
+        if (runtimeConfig.isPlanningSessionStateEnabled() && originalGoal != null && !originalGoal.isBlank()) {
+            planningSessionStateStore.saveAwaitingClarify(
+                    Long.parseLong(sessionId), originalGoal, plan.clarifyQuestions());
+        }
         sender.sendEvent(session, "agent_step", objectMapper.createObjectNode()
                 .put("agent", "orchestrator")
                 .put("label", "需要更多信息")
@@ -106,7 +249,7 @@ public class ChatRouteDispatcher {
                 clarifyMsg.append(i + 1).append(". ").append(questions.get(i)).append("\n");
             }
         }
-        clarifyMsg.append("\n请告诉我这些信息，我会为你量身定制学习路径。");
+        clarifyMsg.append("\n你按上面几点简单回复就行，我会据此帮你安排学习路径。");
 
         sender.sendEvent(session, "chunk", clarifyMsg.toString());
         sender.sendEvent(session, "done", objectMapper.createObjectNode()
@@ -121,6 +264,9 @@ public class ChatRouteDispatcher {
                                Long userId, String sessionId, String content, WsSender sender) {
         AtomicBoolean contentStreamed = new AtomicBoolean(false);
         try {
+            if (runtimeConfig.isStreamProgressEnabled()) {
+                sendPipelineStart(session, plan, sender);
+            }
             PipelineResult pipelineResult = orchestratorCore.handlePipelineAsync(
                     plan, String.valueOf(userId), content,
                     buildStepCallback(session, userId, sessionId, sender, contentStreamed));
@@ -128,7 +274,8 @@ public class ChatRouteDispatcher {
             String agent = plan.pipelineConfig().getPipelineId();
 
             if (pipelineResult.isSuccess()) {
-                handlePipelineSuccess(session, pipelineResult, userId, sessionId, agent, sender, contentStreamed);
+                handlePipelineSuccess(session, pipelineResult, userId, sessionId, agent, content, sender,
+                        contentStreamed);
             } else {
                 handlePipelineFailure(session, pipelineResult, userId, sessionId, content, agent, sender);
             }
@@ -151,9 +298,47 @@ public class ChatRouteDispatcher {
     private PipelineEngine.StepCallback buildStepCallback(WebSocketSession wsSession,
                                                            Long userId, String sessionId, WsSender sender,
                                                            AtomicBoolean contentStreamed) {
-        return (stepId, agentId, success, stepData) ->
-                handleStepComplete(wsSession, agentId, success, stepData, userId, sender,
+        return new PipelineEngine.StepCallback() {
+            @Override
+            public void onStepStart(String stepId, String agentId, String action) {
+                if (runtimeConfig.isStreamProgressEnabled()) {
+                    handleStepStart(wsSession, stepId, agentId, sender);
+                }
+            }
+
+            @Override
+            public void onStepComplete(String stepId, String agentId, boolean success,
+                                       Map<String, Object> stepData) {
+                handleStepComplete(wsSession, stepId, agentId, success, stepData, userId, sender,
                         contentStreamed, null);
+            }
+        };
+    }
+
+    private void sendPipelineStart(WebSocketSession session, PlanResult plan, WsSender sender) {
+        PipelineConfig config = plan.pipelineConfig();
+        if (config == null || config.getSteps() == null) {
+            return;
+        }
+        sendPipelineStart(session, config, sender);
+    }
+
+    private void handleStepStart(WebSocketSession wsSession, String stepId, String agentId, WsSender sender) {
+        String label = pipelineStepLabel(stepId, agentId) + "…";
+        sender.sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
+                .put("stepId", stepId)
+                .put("agent", agentId)
+                .put("agentId", agentId)
+                .put("label", label)
+                .put("status", "running")
+                .toString());
+    }
+
+    private String pipelineStepLabel(String stepId, String agentId) {
+        if (stepId != null && PIPELINE_STEP_LABELS.containsKey(stepId)) {
+            return PIPELINE_STEP_LABELS.get(stepId);
+        }
+        return agentId != null ? agentId : stepId;
     }
 
     /**
@@ -162,21 +347,25 @@ public class ChatRouteDispatcher {
      *
      * @param memoryBuffer 非 null 时把已推送的 chunk 文本追加进去（供 QA 记忆存储）
      */
-    private void handleStepComplete(WebSocketSession wsSession, String agentId, boolean success,
+    private void handleStepComplete(WebSocketSession wsSession, String stepId, String agentId, boolean success,
                                     Map<String, Object> stepData, Long userId, WsSender sender,
                                     AtomicBoolean contentStreamed, StringBuilder memoryBuffer) {
         try {
             if (!success) {
-                log.debug("[WS] step ({}) failed", agentId);
+                log.debug("[WS] step ({}) failed", stepId);
                 sender.sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
+                        .put("stepId", stepId)
                         .put("agent", agentId)
+                        .put("agentId", agentId)
                         .put("label", "执行失败")
                         .put("status", "failed")
                         .toString());
                 return;
             }
             sender.sendEvent(wsSession, "agent_step", objectMapper.createObjectNode()
+                    .put("stepId", stepId)
                     .put("agent", agentId)
+                    .put("agentId", agentId)
                     .put("label", "已完成")
                     .put("status", "done")
                     .toString());
@@ -462,16 +651,40 @@ public class ChatRouteDispatcher {
     }
 
     private void handlePipelineSuccess(WebSocketSession session, PipelineResult pipelineResult,
-                                       Long userId, String sessionId, String agent, WsSender sender,
-                                       AtomicBoolean contentStreamed) {
+                                       Long userId, String sessionId, String agent, String originalGoal,
+                                       WsSender sender, AtomicBoolean contentStreamed) {
         // 步骤回调已逐步发送了 chunk + agent_step + artifact，这里只发 done 结束消息
         // 拼合步骤内容仅用于记忆存储：排除 prompt 工程等内部步骤，有图片时只存短文案
         Map<String, Object> metadata = mergeAssistantMetadata(pipelineResult,
                 extractRagSourcesFromPipeline(pipelineResult));
         String finalContent = buildAssistantPersistContent(pipelineResult, metadata);
 
-        if (!contentStreamed.get() && !finalContent.isBlank()) {
+        if (!contentStreamed.get() && !finalContent.isBlank()
+                && !(runtimeConfig.isStreamProgressEnabled() && runtimeConfig.isStreamProgressSkipFinalDump())) {
             sender.sendEvent(session, "chunk", finalContent);
+        }
+
+        // 层 3：core 路径先交付，询问是否生成讲义/资源
+        if (runtimeConfig.isPathStagedDeliveryEnabled() && "learning_path_core".equals(agent)) {
+            String resourcePrompt = "\n\n是否需要为您生成各节点的讲义与练习题？\n"
+                    + "回复「生成」或「是的」开始，回复「不用」跳过。";
+            sender.sendEvent(session, "chunk", resourcePrompt);
+            if (runtimeConfig.isPlanningSessionStateEnabled() && originalGoal != null && !originalGoal.isBlank()) {
+                planningSessionStateStore.saveAwaitingResourceConfirm(Long.parseLong(sessionId), originalGoal);
+            }
+            sender.sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                    .put("stepId", ORCHESTRATOR_STEP_ID)
+                    .put("agent", ORCHESTRATOR_STEP_ID)
+                    .put("label", "路径已生成")
+                    .put("status", "done")
+                    .toString());
+            String persistContent = finalContent.isBlank() ? "学习路径已生成。" : finalContent;
+            persistContent = persistContent + resourcePrompt;
+            Long messageId = agentMemory.addAgentResponse(userId, Long.parseLong(sessionId), persistContent, agent,
+                    metadata);
+            sendDone(session, sessionId, messageId, sender);
+            triggerProfileExtractionAsync(userId, sessionId, session, sender);
+            return;
         }
 
         sender.sendEvent(session, "agent_step", objectMapper.createObjectNode()
@@ -793,7 +1006,21 @@ public class ChatRouteDispatcher {
     // ==================== 委托 OrchestratorCore 的方法 ====================
 
     public PlanResult planOnly(Long userId, String content, String chatHistory) {
-        return orchestratorCore.planOnly(String.valueOf(userId), content, chatHistory);
+        return planOnly(userId, content, chatHistory, false);
+    }
+
+    public PlanResult planOnly(Long userId, String content, String chatHistory, boolean skipGateG1) {
+        return orchestratorCore.planOnly(String.valueOf(userId), content, chatHistory, skipGateG1);
+    }
+
+    /** 读取 Clarify 会话状态（供 WebSocketHandler 合并消息） */
+    public PlanningSessionState getPlanningSessionState(Long chatSessionId) {
+        return planningSessionStateStore.get(chatSessionId);
+    }
+
+    /** Pipeline 成功后清除 Clarify 状态 */
+    public void clearPlanningSessionState(Long chatSessionId) {
+        planningSessionStateStore.clear(chatSessionId);
     }
 
     public Map<String, Object> handleSimpleRequest(PlanIntent intent, String content) {
@@ -804,6 +1031,11 @@ public class ChatRouteDispatcher {
 
     public void handleQa(WebSocketSession session, Long userId, String sessionId,
                          String content, String chatHistory, WsSender sender) {
+        if (runtimeConfig.isLlmStreamSceneEnabled("qa")) {
+            handleQaStream(session, userId, sessionId, content, sender);
+            return;
+        }
+
         sender.sendEvent(session, "agent_step", objectMapper.createObjectNode()
                 .put("agent", "intelligent_qa")
                 .put("label", "正在理解问题...")
@@ -825,7 +1057,7 @@ public class ChatRouteDispatcher {
             AtomicBoolean qaContentStreamed = new AtomicBoolean(false);
             PipelineResult pipelineResult = pipelineEngine.execute(qaConfig, context,
                     (stepId, agentId, success, stepData) -> handleStepComplete(
-                            session, agentId, success, stepData, userId, sender,
+                            session, stepId, agentId, success, stepData, userId, sender,
                             qaContentStreamed, streamedContent));
 
             if (pipelineResult.isSuccess()) {
@@ -901,6 +1133,78 @@ public class ChatRouteDispatcher {
                     : ragMetadata(ragSources);
             Long messageId = agentMemory.addAgentResponse(userId, Long.parseLong(sessionId), qaResponse,
                     pipelineSucceeded ? "pipeline_qa" : "qa_agent", metadata);
+            sendDone(session, sessionId, messageId, sender);
+            triggerProfileExtractionAsync(userId, sessionId, session, sender);
+        } else {
+            sender.sendEvent(session, "chunk", "抱歉，我暂时无法回答这个问题。");
+            sender.sendEvent(session, "done", objectMapper.createObjectNode()
+                    .put("session_id", sessionId)
+                    .toString());
+        }
+    }
+
+    /**
+     * QA 直出 token 流（跳过 3 步 QA Pipeline）
+     */
+    private void handleQaStream(WebSocketSession session, Long userId, String sessionId,
+                                String content, WsSender sender) {
+        sender.sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                .put("agent", "intelligent_qa")
+                .put("label", "正在生成回答...")
+                .put("status", "running")
+                .toString());
+
+        String qaResponse = null;
+        List<Map<String, Object>> ragSources = List.of();
+
+        try {
+            List<AgentMemory.MemoryEntry> recentHistory = agentMemory.getRecentHistory(userId, 10);
+            List<Map<String, Object>> qaHistory = new java.util.ArrayList<>();
+            for (var e : recentHistory) {
+                Map<String, Object> m = new java.util.LinkedHashMap<>();
+                m.put("role", e.getRole());
+                m.put("content", e.getContent());
+                qaHistory.add(m);
+            }
+
+            Map<String, Object> reqContent = new java.util.LinkedHashMap<>(Map.of("goal", content));
+            reqContent.put("userId", userId);
+            AgentMessage agentRequest = AgentMessage.request("qa-stream", "ws_handler", AgentIds.QA, reqContent);
+
+            StreamSink sink = delta -> sender.sendEvent(session, "chunk", delta);
+            AgentMessage agentResponse = qaAgent.streamWithHistory(agentRequest, qaHistory, sink);
+
+            if (agentResponse.getPerformative() == Performative.INFORM) {
+                Object respContent = agentResponse.getContent().get("content");
+                qaResponse = respContent != null ? respContent.toString() : "";
+                Object sourcesObj = agentResponse.getContent().get("ragSources");
+                if (sourcesObj instanceof List<?> list) {
+                    ragSources = list.stream()
+                            .filter(item -> item instanceof Map<?, ?>)
+                            .map(item -> {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> m = (Map<String, Object>) item;
+                                return m;
+                            })
+                            .toList();
+                }
+            }
+        } catch (Exception e) {
+            log.error("[WS] QA stream failed: {}", e.getMessage(), e);
+        }
+
+        if (qaResponse != null && !qaResponse.isBlank()) {
+            sender.sendEvent(session, "agent_step", objectMapper.createObjectNode()
+                    .put("agent", "intelligent_qa")
+                    .put("label", "回答完成")
+                    .put("status", "done")
+                    .toString());
+            if (!ragSources.isEmpty()) {
+                sendRagSourcesArtifact(session, ragSources, sender);
+            }
+            Map<String, Object> metadata = ragMetadata(ragSources);
+            Long messageId = agentMemory.addAgentResponse(userId, Long.parseLong(sessionId), qaResponse,
+                    "qa_agent_stream", metadata);
             sendDone(session, sessionId, messageId, sender);
             triggerProfileExtractionAsync(userId, sessionId, session, sender);
         } else {

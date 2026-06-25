@@ -27,7 +27,9 @@ import com.lqragent.backend.orchestrator.artifact.ArtifactExtractor;
 import com.lqragent.backend.orchestrator.artifact.ArtifactKind;
 import com.lqragent.backend.orchestrator.card.AgentCard;
 import com.lqragent.backend.orchestrator.card.AgentCardRegistry;
+import com.lqragent.backend.orchestrator.context.LearnerContextDto;
 import com.lqragent.backend.orchestrator.context.LearnerContextService;
+import com.lqragent.backend.orchestrator.planning.PlanningGateService;
 import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.pipeline.PipelineConfig;
@@ -66,6 +68,7 @@ public class OrchestratorCore {
     private final LearningPathService learningPathService;
     private final PipelineTaskService pipelineTaskService;
     private final LearnerContextService learnerContextService;
+    private final PlanningGateService planningGateService;
     private final ObjectMapper mapper = new ObjectMapper();
 
     // 任务状态跟踪（用于 learn 流程的 WebSocket 推送）
@@ -77,7 +80,8 @@ public class OrchestratorCore {
                            AgentCardRegistry agentCardRegistry,
                            LearningPathService learningPathService,
                            PipelineTaskService pipelineTaskService,
-                           LearnerContextService learnerContextService) {
+                           LearnerContextService learnerContextService,
+                           PlanningGateService planningGateService) {
         this.streams = streams;
         this.runLogService = runLogService;
         this.llmClient = llmClient;
@@ -88,6 +92,7 @@ public class OrchestratorCore {
         this.learningPathService = learningPathService;
         this.pipelineTaskService = pipelineTaskService;
         this.learnerContextService = learnerContextService;
+        this.planningGateService = planningGateService;
     }
 
     @PostConstruct
@@ -144,17 +149,27 @@ public class OrchestratorCore {
      * 仅做意图识别，不执行 Pipeline（用于异步模式的第一步）
      */
     public PlanResult planOnly(String userId, String message) {
-        return planOnly(userId, message, null);
+        return planOnly(userId, message, null, false);
     }
 
     /**
      * 仅做意图识别，不执行 Pipeline（用于异步模式的第一步，带对话历史）
      */
     public PlanResult planOnly(String userId, String message, String chatHistory) {
+        return planOnly(userId, message, chatHistory, false);
+    }
+
+    /**
+     * 仅做意图识别；skipGateG1 用于 Clarify 合并后跳过「无画像必追问」规则
+     */
+    public PlanResult planOnly(String userId, String message, String chatHistory, boolean skipGateG1) {
         log.info("[Orchestrator] planOnly: userId={}, msg={}", userId, message);
         Long uid = parseUserId(userId);
-        String learnerContext = uid != null ? learnerContextService.buildPromptBlock(uid) : null;
-        PlanResult plan = planningAgent.decompose(message, userId, chatHistory, learnerContext);
+        LearnerContextDto learnerContext = uid != null
+                ? learnerContextService.buildForUser(uid)
+                : LearnerContextDto.builder().build();
+        String learnerPrompt = learnerContext.getPromptBlock();
+        PlanResult plan = planningAgent.decompose(message, userId, chatHistory, learnerPrompt);
 
         // 阶段二新增：将动态 TaskPlan 转为 PipelineConfig
         if (plan.isPlan() && plan.taskPlan() != null) {
@@ -169,6 +184,8 @@ public class OrchestratorCore {
                 plan = PlanResult.pipeline(upgradedConfig, upgradedConfig.getSteps());
             }
         }
+
+        plan = planningGateService.apply(plan, message, learnerContext, skipGateG1);
         return plan;
     }
 

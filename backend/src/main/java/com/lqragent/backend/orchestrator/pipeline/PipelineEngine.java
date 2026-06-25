@@ -50,8 +50,12 @@ public class PipelineEngine {
     private final Map<String, PipelineConfig> templateRegistry = new ConcurrentHashMap<>();
 
     /** 步骤完成回调（用于异步模式下向前端推送进度） */
-    @FunctionalInterface
     public interface StepCallback {
+
+        /** 步骤开始执行（Phase 1 进度流式） */
+        default void onStepStart(String stepId, String agentId, String action) {
+        }
+
         void onStepComplete(String stepId, String agentId, boolean success, Map<String, Object> data);
     }
 
@@ -174,6 +178,13 @@ public class PipelineEngine {
                 List<PipelineStep> readySteps = graph.getReadySteps();
 
                 for (PipelineStep step : readySteps) {
+                    if (callback != null) {
+                        try {
+                            callback.onStepStart(step.getStepId(), step.getAgentId(), step.getAction());
+                        } catch (Exception cbEx) {
+                            log.warn("[Pipeline] step start callback error: {}", cbEx.getMessage());
+                        }
+                    }
                     StepResult result = executeStep(step, context, traceId);
                     allResults.add(result);
                     graph.markCompleted(step.getStepId(), result.isSuccess());

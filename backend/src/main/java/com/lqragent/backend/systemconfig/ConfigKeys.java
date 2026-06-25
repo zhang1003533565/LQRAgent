@@ -72,4 +72,20 @@ public final class ConfigKeys {
     /** 使用 ai-server Agentic Pipeline 开关 */
     public static final String AI_SERVER_USE_AGENTIC_PIPELINE = "ai-server.use-agentic-pipeline";
 
+    // --- Phase 1：规划 Gate（默认关）---
+    public static final String PLANNING_GATE_ENABLED = "planning.gate.enabled";
+    public static final String PLANNING_GATE_FORCE_CLARIFY = "planning.gate.force_clarify";
+    public static final String PLANNING_GATE_PREFER_CORE_PATH = "planning.gate.prefer_core_path";
+    public static final String PLANNING_SESSION_STATE_ENABLED = "planning.session_state.enabled";
+
+    // --- Phase 1：流式输出（默认关）---
+    public static final String STREAM_PROGRESS_ENABLED = "stream.progress.enabled";
+    public static final String STREAM_PROGRESS_SKIP_FINAL_DUMP = "stream.progress.skip_final_dump";
+    public static final String LLM_STREAM_ENABLED = "llm.stream.enabled";
+    public static final String LLM_STREAM_SCENES = "llm.stream.scenes";
+    public static final String LLM_STREAM_QA_FAST_PATH = "llm.stream.qa_fast_path";
+
+    /** 层 3：learning_path_core 完成后询问是否生成讲义 */
+    public static final String PATH_STAGED_DELIVERY_ENABLED = "path.staged_delivery.enabled";
+
 }

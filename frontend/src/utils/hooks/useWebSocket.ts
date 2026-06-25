@@ -1,7 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useChatStore } from '@/utils/store/chatStore'
 import { useAuthStore } from '@/utils/store/authStore'
-import { useAgentTraceStore } from '@/utils/store/agentTraceStore'
 import { dispatchWsMessage } from '@/utils/hooks/wsMessageDispatcher'
 import type { WsRawMessage } from '@/utils/types/agent-events'
 
@@ -19,7 +18,6 @@ export function useWebSocket() {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mountedRef = useRef(true)
   const setConnected = useChatStore((s) => s.setConnected)
-  const clearSteps = useAgentTraceStore((s) => s.clearSteps)
   const token = useAuthStore((s) => s.user?.token)
 
   const cleanup = useCallback(() => {
@@ -81,12 +79,11 @@ export function useWebSocket() {
       console.warn('[WebSocket] not connected')
       return
     }
-    clearSteps()
     const sessionId = useChatStore.getState().sessionId
     wsRef.current.send(
       JSON.stringify({ type: 'message', content, session_id: sessionId }),
     )
-  }, [clearSteps])
+  }, [])
 
   const disconnect = useCallback(() => {
     mountedRef.current = false

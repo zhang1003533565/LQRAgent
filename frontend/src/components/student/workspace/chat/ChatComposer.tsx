@@ -28,6 +28,8 @@ export default function ChatComposer({ onSend }: Props) {
       role: 'assistant',
       content: '',
       streaming: true,
+      agentSteps: [],
+      agentStepsCollapsed: false,
       createdAt: new Date(),
     })
 

@@ -3,6 +3,7 @@ import type { ChatMessage, MessageContentType, QuizData } from '@/utils/types/ch
 import type { MultiCardBlock } from '@/utils/types/multi-card'
 import type { RagSource } from '@/utils/types/artifact'
 import { chatApi } from '@/api/student/chat'
+import { hydrateAgentSteps } from '@/utils/chat/messageAgentSteps'
 
 interface ChatState {
   messages: ChatMessage[]
@@ -153,6 +154,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
           diagramFormat: (metadataParsed.diagramFormat as string) || msg.diagramFormat,
           cards: (metadataParsed.cards as MultiCardBlock[]) || msg.cards,
           ragSources: (metadataParsed.ragSources as RagSource[]) || msg.ragSources,
+          agentSteps: hydrateAgentSteps(metadataParsed.agentSteps) ?? [],
+          agentStepsCollapsed: metadataParsed.agentSteps
+            ? true
+            : undefined,
           metadata: metadataParsed,
           createdAt: new Date(msg.createdAt),
           streaming: false,

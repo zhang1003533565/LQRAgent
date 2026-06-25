@@ -1,11 +1,16 @@
 import { useChatStore, flushPendingChunks } from '@/utils/store/chatStore'
-import { useAgentTraceStore } from '@/utils/store/agentTraceStore'
 import { useArtifactStore } from '@/utils/store/artifactStore'
 import { usePathStore } from '@/utils/store/pathStore'
 import { useProfileStore } from '@/utils/store/profileStore'
 import { chatApi } from '@/api/student/chat'
 import { STEP_LABELS, AGENT_LABELS } from '@/utils/constants/agent-labels'
-import type { AgentId, AgentStepStatus, WsRawMessage } from '@/utils/types/agent-events'
+import {
+  upsertMessageAgentStep,
+  buildAgentStepInput,
+  serializeAgentSteps,
+  looksLikeClarify,
+} from '@/utils/chat/messageAgentSteps'
+import type { AgentId, WsRawMessage } from '@/utils/types/agent-events'
 import type { ArtifactKind, MediaImagePayload, MediaVideoPayload, QuizArtifactPayload, RagSource } from '@/utils/types/artifact'
 import type { LearningPathArtifactPayload } from '@/utils/types/artifact'
 import type { MultiCardBlock } from '@/utils/types/multi-card'
@@ -166,8 +171,11 @@ export function dispatchWsMessage(data: WsRawMessage) {
     addMessage,
     updateMessage,
   } = useChatStore.getState()
-  const upsertStep = useAgentTraceStore.getState().upsertStep
   const patchSummary = useProfileStore.getState().patchSummary
+
+  function upsertStep(step: Parameters<typeof upsertMessageAgentStep>[0]) {
+    upsertMessageAgentStep(step)
+  }
 
   if (data.session_id) setSessionId(String(data.session_id))
 
@@ -183,36 +191,35 @@ export function dispatchWsMessage(data: WsRawMessage) {
       break
     case 'agent_step':
       if (data.agent && data.label && data.status) {
-        upsertStep({
+        upsertStep(buildAgentStepInput({
           id: data.stepId ? String(data.stepId) : data.agent,
-          agent: data.agent as AgentId,
+          agent: data.agent,
           label: data.label,
-          status: data.status as AgentStepStatus,
+          status: data.status,
           detail: data.detail,
-        })
+        }))
       } else if (data.stepId && data.agentId) {
-        // 来自 OrchestratorCore 的 Pipeline 步骤回调
         const stepLabel = STEP_LABELS[data.stepId] || AGENT_LABELS[data.agentId as AgentId] || data.stepId
-        upsertStep({
+        upsertStep(buildAgentStepInput({
           id: `pipeline-${data.stepId}`,
-          agent: data.agentId as AgentId,
+          agent: data.agentId,
           label: stepLabel,
           status: data.success === true ? 'done' : data.success === false ? 'failed' : 'running',
           detail: data.taskId,
-        })
+        }))
       }
       break
     case 'pipeline_start':
       if (data.steps && Array.isArray(data.steps)) {
         for (const s of data.steps) {
           const stepLabel = STEP_LABELS[s.stepId] || AGENT_LABELS[s.agentId as AgentId] || s.stepId
-          upsertStep({
+          upsertStep(buildAgentStepInput({
             id: `pipeline-${s.stepId}`,
-            agent: s.agentId as AgentId,
+            agent: s.agentId,
             label: stepLabel,
-            status: 'pending' as AgentStepStatus,
+            status: 'pending',
             detail: data.taskId,
-          })
+          }))
         }
       }
       break
@@ -255,8 +262,12 @@ export function dispatchWsMessage(data: WsRawMessage) {
           updateMessage(last.id, {
             content: '回答生成失败或超时，请重试。',
             streaming: false,
+            agentStepsCollapsed: true,
           })
         } else {
+          const clarifyType = last.contentType === 'clarify'
+            || (looksLikeClarify(last.content) ? 'clarify' as const : undefined)
+
           if (!last.content?.trim() && hasArtifact) {
             const fallback = last.imageUrl
               ? '图片已生成。'
@@ -266,11 +277,21 @@ export function dispatchWsMessage(data: WsRawMessage) {
             updateMessage(last.id, {
               ...(fallback ? { content: fallback } : {}),
               streaming: false,
+              agentStepsCollapsed: true,
+              ...(clarifyType ? { contentType: clarifyType } : {}),
             })
           } else if (last.imageUrl && last.contentType === 'image' && last.content && last.content.length > 120) {
-            updateMessage(last.id, { content: '图片已生成。', streaming: false })
+            updateMessage(last.id, {
+              content: '图片已生成。',
+              streaming: false,
+              agentStepsCollapsed: true,
+            })
           } else {
-            setStreaming(last.id, false)
+            updateMessage(last.id, {
+              streaming: false,
+              agentStepsCollapsed: true,
+              ...(clarifyType && last.contentType !== 'clarify' ? { contentType: clarifyType } : {}),
+            })
           }
         }
       }
@@ -281,7 +302,8 @@ export function dispatchWsMessage(data: WsRawMessage) {
           .slice()
           .reverse()
           .find((m) => m.role === 'assistant')
-        if (synced && (synced.imageUrl || synced.videoUrl || synced.quizData || synced.diagramCode)) {
+        if (synced && (synced.imageUrl || synced.videoUrl || synced.quizData || synced.diagramCode
+            || synced.agentSteps?.length)) {
           saveMessageMetadata(dbMessageId, {
             contentType: synced.contentType,
             imageUrl: synced.imageUrl,
@@ -290,6 +312,7 @@ export function dispatchWsMessage(data: WsRawMessage) {
             diagramCode: synced.diagramCode,
             diagramFormat: synced.diagramFormat,
             ragSources: synced.ragSources,
+            agentSteps: serializeAgentSteps(synced.agentSteps),
             ...(synced.imageUrl && synced.content && synced.content.length > 120
               ? { content: '图片已生成。' }
               : {}),

@@ -37,11 +37,12 @@ public class PipelineTemplates {
         engine.registerTemplate(assessment());
         engine.registerTemplate(intervention());
         engine.registerTemplate(learningPathCore());
+        engine.registerTemplate(learningPathResourcesOnly());
         engine.registerTemplate(quizEvaluation());
         // 阶段三新增
         engine.registerTemplate(multimodalExplanation());
         engine.registerTemplate(learningLoop());
-        log.info("[PipelineTemplates] registered {} templates", 16);
+        log.info("[PipelineTemplates] registered {} templates", 17);
     }
 
     /**
@@ -370,6 +371,35 @@ public class PipelineTemplates {
                                 .action("evaluate")
                                 .dependsOn(List.of("path_gen"))
                                 .resultMapping(Map.of("path_gen", "path"))
+                                .optional(true)
+                                .build()
+                ))
+                .build();
+    }
+
+    /**
+     * 学习路径资源按需生成（层 3：core 完成后用户确认再跑）
+     * 执行前需在 TaskContext 中预置 path_gen 步骤结果
+     */
+    public static PipelineConfig learningPathResourcesOnly() {
+        return PipelineConfig.builder()
+                .pipelineId("learning_path_resources")
+                .name("学习资源生成")
+                .description("基于已有学习路径批量生成讲义与练习")
+                .steps(List.of(
+                        PipelineStep.builder()
+                                .stepId("resources")
+                                .agentId(AgentIds.RESOURCE)
+                                .action("batch_generate")
+                                .resultMapping(Map.of("path_gen", "path"))
+                                .timeoutMs(120000)
+                                .build(),
+                        PipelineStep.builder()
+                                .stepId("quality")
+                                .agentId(AgentIds.QUALITY)
+                                .action("check")
+                                .dependsOn(List.of("resources"))
+                                .resultMapping(Map.of("resources", "resources"))
                                 .optional(true)
                                 .build()
                 ))

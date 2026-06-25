@@ -73,4 +73,63 @@ public class AppRuntimeConfig {
     public boolean isUseAgenticPipeline() {
         return Boolean.parseBoolean(get(ConfigKeys.AI_SERVER_USE_AGENTIC_PIPELINE, "false"));
     }
+
+    // --- Phase 1：规划 Gate ---
+
+    public boolean isPlanningGateEnabled() {
+        return Boolean.parseBoolean(get(ConfigKeys.PLANNING_GATE_ENABLED, "false"));
+    }
+
+    public boolean isPlanningGateForceClarify() {
+        return Boolean.parseBoolean(get(ConfigKeys.PLANNING_GATE_FORCE_CLARIFY, "false"));
+    }
+
+    public boolean isPlanningGatePreferCorePath() {
+        return Boolean.parseBoolean(get(ConfigKeys.PLANNING_GATE_PREFER_CORE_PATH, "true"));
+    }
+
+    public boolean isPlanningSessionStateEnabled() {
+        return Boolean.parseBoolean(get(ConfigKeys.PLANNING_SESSION_STATE_ENABLED, "false"));
+    }
+
+    // --- Phase 1：流式输出 ---
+
+    /** 层 1：Pipeline 进度流式（pipeline_start / step running） */
+    public boolean isStreamProgressEnabled() {
+        return Boolean.parseBoolean(get(ConfigKeys.STREAM_PROGRESS_ENABLED, "false"));
+    }
+
+    /** 进度流式开启时，Pipeline 结束不再一次性推送整段 finalContent */
+    public boolean isStreamProgressSkipFinalDump() {
+        return Boolean.parseBoolean(get(ConfigKeys.STREAM_PROGRESS_SKIP_FINAL_DUMP, "true"));
+    }
+
+    public boolean isLlmStreamEnabled() {
+        return Boolean.parseBoolean(get(ConfigKeys.LLM_STREAM_ENABLED, "false"));
+    }
+
+    public String getLlmStreamScenes() {
+        return get(ConfigKeys.LLM_STREAM_SCENES, "qa,learning_path");
+    }
+
+    public boolean isLlmStreamQaFastPath() {
+        return Boolean.parseBoolean(get(ConfigKeys.LLM_STREAM_QA_FAST_PATH, "false"));
+    }
+
+    /** 某场景是否启用 LLM token 流式 */
+    public boolean isLlmStreamSceneEnabled(String scene) {
+        if (!isLlmStreamEnabled() || scene == null || scene.isBlank()) {
+            return false;
+        }
+        for (String s : getLlmStreamScenes().split(",")) {
+            if (s.trim().equalsIgnoreCase(scene.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean isPathStagedDeliveryEnabled() {
+        return Boolean.parseBoolean(get(ConfigKeys.PATH_STAGED_DELIVERY_ENABLED, "true"));
+    }
 }

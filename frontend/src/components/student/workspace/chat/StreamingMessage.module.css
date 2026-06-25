@@ -72,6 +72,20 @@
   backdrop-filter: blur(8px);
 }
 
+.clarifyBubble {
+  background: linear-gradient(180deg, #fffbeb 0%, #ffffff 40%);
+  border-color: #fde68a;
+}
+
+.diagramBlock {
+  margin-top: 10px;
+  padding: 12px;
+  background: #f8fafc;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  overflow-x: auto;
+}
+
 /* Markdown 样式 */
 .bubble :global(h1),
 .bubble :global(h2),

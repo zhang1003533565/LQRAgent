@@ -3,7 +3,25 @@ import type { RagSource } from './artifact'
 
 export type ChatRole = 'user' | 'assistant' | 'system'
 
-export type MessageContentType = 'text' | 'multi_card' | 'diagram' | 'learning_path' | 'image' | 'quiz' | 'video'
+export type MessageContentType =
+  | 'text'
+  | 'multi_card'
+  | 'diagram'
+  | 'learning_path'
+  | 'image'
+  | 'quiz'
+  | 'video'
+  | 'clarify'
+
+/** 单条消息绑定的智能体调用步骤（与 agentTraceStore 结构一致） */
+export interface MessageAgentStep {
+  id: string
+  agent: string
+  label: string
+  status: 'running' | 'done' | 'failed' | 'pending'
+  detail?: string
+  updatedAt: Date | string
+}
 
 /**
  * 聊天会话
@@ -54,6 +72,10 @@ export interface ChatMessage {
   quizData?: QuizData
   diagramCode?: string
   diagramFormat?: string
+  /** 本条回复的智能体调用链（done 后快照） */
+  agentSteps?: MessageAgentStep[]
+  /** 正文输出完成后默认折叠调用链 */
+  agentStepsCollapsed?: boolean
   metadata?: Record<string, any>
   streaming?: boolean
   createdAt: Date

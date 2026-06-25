@@ -17,8 +17,10 @@ import com.lqragent.backend.agents.base.AgentMemory;
 import com.lqragent.backend.chat.entity.ChatSession;
 import com.lqragent.backend.chat.service.ChatSessionService;
 import com.lqragent.backend.core.session.RequestContext;
+import com.lqragent.backend.orchestrator.planning.IntentHeuristics;
 import com.lqragent.backend.orchestrator.planning.PlanIntent;
 import com.lqragent.backend.orchestrator.planning.PlanResult;
+import com.lqragent.backend.orchestrator.planning.PlanningSessionState;
 import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
@@ -144,13 +146,55 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             RequestContext.init(userId);
             try {
                 String chatHistory = agentMemory.getFormattedHistory(userId, 10);
-                PlanResult plan = dispatcher.planOnly(userId, content, chatHistory);
+
+                // QA 快通道：明显问答跳过 PlanningAgent
+                if (runtimeConfig.isLlmStreamQaFastPath() && IntentHeuristics.isObviousQa(content)) {
+                    sendOrchestratorStep(session, "done", "正在回答问题...");
+                    dispatcher.handleQa(session, userId, sessionIdStr, content, chatHistory, wsSender);
+                    return;
+                }
+
+                String planMessage = content;
+                boolean skipGateG1 = false;
+                PlanningSessionState planningState = dispatcher.getPlanningSessionState(chatSessionId);
+                if (planningState != null
+                        && PlanningSessionState.PHASE_AWAITING_RESOURCE_CONFIRM.equals(planningState.phase())) {
+                    if (IntentHeuristics.isResourceGenerationDecline(content)) {
+                        dispatcher.clearPlanningSessionState(chatSessionId);
+                        sendOrchestratorStep(session, "done", "已跳过");
+                        dispatcher.handleResourceDecline(session, userId, sessionIdStr, wsSender);
+                        return;
+                    }
+                    if (IntentHeuristics.isResourceGenerationConfirm(content)) {
+                        dispatcher.clearPlanningSessionState(chatSessionId);
+                        sendOrchestratorStep(session, "running", "正在生成讲义...");
+                        dispatcher.handleResourceFollowUp(session, userId, sessionIdStr,
+                                planningState.originalGoal(), wsSender);
+                        return;
+                    }
+                    sendOrchestratorStep(session, "done", "等待确认");
+                    dispatcher.handleResourceConfirmReminder(session, userId, sessionIdStr, wsSender);
+                    return;
+                }
+                if (planningState != null
+                        && PlanningSessionState.PHASE_AWAITING_CLARIFY.equals(planningState.phase())) {
+                    planMessage = planningState.originalGoal() + "\n补充信息：" + content;
+                    skipGateG1 = true;
+                    dispatcher.clearPlanningSessionState(chatSessionId);
+                }
+
+                PlanResult plan = dispatcher.planOnly(userId, planMessage, chatHistory, skipGateG1);
 
                 if (plan.isClarify()) {
-                    dispatcher.handleClarify(session, plan, userId, sessionIdStr, wsSender);
+                    dispatcher.handleClarify(session, plan, userId, sessionIdStr, content, wsSender);
                 } else if (plan.isPipeline() && plan.pipelineConfig() != null) {
                     sendOrchestratorStep(session, "running", "正在检索知识库并生成回答...");
-                    dispatcher.handlePipeline(session, plan, userId, sessionIdStr, content, wsSender);
+                    dispatcher.handlePipeline(session, plan, userId, sessionIdStr, planMessage, wsSender);
+                    PlanningSessionState afterPipeline = dispatcher.getPlanningSessionState(chatSessionId);
+                    if (afterPipeline == null
+                            || !PlanningSessionState.PHASE_AWAITING_RESOURCE_CONFIRM.equals(afterPipeline.phase())) {
+                        dispatcher.clearPlanningSessionState(chatSessionId);
+                    }
                 } else {
                     handleSimpleRoute(session, plan, userId, sessionIdStr, content, chatHistory);
                 }

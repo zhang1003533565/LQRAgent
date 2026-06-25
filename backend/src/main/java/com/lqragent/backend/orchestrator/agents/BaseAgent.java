@@ -1,6 +1,8 @@
 package com.lqragent.backend.orchestrator.agents;
 
 import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.agents.base.LlmResponse;
+import com.lqragent.backend.agents.base.ToolCall;
 import com.lqragent.backend.agents.base.AgentTool;
 import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.AgentRegistry;
@@ -343,7 +345,7 @@ public abstract class BaseAgent implements AgentInterface {
         for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
             log.debug("[{}] LLM iteration {}/{}", agentId, iteration + 1, MAX_ITERATIONS);
 
-            LlmClient.LlmResponse llmResponse = llmClient.chat(
+            LlmResponse llmResponse = llmClient.chat(
                     systemPrompt, messages, toolSchemas);
 
             if (!llmResponse.isSuccess()) {
@@ -376,7 +378,7 @@ public abstract class BaseAgent implements AgentInterface {
             }
 
             // 执行工具调用
-            List<LlmClient.ToolCall> toolCalls = llmResponse.toolCalls();
+            List<ToolCall> toolCalls = llmResponse.toolCalls();
             Map<String, Object> assistantMsg = new LinkedHashMap<>();
             assistantMsg.put("role", "assistant");
             assistantMsg.put("content", llmResponse.content() != null ? llmResponse.content() : "");
@@ -386,7 +388,7 @@ public abstract class BaseAgent implements AgentInterface {
                     .toList());
             messages.add(assistantMsg);
 
-            for (LlmClient.ToolCall tc : toolCalls) {
+            for (ToolCall tc : toolCalls) {
                 log.info("[{}] tool: {}", agentId, tc.name());
                 Map<String, Object> args = tc.parseArguments();
                 try {
