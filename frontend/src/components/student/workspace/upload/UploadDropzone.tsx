@@ -1,12 +1,5 @@
 import { useRef, useState } from 'react'
-import {
-  ClipboardPaste,
-  Cloud,
-  FolderOpen,
-  Monitor,
-  ScanLine,
-  UploadCloud,
-} from 'lucide-react'
+import { FolderOpen, UploadCloud } from 'lucide-react'
 import { formatBytes } from '@/utils/upload/uploadConstants'
 import type { StorageUsage } from '@/utils/types/upload'
 
@@ -15,7 +8,6 @@ type Props = {
   disabled?: boolean
   onFilesSelected: (files: File[]) => void
   onValidationError: (message: string) => void
-  onUnsupportedAction?: (label: string) => void
 }
 
 const FORMAT_TAGS = ['PDF', 'Word', 'PPT', 'Excel', '图片', '文本']
@@ -25,7 +17,6 @@ export default function UploadDropzone({
   disabled,
   onFilesSelected,
   onValidationError,
-  onUnsupportedAction,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
@@ -51,13 +42,6 @@ export default function UploadDropzone({
     }
     onFilesSelected(files)
   }
-
-  const secondaryOptions = [
-    { icon: Monitor, label: '从电脑选择', action: () => inputRef.current?.click() },
-    { icon: Cloud, label: '从网盘导入', todo: true },
-    { icon: ScanLine, label: '扫描文档', todo: true },
-    { icon: ClipboardPaste, label: '粘贴文本', todo: true },
-  ] as const
 
   return (
     <section className="rounded-[18px] border border-[#E6EEFA] bg-white p-6 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
@@ -118,29 +102,6 @@ export default function UploadDropzone({
           <FolderOpen className="h-4 w-4" />
           选择文件
         </button>
-      </div>
-
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {secondaryOptions.map(({ icon: Icon, label, action, todo }) => (
-          <button
-            key={label}
-            type="button"
-            disabled={disabled && !todo}
-            onClick={() => {
-              if (todo) {
-                onUnsupportedAction?.(label)
-                return
-              }
-              action?.()
-            }}
-            className="flex flex-col items-center gap-2 rounded-xl border border-[#EEF3FA] bg-[#F8FBFF] px-3 py-4 text-center transition hover:border-[#BFD7FF] hover:bg-white disabled:opacity-60"
-          >
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm">
-              <Icon className="h-5 w-5 text-[#2563EB]" />
-            </span>
-            <span className="text-xs font-medium text-[#334155]">{label}</span>
-          </button>
-        ))}
       </div>
 
       <p className="mt-4 text-center text-xs text-[#94A3B8]">

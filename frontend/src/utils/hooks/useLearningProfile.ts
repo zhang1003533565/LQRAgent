@@ -11,6 +11,7 @@ import type {
   TrendMetric,
 } from '@/utils/types/learningProfile'
 import { useProfileStore } from '@/utils/store/profileStore'
+import { mergeProfileFromWsPatch } from '@/utils/learningProfile/wsProfileMerge'
 
 export function useLearningProfile(initialFilters?: LearningProfileFilters) {
   const profileRevision = useProfileStore((s) => s.revision)
@@ -42,6 +43,15 @@ export function useLearningProfile(initialFilters?: LearningProfileFilters) {
 
   useEffect(() => {
     if (profileRevision <= 0) return
+    const wsPayload = useProfileStore.getState().wsPayload
+    if (wsPayload?.topicMastery) {
+      setData((prev) => {
+        if (!prev) return prev
+        const merged = mergeProfileFromWsPatch(prev, wsPayload)
+        return merged ?? prev
+      })
+      return
+    }
     void load({ silent: true })
   }, [profileRevision, load])
 

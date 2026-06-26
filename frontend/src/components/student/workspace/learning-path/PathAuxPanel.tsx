@@ -1,4 +1,4 @@
-import type { LearningPathNodeItem } from '@/mock/learningPath'
+import type { LearningPathNodeItem } from '@/utils/types/learning-path-ui'
 import CurrentTaskCard from './CurrentTaskCard'
 import PathTodayGoalCard from './PathTodayGoalCard'
 import AchievementCard from './AchievementCard'

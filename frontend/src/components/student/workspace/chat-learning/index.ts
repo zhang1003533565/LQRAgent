@@ -1,7 +1,6 @@
 export { default as ChatWelcomeCard } from './ChatWelcomeCard'
 export { default as QuickActionCard } from './QuickActionCard'
 export { default as ChatLearningInput } from './ChatLearningInput'
-export { default as AiLearningPlanCard } from './AiLearningPlanCard'
 export { default as TodayGoalCard } from './TodayGoalCard'
 export { default as QuickToolsCard } from './QuickToolsCard'
 export { default as RecentLearningCard } from './RecentLearningCard'

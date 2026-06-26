@@ -317,7 +317,6 @@ export default function UploadPage() {
               disabled={activeCount > 0}
               onFilesSelected={(files) => void handleFilesSelected(files)}
               onValidationError={showToast}
-              onUnsupportedAction={(label) => showToast(`${label}功能开发中`)}
             />
           </div>
 

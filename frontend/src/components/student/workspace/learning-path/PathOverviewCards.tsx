@@ -1,4 +1,4 @@
-import type { PathOverviewStat } from '@/mock/learningPath'
+import type { PathOverviewStat } from '@/utils/types/learning-path-ui'
 
 type Props = {
   stats: PathOverviewStat[]

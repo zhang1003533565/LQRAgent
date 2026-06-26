@@ -238,6 +238,28 @@ export default function KnowledgeGraphPage() {
       .slice(0, 4)
   }, [data, selectedNode])
 
+  const selectedMastery = useMemo(() => {
+    if (!selectedNode) return null
+    const entry = masteryByKp.get(selectedNode.kpId)
+    const percent = entry?.mastery ?? (
+      selectedNode.status === 'mastered' ? 100
+        : selectedNode.status === 'learning' ? 50
+          : selectedNode.status === 'weak' ? 25
+            : 0
+    )
+    return {
+      percent,
+      statusLabel: STATUS_META[selectedNode.status].label,
+      profileStatus: entry?.status,
+    }
+  }, [selectedNode, masteryByKp])
+
+  const selectedPathOrder = useMemo(() => {
+    if (!selectedNode) return null
+    const index = pathIndexMap.get(selectedNode.kpId)
+    return index != null ? index + 1 : null
+  }, [selectedNode, pathIndexMap])
+
   const drawMiniMap = useCallback(() => {
     const canvas = miniMapRef.current
     if (!canvas) return
@@ -710,7 +732,33 @@ export default function KnowledgeGraphPage() {
               <div className={styles.detailInfo}>
                 <span>难度：<strong>{getDifficultyText(selectedNode.difficulty)}</strong></span>
                 <span>所属模块：<strong>{selectedNode.subject || '通用知识'}</strong></span>
-                <span>学习进度：<strong>{STATUS_META[selectedNode.status].label}</strong></span>
+                <span>
+                  掌握度：
+                  <strong>{selectedMastery?.percent ?? 0}%</strong>
+                </span>
+                {selectedPathOrder != null ? (
+                  <span>
+                    路径序号：<strong>第 {selectedPathOrder} 步</strong>
+                  </span>
+                ) : null}
+              </div>
+
+              <div className={styles.tagList}>
+                <span
+                  className={styles.statusBadge}
+                  style={{
+                    color: STATUS_META[selectedNode.status].color,
+                    background: STATUS_META[selectedNode.status].bg,
+                  }}
+                >
+                  {selectedMastery?.statusLabel}
+                </span>
+                {selectedMastery?.profileStatus ? (
+                  <span className={styles.statusBadge}>{selectedMastery.profileStatus}</span>
+                ) : null}
+                {selectedPathOrder != null ? (
+                  <span className={styles.statusBadge}>学习路径节点</span>
+                ) : null}
               </div>
 
               <p className={styles.detailDesc}>{selectedNode.description || '该知识点用于串联核心概念、前置依赖与后续练习，是当前学习路径中的重要节点。'}</p>
@@ -721,9 +769,9 @@ export default function KnowledgeGraphPage() {
               </div>
 
               <div className={styles.progressBox}>
-                <span>学习进度：</span>
-                <div><i style={{ width: `${selectedNode.status === 'mastered' ? 92 : selectedNode.status === 'learning' ? 68 : selectedNode.status === 'weak' ? 35 : 12}%` }} /></div>
-                <strong>{selectedNode.status === 'mastered' ? '92%' : selectedNode.status === 'learning' ? '68%' : selectedNode.status === 'weak' ? '35%' : '12%'}</strong>
+                <span>掌握度：</span>
+                <div><i style={{ width: `${selectedMastery?.percent ?? 0}%` }} /></div>
+                <strong>{selectedMastery?.percent ?? 0}%</strong>
               </div>
 
               <div className={styles.primaryActions}>

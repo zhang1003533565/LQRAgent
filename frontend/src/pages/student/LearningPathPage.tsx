@@ -10,7 +10,7 @@ import {
   PathAuxPanel,
   PathOverviewCards,
 } from '@/components/student/workspace/learning-path'
-import { MOCK_CYCLE_OPTIONS } from '@/mock/learningPath'
+import { PATH_CYCLE_OPTIONS, type PathOverviewStat } from '@/utils/types/learning-path-ui'
 import { useOrchestrator } from '@/utils/hooks/useOrchestrator'
 import { navigateToWorkspace, syncWorkspaceFromSearchParams } from '@/utils/navigation/workspaceNav'
 import {
@@ -20,7 +20,6 @@ import {
 } from '@/utils/learningPath/chapterUtils'
 import { usePathStore } from '@/utils/store/pathStore'
 import { trackBehavior } from '@/utils/tracker'
-import type { PathOverviewStat } from '@/mock/learningPath'
 import {
   BookOpen,
   CalendarDays,
@@ -216,7 +215,7 @@ export default function LearningPathPage() {
         <LearningGoalInput
           goal={inputGoal}
           cycle={cycle}
-          cycleOptions={MOCK_CYCLE_OPTIONS}
+          cycleOptions={[...PATH_CYCLE_OPTIONS]}
           loading={isGenerating}
           onGoalChange={setInputGoal}
           onCycleChange={setCycle}

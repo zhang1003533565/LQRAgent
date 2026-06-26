@@ -452,6 +452,16 @@
   font-weight: 900;
 }
 
+.statusBadge {
+  height: 26px;
+  border-radius: 6px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .progressBox {
   display: grid;
   grid-template-columns: auto 1fr auto;

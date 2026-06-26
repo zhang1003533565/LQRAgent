@@ -4,7 +4,7 @@ import type {
   LearningNodeStatus,
   LearningPathNodeItem,
   NodeDifficulty,
-} from '@/mock/learningPath'
+} from '@/utils/types/learning-path-ui'
 
 const CHAPTER_TITLES = [
   { title: '第一章 认识 Python', description: 'Python 简介、环境搭建与基础语法入门' },

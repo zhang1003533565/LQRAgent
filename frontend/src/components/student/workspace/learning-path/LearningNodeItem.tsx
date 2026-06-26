@@ -6,7 +6,7 @@ import {
   Code2,
   Lock,
 } from 'lucide-react'
-import type { LearningPathNodeItem } from '@/mock/learningPath'
+import type { LearningPathNodeItem } from '@/utils/types/learning-path-ui'
 
 type Props = {
   node: LearningPathNodeItem

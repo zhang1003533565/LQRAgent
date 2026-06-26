@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import type { LearningChapter } from '@/mock/learningPath'
+import type { LearningChapter } from '@/utils/types/learning-path-ui'
 import { chapterProgress } from '@/utils/learningPath/chapterUtils'
 import LearningNodeItem from './LearningNodeItem'
 

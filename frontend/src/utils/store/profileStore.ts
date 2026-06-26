@@ -5,6 +5,7 @@ import type { ProfileSummary } from '@/utils/types/profile'
 interface ProfileState {
   summary: ProfileSummary | null
   wsPayload: Record<string, unknown> | null
+  topicMasteryMap: Record<string, string>
   revision: number
   lastPatchAt: string | null
   setSummary: (s: ProfileSummary) => void
@@ -49,7 +50,7 @@ function knowledgeLevelToMastery(level: unknown): number | undefined {
 function mapWsPatchToSummary(payload: Record<string, unknown>): Partial<ProfileSummary> {
   const topicMastery = parseTopicMastery(payload.topicMastery)
   const masteredCount = Object.values(topicMastery).filter((v) => v === 'MASTERED').length
-  const weakTopics = parseWeakTopics(payload.commonErrors)
+  const weakTopics = parseWeakTopics(payload.weakTopics ?? payload.commonErrors)
   const masteryFromLevel = knowledgeLevelToMastery(payload.knowledgeLevel)
 
   return {
@@ -57,6 +58,7 @@ function mapWsPatchToSummary(payload: Record<string, unknown>): Partial<ProfileS
     masteryLevel: masteryFromLevel,
     completedKpCount: masteredCount > 0 ? masteredCount : undefined,
     weakTopics: weakTopics.length > 0 ? weakTopics : undefined,
+    streakDays: typeof payload.streakDays === 'number' ? payload.streakDays : undefined,
   }
 }
 
@@ -65,6 +67,7 @@ export const useProfileStore = create<ProfileState>()(
     (set, get) => ({
       summary: null,
       wsPayload: null,
+      topicMasteryMap: {},
       revision: 0,
       lastPatchAt: null,
       setSummary: (summary) => set({ summary }),
@@ -75,9 +78,13 @@ export const useProfileStore = create<ProfileState>()(
             : (patch as ProfileSummary),
         })),
       applyWsPatch: (payload) => {
+        const topicMastery = parseTopicMastery(payload.topicMastery)
         const mapped = mapWsPatchToSummary(payload)
         set((state) => ({
           wsPayload: payload,
+          topicMasteryMap: Object.keys(topicMastery).length > 0
+            ? { ...state.topicMasteryMap, ...topicMastery }
+            : state.topicMasteryMap,
           lastPatchAt: new Date().toISOString(),
           revision: state.revision + 1,
           summary: state.summary
