@@ -61,11 +61,11 @@ public class PipelineTemplates {
                                 .agentId(AgentIds.PROFILE)
                                 .action("get_profile")
                                 .build(),
-                        // Step 2: 生成路径（依赖画像）
+                        // Step 2: 路径协商（依赖画像，Phase 2）
                         PipelineStep.builder()
-                                .stepId("path_gen")
+                                .stepId("path_consult")
                                 .agentId(AgentIds.LEARNING_PATH)
-                                .action("generate_path")
+                                .action("consult_path")
                                 .dependsOn(List.of("profile"))
                                 .resultMapping(Map.of("profile", "profile"))
                                 .build(),
@@ -74,8 +74,8 @@ public class PipelineTemplates {
                                 .stepId("resources")
                                 .agentId(AgentIds.RESOURCE)
                                 .action("batch_generate")
-                                .dependsOn(List.of("path_gen"))
-                                .resultMapping(Map.of("path_gen", "path"))
+                                .dependsOn(List.of("path_consult"))
+                                .resultMapping(Map.of("path_consult", "path", "path_gen", "path"))
                                 .timeoutMs(60000)
                                 .build(),
                         // Step 4: 质量评估（依赖资源）
@@ -358,19 +358,18 @@ public class PipelineTemplates {
                                 .action("get_profile")
                                 .build(),
                         PipelineStep.builder()
-                                .stepId("path_gen")
+                                .stepId("path_consult")
                                 .agentId(AgentIds.LEARNING_PATH)
-                                .action("generate_path")
+                                .action("consult_path")
                                 .dependsOn(List.of("profile"))
                                 .resultMapping(Map.of("profile", "profile"))
                                 .build(),
-                        // Step 3: 效果评估（可选，依赖路径生成）
                         PipelineStep.builder()
                                 .stepId("effect")
                                 .agentId(AgentIds.EFFECT)
                                 .action("evaluate")
-                                .dependsOn(List.of("path_gen"))
-                                .resultMapping(Map.of("path_gen", "path"))
+                                .dependsOn(List.of("path_consult"))
+                                .resultMapping(Map.of("path_consult", "path"))
                                 .optional(true)
                                 .build()
                 ))
@@ -391,7 +390,7 @@ public class PipelineTemplates {
                                 .stepId("resources")
                                 .agentId(AgentIds.RESOURCE)
                                 .action("batch_generate")
-                                .resultMapping(Map.of("path_gen", "path"))
+                                .resultMapping(Map.of("path_consult", "path", "path_gen", "path"))
                                 .timeoutMs(120000)
                                 .build(),
                         PipelineStep.builder()

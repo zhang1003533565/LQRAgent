@@ -186,7 +186,7 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                 PlanResult plan = dispatcher.planOnly(userId, planMessage, chatHistory, skipGateG1);
 
                 if (plan.isClarify()) {
-                    dispatcher.handleClarify(session, plan, userId, sessionIdStr, content, wsSender);
+                    dispatcher.handleClarify(session, plan, userId, sessionIdStr, planMessage, wsSender);
                 } else if (plan.isPipeline() && plan.pipelineConfig() != null) {
                     sendOrchestratorStep(session, "running", "正在检索知识库并生成回答...");
                     dispatcher.handlePipeline(session, plan, userId, sessionIdStr, planMessage, wsSender);

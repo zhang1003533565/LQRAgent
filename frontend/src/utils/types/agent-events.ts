@@ -8,6 +8,9 @@ export type WsInboundType =
   | 'pipeline_start'
   | 'pipeline_complete'
   | 'pipeline_error'
+  | 'consultation_start'
+  | 'consultation_round'
+  | 'consultation_end'
   | 'done'
   | 'error'
 
@@ -103,4 +106,11 @@ export interface WsRawMessage {
   durationMs?: number
   steps?: { stepId: string; agentId: string; action: string }[]
   error?: string
+  round?: number
+  role?: string
+  summary?: string
+  textDelta?: string
+  stopReason?: string
+  maxRounds?: number
+  participants?: string[]
 }

@@ -9,6 +9,10 @@ import {
   buildAgentStepInput,
   serializeAgentSteps,
   looksLikeClarify,
+  resolveStepId,
+  normalizeStepLabel,
+  finalizeAgentSteps,
+  CONSULTATION_PARENT_STEP_ID,
 } from '@/utils/chat/messageAgentSteps'
 import type { AgentId, WsRawMessage } from '@/utils/types/agent-events'
 import type { ArtifactKind, MediaImagePayload, MediaVideoPayload, QuizArtifactPayload, RagSource } from '@/utils/types/artifact'
@@ -192,15 +196,17 @@ export function dispatchWsMessage(data: WsRawMessage) {
     case 'agent_step':
       if (data.agent && data.label && data.status) {
         upsertStep(buildAgentStepInput({
-          id: data.stepId ? String(data.stepId) : data.agent,
+          stepId: data.stepId,
+          id: resolveStepId({ stepId: data.stepId, agent: data.agent }),
           agent: data.agent,
-          label: data.label,
+          label: normalizeStepLabel(data.stepId, data.label),
           status: data.status,
           detail: data.detail,
         }))
       } else if (data.stepId && data.agentId) {
         const stepLabel = STEP_LABELS[data.stepId] || AGENT_LABELS[data.agentId as AgentId] || data.stepId
         upsertStep(buildAgentStepInput({
+          stepId: data.stepId,
           id: `pipeline-${data.stepId}`,
           agent: data.agentId,
           label: stepLabel,
@@ -214,6 +220,7 @@ export function dispatchWsMessage(data: WsRawMessage) {
         for (const s of data.steps) {
           const stepLabel = STEP_LABELS[s.stepId] || AGENT_LABELS[s.agentId as AgentId] || s.stepId
           upsertStep(buildAgentStepInput({
+            stepId: s.stepId,
             id: `pipeline-${s.stepId}`,
             agent: s.agentId,
             label: stepLabel,
@@ -222,6 +229,46 @@ export function dispatchWsMessage(data: WsRawMessage) {
           }))
         }
       }
+      break
+    case 'consultation_start':
+      upsertStep(buildAgentStepInput({
+        id: CONSULTATION_PARENT_STEP_ID,
+        stepId: 'path_consult',
+        agent: 'learning_path_agent',
+        label: `路径协商（最多 ${data.maxRounds ?? 2} 轮）`,
+        status: 'running',
+      }))
+      break
+    case 'consultation_round':
+      if (data.agentId && data.role) {
+        if (data.textDelta) {
+          appendToLastMessage(`【协商第 ${data.round ?? 1} 轮·${data.role}】${data.textDelta}\n`)
+        }
+        const roleLabel =
+          data.role === 'constraints' ? '画像约束'
+          : data.role === 'draft' ? '路径草案'
+          : data.role === 'revise' ? '难度调整'
+          : data.role === 'approve' ? '评审通过'
+          : data.role
+        upsertStep(buildAgentStepInput({
+          id: `consultation-r${data.round}-${data.role}`,
+          parentId: CONSULTATION_PARENT_STEP_ID,
+          agent: data.agentId,
+          label: `第 ${data.round ?? 1} 轮 · ${roleLabel}`,
+          status: 'done',
+          detail: data.summary,
+        }))
+      }
+      break
+    case 'consultation_end':
+      upsertStep(buildAgentStepInput({
+        id: CONSULTATION_PARENT_STEP_ID,
+        stepId: 'path_consult',
+        agent: 'learning_path_agent',
+        label: '路径协商',
+        status: 'running',
+        detail: data.stopReason,
+      }))
       break
     case 'pipeline_complete':
       break
@@ -265,8 +312,10 @@ export function dispatchWsMessage(data: WsRawMessage) {
             agentStepsCollapsed: true,
           })
         } else {
-          const clarifyType = last.contentType === 'clarify'
-            || (looksLikeClarify(last.content) ? 'clarify' as const : undefined)
+          const clarifyType =
+            last.contentType === 'clarify' || looksLikeClarify(last.content)
+              ? ('clarify' as const)
+              : undefined
 
           if (!last.content?.trim() && hasArtifact) {
             const fallback = last.imageUrl
@@ -287,9 +336,11 @@ export function dispatchWsMessage(data: WsRawMessage) {
               agentStepsCollapsed: true,
             })
           } else {
+            const finalizedSteps = finalizeAgentSteps(last.agentSteps)
             updateMessage(last.id, {
               streaming: false,
               agentStepsCollapsed: true,
+              agentSteps: finalizedSteps,
               ...(clarifyType && last.contentType !== 'clarify' ? { contentType: clarifyType } : {}),
             })
           }

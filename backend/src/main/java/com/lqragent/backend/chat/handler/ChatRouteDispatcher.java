@@ -37,6 +37,10 @@ import com.lqragent.backend.orchestrator.planning.PlanIntent;
 import com.lqragent.backend.orchestrator.planning.PlanResult;
 import com.lqragent.backend.orchestrator.planning.PlanningSessionState;
 import com.lqragent.backend.orchestrator.planning.PlanningSessionStateStore;
+import com.lqragent.backend.orchestrator.consultation.ConsultationEngine;
+import com.lqragent.backend.orchestrator.consultation.ConsultationListener;
+import com.lqragent.backend.orchestrator.consultation.ConsultationScene;
+import com.lqragent.backend.orchestrator.consultation.StopReason;
 import com.lqragent.backend.agents.base.StreamSink;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 
@@ -75,6 +79,7 @@ public class ChatRouteDispatcher {
     private static final Map<String, String> PIPELINE_STEP_LABELS = Map.ofEntries(
             Map.entry("profile", "获取画像"),
             Map.entry("path_gen", "生成路径"),
+            Map.entry("path_consult", "路径协商"),
             Map.entry("resources", "生成资源"),
             Map.entry("effect", "效果评估"),
             Map.entry("quality", "质量检查"),
@@ -145,6 +150,7 @@ public class ChatRouteDispatcher {
                     String.valueOf(userId), sessionId,
                     originalGoal != null ? originalGoal : pathOpt.get().getGoal());
             context.setResult("path_gen", buildPathGenResult(pathOpt.get()));
+            context.setResult("path_consult", buildPathGenResult(pathOpt.get()));
 
             PipelineResult pipelineResult = pipelineEngine.execute(config, context,
                     buildStepCallback(session, userId, sessionId, sender, contentStreamed));
@@ -269,7 +275,8 @@ public class ChatRouteDispatcher {
             }
             PipelineResult pipelineResult = orchestratorCore.handlePipelineAsync(
                     plan, String.valueOf(userId), content,
-                    buildStepCallback(session, userId, sessionId, sender, contentStreamed));
+                    buildStepCallback(session, userId, sessionId, sender, contentStreamed),
+                    ctx -> ctx.put(ConsultationEngine.LISTENER_KEY, buildConsultationListener(session, sender)));
 
             String agent = plan.pipelineConfig().getPipelineId();
 
@@ -293,6 +300,60 @@ public class ChatRouteDispatcher {
             agentMemory.addAgentResponse(userId, Long.parseLong(sessionId),
                     "抱歉，任务执行失败：" + e.getMessage(), "pipeline_engine");
         }
+    }
+
+    private ConsultationListener buildConsultationListener(WebSocketSession session, WsSender sender) {
+        return new ConsultationListener() {
+            @Override
+            public void onStart(ConsultationScene scene, java.util.List<String> participants, int maxRounds) {
+                try {
+                    var node = objectMapper.createObjectNode();
+                    node.put("scene", scene.name());
+                    node.put("maxRounds", maxRounds);
+                    node.set("participants", objectMapper.valueToTree(participants));
+                    sender.sendEvent(session, "consultation_start", node.toString());
+                } catch (Exception e) {
+                    log.warn("[WS] consultation_start send failed: {}", e.getMessage());
+                }
+            }
+
+            @Override
+            public void onRound(int round, String agentId, String role, String summary) {
+                onRound(round, agentId, role, summary, null);
+            }
+
+            @Override
+            public void onRound(int round, String agentId, String role, String summary, String textDelta) {
+                try {
+                    var node = objectMapper.createObjectNode();
+                    node.put("round", round);
+                    node.put("agentId", agentId);
+                    node.put("role", role);
+                    node.put("summary", summary != null ? summary : "");
+                    if (textDelta != null && !textDelta.isBlank()) {
+                        node.put("textDelta", textDelta);
+                    }
+                    sender.sendEvent(session, "consultation_round", node.toString());
+                    if (textDelta != null && !textDelta.isBlank()) {
+                        sender.sendEvent(session, "chunk", "【协商第" + round + "轮·" + role + "】" + textDelta + "\n");
+                    }
+                } catch (Exception e) {
+                    log.warn("[WS] consultation_round send failed: {}", e.getMessage());
+                }
+            }
+
+            @Override
+            public void onEnd(StopReason reason, long durationMs) {
+                try {
+                    sender.sendEvent(session, "consultation_end", objectMapper.createObjectNode()
+                            .put("stopReason", reason.name())
+                            .put("durationMs", durationMs)
+                            .toString());
+                } catch (Exception e) {
+                    log.warn("[WS] consultation_end send failed: {}", e.getMessage());
+                }
+            }
+        };
     }
 
     private PipelineEngine.StepCallback buildStepCallback(WebSocketSession wsSession,
@@ -357,7 +418,7 @@ public class ChatRouteDispatcher {
                         .put("stepId", stepId)
                         .put("agent", agentId)
                         .put("agentId", agentId)
-                        .put("label", "执行失败")
+                        .put("label", pipelineStepLabel(stepId, agentId) + "失败")
                         .put("status", "failed")
                         .toString());
                 return;
@@ -366,7 +427,7 @@ public class ChatRouteDispatcher {
                     .put("stepId", stepId)
                     .put("agent", agentId)
                     .put("agentId", agentId)
-                    .put("label", "已完成")
+                    .put("label", pipelineStepLabel(stepId, agentId))
                     .put("status", "done")
                     .toString());
 

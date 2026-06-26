@@ -196,9 +196,19 @@ public class OrchestratorCore {
     public PipelineResult handlePipelineAsync(PlanResult plan, String userId,
                                               String message,
                                               PipelineEngine.StepCallback callback) {
+        return handlePipelineAsync(plan, userId, message, callback, null);
+    }
+
+    public PipelineResult handlePipelineAsync(PlanResult plan, String userId,
+                                              String message,
+                                              PipelineEngine.StepCallback callback,
+                                              java.util.function.Consumer<TaskContext> contextSetup) {
         PipelineConfig config = plan.pipelineConfig();
         String taskId = UUID.randomUUID().toString();
         TaskContext context = new TaskContext(taskId, userId, null, message);
+        if (contextSetup != null) {
+            contextSetup.accept(context);
+        }
 
         log.info("[Orchestrator] async pipeline: {}, steps={}",
                 config.getName(), config.getSteps().size());

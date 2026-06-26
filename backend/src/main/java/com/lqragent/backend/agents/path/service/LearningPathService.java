@@ -21,6 +21,7 @@ import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
 import com.lqragent.backend.chat.proxy.AiServerWsProxy;
 import com.lqragent.backend.shared.knowledgegraph.entity.KnowledgePoint;
 import com.lqragent.backend.shared.knowledgegraph.service.KnowledgeGraphService;
+import com.lqragent.backend.orchestrator.consultation.PathConsultationAdjuster;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 
 import lombok.RequiredArgsConstructor;
@@ -134,6 +135,42 @@ public class LearningPathService {
                 .nodes(nodes)
                 .planDescription(planDescription)
                 .build();
+    }
+
+    /**
+     * Phase 2 收口：协商 revise 后裁剪路径节点并同步 DB。
+     */
+    @Transactional
+    public LearningPathDto applyConsultationRevision(
+            LearningPathDto path, String profileSummary, String goal, String feedback) {
+        LearningPathDto adjusted = PathConsultationAdjuster.apply(path, profileSummary, goal, feedback);
+        if (adjusted.getPathId() == null || adjusted.getNodes() == null || path.getNodes() == null
+                || adjusted.getNodes().size() >= path.getNodes().size()) {
+            return adjusted;
+        }
+        pathRepo.findById(adjusted.getPathId()).ifPresent(entity -> {
+            entity.setPlanDescription(adjusted.getPlanDescription());
+            entity.setGoal(goal);
+            pathRepo.save(entity);
+        });
+        List<LearningPathStep> existing = stepRepo.findByPathIdOrderByStepOrder(adjusted.getPathId());
+        if (!existing.isEmpty()) {
+            stepRepo.deleteAll(existing);
+        }
+        List<LearningPathStep> steps = new ArrayList<>();
+        for (LearningPathDto.PathNode node : adjusted.getNodes()) {
+            steps.add(LearningPathStep.builder()
+                    .pathId(adjusted.getPathId())
+                    .kpId(node.getKpId())
+                    .stepOrder(node.getOrder())
+                    .completed(false)
+                    .status("PENDING")
+                    .build());
+        }
+        stepRepo.saveAll(steps);
+        log.info("[LearningPath] consultation revision applied: pathId={}, nodes {} -> {}",
+                adjusted.getPathId(), path.getNodes().size(), adjusted.getNodes().size());
+        return adjusted;
     }
 
     /**

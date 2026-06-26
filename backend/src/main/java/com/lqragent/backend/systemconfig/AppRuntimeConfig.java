@@ -132,4 +132,38 @@ public class AppRuntimeConfig {
     public boolean isPathStagedDeliveryEnabled() {
         return Boolean.parseBoolean(get(ConfigKeys.PATH_STAGED_DELIVERY_ENABLED, "true"));
     }
+
+    // --- Phase 2：Agent 协商 ---
+
+    public boolean isConsultationEnabled() {
+        return Boolean.parseBoolean(get(ConfigKeys.CONSULTATION_ENABLED, "false"));
+    }
+
+    public String getConsultationScenes() {
+        return get(ConfigKeys.CONSULTATION_SCENES, "path_generation");
+    }
+
+    public int getConsultationMaxRounds() {
+        return Integer.parseInt(get(ConfigKeys.CONSULTATION_MAX_ROUNDS, "2"));
+    }
+
+    public boolean isConsultationStreamTranscript() {
+        return Boolean.parseBoolean(get(ConfigKeys.CONSULTATION_STREAM_TRANSCRIPT, "false"));
+    }
+
+    public long getConsultationTimeoutMs() {
+        return Long.parseLong(get(ConfigKeys.CONSULTATION_TIMEOUT_MS, "90000"));
+    }
+
+    public boolean isConsultationSceneEnabled(String scene) {
+        if (!isConsultationEnabled() || scene == null || scene.isBlank()) {
+            return false;
+        }
+        for (String s : getConsultationScenes().split(",")) {
+            if (s.trim().equalsIgnoreCase(scene.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

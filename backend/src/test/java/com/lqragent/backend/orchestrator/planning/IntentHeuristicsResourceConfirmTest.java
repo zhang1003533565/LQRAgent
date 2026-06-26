@@ -21,6 +21,21 @@ class IntentHeuristicsResourceConfirmTest {
     }
 
     @Test
+    void declinesSingleLetterNoOnly() {
+        assertTrue(IntentHeuristics.isResourceGenerationDecline("n"));
+        assertTrue(IntentHeuristics.isResourceGenerationDecline("no"));
+        assertTrue(IntentHeuristics.isResourceGenerationDecline("否"));
+    }
+
+    @Test
+    void englishWordsWithLetterN_notDecline() {
+        assertFalse(IntentHeuristics.isResourceGenerationDecline("confirm"));
+        assertFalse(IntentHeuristics.isResourceGenerationDecline("begin"));
+        assertFalse(IntentHeuristics.isResourceGenerationDecline("want"));
+        assertFalse(IntentHeuristics.isResourceGenerationDecline("yes"));
+    }
+
+    @Test
     void declinesSkipPhrases() {
         assertTrue(IntentHeuristics.isResourceGenerationDecline("不用"));
         assertTrue(IntentHeuristics.isResourceGenerationDecline("跳过"));

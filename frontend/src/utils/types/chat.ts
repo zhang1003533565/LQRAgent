@@ -20,6 +20,8 @@ export interface MessageAgentStep {
   label: string
   status: 'running' | 'done' | 'failed' | 'pending'
   detail?: string
+  /** 协商子步骤归属的父步骤 ID（如 pipeline-path_consult） */
+  parentId?: string
   updatedAt: Date | string
 }
 

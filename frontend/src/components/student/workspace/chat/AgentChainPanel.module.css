@@ -69,6 +69,11 @@
   gap: 0;
 }
 
+.stepGroup {
+  display: flex;
+  flex-direction: column;
+}
+
 .row {
   display: grid;
   grid-template-columns: 24px 1fr;
@@ -179,5 +184,73 @@
 
 .elapsed {
   font-size: 10px;
+  color: #94a3b8;
+}
+
+.backgroundRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #e2e8f0;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.backgroundLabel {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f1f5f9;
+  font-weight: 500;
+}
+
+.backgroundText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stepDetail {
+  grid-column: 2;
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.4;
+  padding-bottom: 4px;
+}
+
+.childTimeline {
+  margin: -2px 0 6px 34px;
+  padding-left: 10px;
+  border-left: 2px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.childRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.childDot {
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.childLabel {
+  font-weight: 500;
+  color: #475569;
+  flex-shrink: 0;
+}
+
+.childDetail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: #94a3b8;
 }

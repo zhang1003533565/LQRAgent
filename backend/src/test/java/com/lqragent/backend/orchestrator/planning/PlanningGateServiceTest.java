@@ -116,9 +116,39 @@ class PlanningGateServiceTest {
 
         assertTrue(result.isClarify());
         String joined = String.join(" ", result.clarifyQuestions());
-        assertTrue(joined.contains("之前提到过") || joined.contains("重点"), joined);
+        assertTrue(joined.contains("基础") || joined.contains("时间") || joined.contains("成果")
+                || joined.contains("之前提到过") || joined.contains("重点"), joined);
         assertTrue(!joined.contains("根据你的画像"), joined);
         assertTrue(!joined.contains("INTERMEDIATE"), joined);
+    }
+
+    @Test
+    void skipG1_topicAndYiDianJiChu_proceedsToCore() {
+        PlanResult plan = PlanResult.simple(PlanIntent.LEARNING_PATH);
+        LearnerContextDto ctx = LearnerContextDto.builder()
+                .profileSummary("知识水平: BEGINNER")
+                .build();
+
+        PlanResult result = gate.apply(
+                plan, "我想学python\n补充信息：有一点基础", ctx, true);
+
+        assertTrue(result.isPipeline());
+        assertEquals("learning_path_core", result.pipelineConfig().getPipelineId());
+    }
+
+    @Test
+    void g2_javascriptTopic_notMislabeledAsJava() {
+        PlanResult plan = PlanResult.simple(PlanIntent.LEARNING_PATH);
+        LearnerContextDto ctx = LearnerContextDto.builder()
+                .profileSummary("知识水平: BEGINNER")
+                .build();
+
+        PlanResult result = gate.apply(plan, "我想学 javascript", ctx, false);
+
+        assertTrue(result.isClarify());
+        String joined = String.join(" ", result.clarifyQuestions());
+        assertTrue(joined.contains("JavaScript"), joined);
+        assertTrue(!joined.contains("学 Java 的话"), joined);
     }
 
     @Test

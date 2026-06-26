@@ -8,6 +8,10 @@ import com.lqragent.backend.agents.base.AgentTool;
 import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.path.tools.GeneratePathTool;
+import com.lqragent.backend.agents.base.AgentRequest;
+import com.lqragent.backend.agents.base.AgentResponse;
+import com.lqragent.backend.orchestrator.consultation.ConsultationEngine;
+import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.orchestrator.agents.BaseAgent;
 import com.lqragent.backend.orchestrator.card.AgentCard;
@@ -20,12 +24,15 @@ import com.lqragent.backend.prompt.service.PromptService;
 public class LearningPathAgent extends BaseAgent {
 
     private final GeneratePathTool generatePathTool;
+    private final ConsultationEngine consultationEngine;
 
     public LearningPathAgent(RedisStreamsService streams, LlmClient llmClient,
                               AgentToolRegistry toolRegistry, GeneratePathTool generatePathTool,
+                              ConsultationEngine consultationEngine,
                               PromptService promptService) {
         super(AgentIds.LEARNING_PATH, streams, llmClient, toolRegistry, promptService);
         this.generatePathTool = generatePathTool;
+        this.consultationEngine = consultationEngine;
     }
 
     @Override
@@ -41,6 +48,14 @@ public class LearningPathAgent extends BaseAgent {
     @Override
     public AgentMessage process(AgentMessage request) {
         return executeLlmLoop(request);
+    }
+
+    @Override
+    public AgentResponse process(AgentRequest request, TaskContext context) {
+        if ("consult_path".equals(request.action())) {
+            return consultationEngine.consultAsAgentResponse(request, context);
+        }
+        return super.process(request, context);
     }
 
     @Override

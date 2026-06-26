@@ -44,13 +44,24 @@ public class PlanningGateService {
             return forceLearningPath(plan, PipelineTemplates.learningPathCore());
         }
 
+        // Clarify 续聊：主题 + 基础已明确即可进 core（时间可默认）
+        if (skipG1 && isLearningPathRelated(plan, msg)
+                && extractTopicHint(msg) != null && IntentHeuristics.hasLevelHint(msg)) {
+            log.info("[PlanningGate] G3 clarify merge topic+level → learning_path_core");
+            return forceLearningPath(plan, PipelineTemplates.learningPathCore());
+        }
+
         if (!IntentHeuristics.isVagueLearningIntent(msg)) {
             return maybeDowngradeLearningPath(plan, msg, ctx);
         }
 
         if (!skipG1 && ctx.isEmpty() && !IntentHeuristics.hasSufficientLearningDetails(msg)) {
+            String topic = extractTopicHint(msg);
+            List<String> remaining = topic != null
+                    ? remainingClarifyQuestions(msg, topic)
+                    : remainingDefaultClarifyQuestions(msg);
             log.info("[PlanningGate] G1 empty context + vague learning → clarify");
-            return PlanResult.clarify(defaultClarifyQuestions(null), msg);
+            return PlanResult.clarify(remaining, msg);
         }
 
         if (IntentHeuristics.hasSufficientLearningDetails(msg) || hasSufficientProfile(ctx)) {
@@ -61,15 +72,76 @@ public class PlanningGateService {
         if (!ctx.isEmpty()) {
             String topic = extractTopicHint(msg);
             if (topic != null) {
-                log.info("[PlanningGate] G2 topic in message → topic clarify");
-                return PlanResult.clarify(topicFocusedClarifyQuestions(msg), msg);
+                List<String> remaining = remainingClarifyQuestions(msg, topic);
+                if (remaining.isEmpty()) {
+                    log.info("[PlanningGate] G2 topic clarify complete → learning_path_core");
+                    return forceLearningPath(plan, PipelineTemplates.learningPathCore());
+                }
+                log.info("[PlanningGate] G2 topic in message → topic clarify ({} left)", remaining.size());
+                return PlanResult.clarify(remaining, msg);
+            }
+            List<String> remaining = remainingProfileClarifyQuestions(ctx, msg);
+            if (remaining.isEmpty()) {
+                log.info("[PlanningGate] G2 profile clarify complete → learning_path_core");
+                return forceLearningPath(plan, PipelineTemplates.learningPathCore());
             }
             log.info("[PlanningGate] G2 partial profile → natural clarify");
-            return PlanResult.clarify(profileAwareClarifyQuestions(ctx), msg);
+            return PlanResult.clarify(remaining, msg);
         }
 
+        List<String> remaining = remainingDefaultClarifyQuestions(msg);
+        if (remaining.isEmpty()) {
+            log.info("[PlanningGate] G1 clarify complete → learning_path_core");
+            return forceLearningPath(plan, PipelineTemplates.learningPathCore());
+        }
         log.info("[PlanningGate] G1 fallback clarify");
-        return PlanResult.clarify(defaultClarifyQuestions(null), msg);
+        return PlanResult.clarify(remaining, msg);
+    }
+
+    /** 仅追问尚未回答的维度，避免重复整段 Clarify */
+    private List<String> remainingClarifyQuestions(String message, String topic) {
+        List<String> qs = new ArrayList<>();
+        if (!IntentHeuristics.hasGoalDegreeHint(message)) {
+            qs.add("学 " + topic + " 的话，你更想达到什么程度？（能写小项目 / 求职 / 先入门了解一下）");
+        }
+        if (!IntentHeuristics.hasLevelHint(message)) {
+            qs.add("你现在的基础怎么样？（完全零基础 / 学过一点 / 有项目经验）");
+        }
+        if (!IntentHeuristics.hasTimeHint(message)) {
+            qs.add("打算学多久？（比如 4 周、3 个月）");
+        }
+        return qs;
+    }
+
+    private List<String> remainingDefaultClarifyQuestions(String message) {
+        List<String> qs = new ArrayList<>();
+        if (!IntentHeuristics.hasGoalDegreeHint(message) && extractTopicHint(message) == null) {
+            qs.add("这次学习，你最想达成什么？（比如入门、做项目、备考）");
+        }
+        if (!IntentHeuristics.hasLevelHint(message)) {
+            qs.add("你现在的基础怎么样？（完全零基础 / 学过一点 / 有项目经验）");
+        }
+        if (!IntentHeuristics.hasTimeHint(message)) {
+            qs.add("打算学多久？（比如 4 周、3 个月）");
+        }
+        return qs;
+    }
+
+    private List<String> remainingProfileClarifyQuestions(LearnerContextDto ctx, String message) {
+        List<String> qs = new ArrayList<>();
+        String goalHint = extractGoalFromProfile(ctx.getProfileSummary());
+        if (goalHint != null && !IntentHeuristics.hasGoalDegreeHint(message)) {
+            qs.add("你之前提到过「" + goalHint + "」，这次还是继续这个方向，还是有新的打算？");
+        } else if (goalHint == null && !IntentHeuristics.hasGoalDegreeHint(message)) {
+            qs.add("你希望这次学习的重点放在哪里？");
+        }
+        if (!IntentHeuristics.hasLevelHint(message)) {
+            qs.add("方便说下你现在的基础吗？每天或每周大概能投入多少时间？");
+        }
+        if (!IntentHeuristics.hasTimeHint(message)) {
+            qs.add("你希望在多久之内看到阶段性成果？（比如 1 个月、3 个月）");
+        }
+        return qs;
     }
 
     private PlanResult maybeDowngradeLearningPath(PlanResult plan, String message, LearnerContextDto ctx) {
@@ -120,41 +192,6 @@ public class PlanningGateService {
         return (hasGoal && hasLevel) || (hasGoal && hasTime) || (hasLevel && hasTime);
     }
 
-    private List<String> defaultClarifyQuestions(LearnerContextDto ctx) {
-        List<String> qs = new ArrayList<>();
-        qs.add("这次学习，你最想达成什么？（比如入门、做项目、备考）");
-        qs.add("你现在的基础怎么样？（完全零基础 / 学过一点 / 有项目经验）");
-        qs.add("打算学多久？（比如 4 周、3 个月）");
-        return qs;
-    }
-
-    private List<String> profileAwareClarifyQuestions(LearnerContextDto ctx) {
-        List<String> qs = new ArrayList<>();
-        String goalHint = extractGoalFromProfile(ctx.getProfileSummary());
-        if (goalHint != null) {
-            qs.add("你之前提到过「" + goalHint + "」，这次还是继续这个方向，还是有新的打算？");
-        } else {
-            qs.add("你希望这次学习的重点放在哪里？");
-        }
-        qs.add("方便说下你现在的基础吗？每天或每周大概能投入多少时间？");
-        qs.add("你希望在多久之内看到阶段性成果？（比如 1 个月、3 个月）");
-        return qs;
-    }
-
-    /** 用户消息里已点明主题时的追问（口语化，不引用画像字段） */
-    private List<String> topicFocusedClarifyQuestions(String message) {
-        List<String> qs = new ArrayList<>();
-        String topic = extractTopicHint(message);
-        if (topic != null) {
-            qs.add("学 " + topic + " 的话，你更想达到什么程度？（能写小项目 / 求职 / 先入门了解一下）");
-        } else {
-            qs.add("这次学习，你最想达成什么？（比如入门、做项目、备考）");
-        }
-        qs.add("你现在的基础怎么样？（完全零基础 / 学过一点 / 有项目经验）");
-        qs.add("打算学多久？（比如 4 周、3 个月）");
-        return qs;
-    }
-
     /** 从画像摘要中提取可读的学习目标短语（不暴露原始字段） */
     private static String extractGoalFromProfile(String profileSummary) {
         if (profileSummary == null || profileSummary.isBlank()) {
@@ -178,8 +215,9 @@ public class PlanningGateService {
         String[][] topics = {
                 {"python", "Python"},
                 {"pyhton", "Python"},
-                {"java", "Java"},
                 {"javascript", "JavaScript"},
+                {"typescript", "TypeScript"},
+                {"java", "Java"},
                 {"数据分析", "数据分析"},
                 {"机器学习", "机器学习"},
                 {"web", "Web 开发"},

@@ -88,4 +88,11 @@ public final class ConfigKeys {
     /** 层 3：learning_path_core 完成后询问是否生成讲义 */
     public static final String PATH_STAGED_DELIVERY_ENABLED = "path.staged_delivery.enabled";
 
+    // --- Phase 2：Agent 协商（默认关）---
+    public static final String CONSULTATION_ENABLED = "consultation.enabled";
+    public static final String CONSULTATION_SCENES = "consultation.scenes";
+    public static final String CONSULTATION_MAX_ROUNDS = "consultation.max_rounds";
+    public static final String CONSULTATION_STREAM_TRANSCRIPT = "consultation.stream_transcript";
+    public static final String CONSULTATION_TIMEOUT_MS = "consultation.timeout_ms";
+
 }

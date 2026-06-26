@@ -75,7 +75,10 @@ public final class IntentHeuristics {
             return false;
         }
         String m = message.trim().toLowerCase();
-        return containsAny(m, "不用", "不要", "不需要", "跳过", "算了", "否", "no", "n")
+        if (m.equals("n") || m.equals("no") || m.equals("否")) {
+            return true;
+        }
+        return containsAny(m, "不用", "不要", "不需要", "跳过", "算了")
                 || m.equals("不用了") || m.equals("不要了");
     }
 
@@ -84,13 +87,53 @@ public final class IntentHeuristics {
         if (message == null) {
             return false;
         }
-        String m = message.trim().replace('\n', ' ');
-        boolean hasGoal = containsAny(m, "数据分析", "web", "django", "找工作", "就业", "项目", "考研", "考试", "python");
-        boolean hasLevel = containsAny(m, "零基础", "新手", "初学", "有基础", "学过", "入门过", "熟练");
-        boolean hasTime = m.matches(".*\\d+\\s*(个月|月|周|天|year|years).*")
-                || containsAny(m, "三个月", "半年", "一年", "1个月", "2个月", "3个月", "6个月")
-                || m.contains("个月");
+        boolean hasGoal = hasGoalHint(message);
+        boolean hasLevel = hasLevelHint(message);
+        boolean hasTime = hasTimeHint(message);
         return (hasLevel && hasTime) || (hasGoal && hasLevel) || (hasGoal && hasTime);
+    }
+
+    /** 是否已点明学习主题（含 python / java 等） */
+    public static boolean hasGoalHint(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String m = message.trim().replace('\n', ' ').toLowerCase();
+        return containsAny(m, "数据分析", "web", "django", "找工作", "就业", "项目", "考研", "考试",
+                "python", "java", "javascript", "typescript", "c语言", "c++", "go", "rust", "前端", "后端",
+                "机器学习", "react", "vue");
+    }
+
+    /** 是否已说明基础水平（含 Clarify 常见口语回复） */
+    public static boolean hasLevelHint(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String m = message.trim().replace('\n', ' ');
+        return containsAny(m, "零基础", "新手", "初学", "有基础", "学过", "入门过", "熟练",
+                "一点基础", "有点基础", "有些基础", "会一点", "了解一点", "入门了", "没学过",
+                "完全零基础", "项目经验", "有项目", "有一点", "有些");
+    }
+
+    /** 是否已说明学习时长 */
+    public static boolean hasTimeHint(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String m = message.trim().replace('\n', ' ');
+        return m.matches(".*\\d+\\s*(个月|月|周|天|year|years).*")
+                || containsAny(m, "三个月", "半年", "一年", "1个月", "2个月", "3个月", "6个月", "4周", "8周")
+                || m.contains("个月");
+    }
+
+    /** 是否已说明学习目标/程度（入门、求职等） */
+    public static boolean hasGoalDegreeHint(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String m = message.trim().replace('\n', ' ');
+        return containsAny(m, "入门", "求职", "找工作", "就业", "备考", "小项目", "项目实战",
+                "了解一下", "先学", "深入", "进阶", "熟练运用");
     }
 
     private static boolean containsAny(String text, String... needles) {
