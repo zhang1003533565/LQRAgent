@@ -3,7 +3,8 @@ import { WorkspaceShell, ChatView } from '@/components/student/workspace'
 import QuizPracticeDrawer from '@/components/student/quiz/QuizPracticeDrawer'
 import LearningPathPage from './LearningPathPage'
 import LearningResourcesPage from './LearningResourcesPage'
-import QuizPage from './QuizPage'
+import QuizHomePage from './QuizHomePage'
+import QuizTakingPage from './QuizTakingPage'
 import UploadPage from './UploadPage'
 import ProfilePage from './ProfilePage'
 import KnowledgeGraphPage from './KnowledgeGraphPage'
@@ -28,11 +29,12 @@ export default function WorkspacePage() {
           <Route path="learning-path" element={<LearningPathPage />} />
           <Route path="upload" element={<UploadPage />} />
           <Route path="resources" element={<LearningResourcesPage />} />
-          <Route path="quiz" element={<QuizPage />} />
+          <Route path="quiz" element={<QuizHomePage />} />
+          <Route path="quiz/session/:sessionId" element={<QuizTakingPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="knowledge-graph" element={<KnowledgeGraphPage />} />
 
-          <Route path="quiz/practice/:questionId" element={backgroundLocation ? <QuizPage /> : <QuizPracticeDrawer questionId={activeQuestionId} />} />
+          <Route path="quiz/practice/:questionId" element={backgroundLocation ? <QuizHomePage /> : <QuizPracticeDrawer questionId={activeQuestionId} />} />
         </Route>
       </Routes>
 
