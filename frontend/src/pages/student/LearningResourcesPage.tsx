@@ -262,26 +262,6 @@ export default function LearningResourcesPage() {
     syncKpFromSearchParams(searchParams)
   }, [searchParams])
 
-  const illustration = useMemo(() => findResource(mergedResources, 'ILLUSTRATION'), [mergedResources])
-  const video = useMemo(() => findResource(mergedResources, 'VIDEO_CLIP'), [mergedResources])
-  const lesson = useMemo(() => findResource(mergedResources, 'LESSON'), [mergedResources])
-  const codeCase = useMemo(() => findResource(mergedResources, 'CODE_CASE'), [mergedResources])
-  const previewImageUrl = illustration?.mediaUrl || generatedImageUrl || undefined
-  const previewVideoUrl = video?.mediaUrl || generatedVideoUrl || undefined
-  const previewImageTitle = generatedImageTitle
-    || (previewImageUrl ? buildImagePreviewTitle(illustration?.generationPrompt || illustration?.title || prompt, currentTitle) : buildImagePreviewTitle(undefined, currentTitle))
-
-  useEffect(() => {
-    setPrompt(getDefaultPrompt(currentTitle))
-  }, [currentTitle])
-
-  useEffect(() => {
-    setGeneratedImageUrl(null)
-    setGeneratedImageTitle(null)
-    setGeneratedVideoUrl(null)
-    setImageModalOpen(false)
-  }, [kpId])
-
   const refreshResources = useCallback(async () => {
     if (!kpId) return
     setLoading(true)
@@ -311,6 +291,26 @@ export default function LearningResourcesPage() {
   }, [chatResources, kpId, resources])
 
   const hasChatResources = chatResources.some((item) => item.kpId === kpId)
+
+  const illustration = useMemo(() => findResource(mergedResources, 'ILLUSTRATION'), [mergedResources])
+  const video = useMemo(() => findResource(mergedResources, 'VIDEO_CLIP'), [mergedResources])
+  const lesson = useMemo(() => findResource(mergedResources, 'LESSON'), [mergedResources])
+  const codeCase = useMemo(() => findResource(mergedResources, 'CODE_CASE'), [mergedResources])
+  const previewImageUrl = illustration?.mediaUrl || generatedImageUrl || undefined
+  const previewVideoUrl = video?.mediaUrl || generatedVideoUrl || undefined
+  const previewImageTitle = generatedImageTitle
+    || (previewImageUrl ? buildImagePreviewTitle(illustration?.generationPrompt || illustration?.title || prompt, currentTitle) : buildImagePreviewTitle(undefined, currentTitle))
+
+  useEffect(() => {
+    setPrompt(getDefaultPrompt(currentTitle))
+  }, [currentTitle])
+
+  useEffect(() => {
+    setGeneratedImageUrl(null)
+    setGeneratedImageTitle(null)
+    setGeneratedVideoUrl(null)
+    setImageModalOpen(false)
+  }, [kpId])
 
   async function handleGenerateText(type: ResourceType) {
     if (!kpId || generating) return
