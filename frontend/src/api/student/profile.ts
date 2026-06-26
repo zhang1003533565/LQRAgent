@@ -52,6 +52,19 @@ export async function fetchProfileAchievements(): Promise<BackendLearningAchieve
   return res.data.data
 }
 
+export type ProfileExportResult = {
+  format: string
+  content?: string
+  fileName: string
+}
+
+export async function exportProfile(format: 'markdown' | 'pdf' = 'markdown'): Promise<ProfileExportResult> {
+  const res = await http.get<{ data: ProfileExportResult }>('/profile/export', {
+    params: { format },
+  })
+  return res.data.data
+}
+
 export function mapApiTrendPoints(items: BackendProfileTrendPoint[]): LearningTrendPoint[] {
   return items.map((item) => ({
     date: item.date,

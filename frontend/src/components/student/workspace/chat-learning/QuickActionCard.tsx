@@ -1,4 +1,4 @@
-import type { QuickActionItem } from '@/mock/chatLearning'
+import type { QuickActionItem } from '@/utils/types/chatSidebarActions'
 
 type Props = {
   action: QuickActionItem

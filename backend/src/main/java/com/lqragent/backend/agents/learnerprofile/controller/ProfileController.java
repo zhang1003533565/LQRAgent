@@ -5,9 +5,11 @@ import com.lqragent.backend.agents.learnerprofile.dto.LearningAchievementDto;
 import com.lqragent.backend.agents.learnerprofile.dto.ProfileDetailDto;
 import com.lqragent.backend.agents.learnerprofile.dto.ProfilePatchRequest;
 import com.lqragent.backend.agents.learnerprofile.dto.ProfileSummaryDto;
+import com.lqragent.backend.agents.learnerprofile.dto.ProfileExportDto;
 import com.lqragent.backend.agents.learnerprofile.dto.ProfileTrendPointDto;
 import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
 import com.lqragent.backend.agents.learnerprofile.service.ProfileAnalyticsService;
+import com.lqragent.backend.agents.learnerprofile.service.ProfileExportService;
 import com.lqragent.backend.user.service.CurrentUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -25,6 +27,7 @@ public class ProfileController {
 
     private final LearnerProfileService profileService;
     private final ProfileAnalyticsService profileAnalyticsService;
+    private final ProfileExportService profileExportService;
     private final CurrentUserService currentUserService;
 
     @Operation(summary = "获取画像摘要", description = "返回当前学生的 6 维度画像")
@@ -66,5 +69,14 @@ public class ProfileController {
             @AuthenticationPrincipal UserDetails userDetails) {
         Long userId = currentUserService.requireUserId(userDetails);
         return ApiResponse.ok(profileAnalyticsService.getAchievements(userId));
+    }
+
+    @Operation(summary = "导出学习画像", description = "生成 Markdown 格式学习画像报告")
+    @GetMapping("/export")
+    public ApiResponse<ProfileExportDto> export(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam(defaultValue = "markdown") String format) {
+        Long userId = currentUserService.requireUserId(userDetails);
+        return ApiResponse.ok(profileExportService.export(userId, format));
     }
 }

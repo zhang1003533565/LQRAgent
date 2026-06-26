@@ -9,7 +9,7 @@ import {
   QuizOverviewCards,
   RecommendedPracticeSection,
 } from '@/components/student/workspace/quiz'
-import { createPracticeSession, generatePracticeFromPath } from '@/services/quizService'
+import { createPracticeSession, generatePracticeFromPath, syncQuizPreferences, syncQuizSessionsFromCloud } from '@/services/quizService'
 import { useQuizCatalog } from '@/utils/hooks/useQuizCatalog'
 import { useQuizOverview } from '@/utils/hooks/useQuizOverview'
 import { useRecommendedPractices } from '@/utils/hooks/useRecommendedPractices'
@@ -42,6 +42,11 @@ export default function QuizHomePage() {
       setFilters((f) => ({ ...f, learningPathId: 'current' }))
     }
   }, [searchParams])
+
+  useEffect(() => {
+    void syncQuizPreferences(true)
+    void syncQuizSessionsFromCloud()
+  }, [])
 
   const catalogFilters = useMemo(
     () => ({ ...filters, keyword: search }),

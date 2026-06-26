@@ -23,6 +23,7 @@ import {
   UPLOAD_CONFIG,
   SUPPORTED_EXTENSIONS,
   SUPPORTED_MIME_HINTS,
+  applyServerUploadConfig,
 } from '@/utils/upload/uploadConstants'
 import {
   computeUploadStats,
@@ -67,6 +68,13 @@ function getPersistedSize(fileId: string): number {
   return readSizeMap()[fileId] ?? 0
 }
 
+function clearPersistedSize(fileId: string) {
+  const map = readSizeMap()
+  if (!(fileId in map)) return
+  delete map[fileId]
+  localStorage.setItem(FILE_SIZE_STORAGE_KEY, JSON.stringify(map))
+}
+
 async function loadAllTasks(): Promise<UploadTask[]> {
   return listUploadTasks()
 }
@@ -74,7 +82,8 @@ async function loadAllTasks(): Promise<UploadTask[]> {
 function tasksToFiles(tasks: UploadTask[]): UploadedFile[] {
   return tasks.map((t) => {
     const fileId = String(t.id)
-    const file = taskToUploadedFile(t, getPersistedSize(fileId))
+    const persistedSize = t.fileSizeBytes ?? getPersistedSize(fileId)
+    const file = taskToUploadedFile(t, persistedSize)
     const meta = getUploadMetadata(fileId)
     if (meta?.knowledgePointIds?.length && !t.manualKpIds) {
       file.relatedKnowledgePointIds = Array.from(
@@ -83,6 +92,9 @@ function tasksToFiles(tasks: UploadTask[]): UploadedFile[] {
     }
     if (!file.sizeBytes && getPersistedSize(fileId) > 0) {
       file.sizeBytes = getPersistedSize(fileId)
+    }
+    if (t.fileSizeBytes != null && getPersistedSize(fileId) > 0) {
+      clearPersistedSize(fileId)
     }
     return file
   })
@@ -402,9 +414,23 @@ export async function updateFileRelations(
 
 export async function loadUploadConfigFromServer(): Promise<void> {
   try {
-    await getUploadConfig()
+    const config = await getUploadConfig()
+    applyServerUploadConfig(config)
   } catch {
     // keep local defaults
+  }
+}
+
+export async function pruneLegacyFileSizes(): Promise<void> {
+  try {
+    const tasks = await loadAllTasks()
+    for (const task of tasks) {
+      if (task.fileSizeBytes != null) {
+        clearPersistedSize(String(task.id))
+      }
+    }
+  } catch {
+    // optional cleanup
   }
 }
 

@@ -1,6 +1,6 @@
 import http from '@/api/http'
 import type { LearningResource } from '@/utils/types/media-resource'
-import type { PracticeSession } from '@/utils/types/quiz'
+import type { PracticeSession, RecommendedPractice } from '@/utils/types/quiz'
 
 export interface QuizQuestionListItem {
   id: number
@@ -167,4 +167,30 @@ export async function favoriteQuizQuestion(questionId: number, favorite: boolean
 
 export async function markQuizQuestion(questionId: number, marked: boolean): Promise<void> {
   await http.post(`/quiz/questions/${questionId}/mark`, { marked })
+}
+
+export async function getQuizRecommendations(params?: {
+  limit?: number
+  kpId?: string
+}): Promise<RecommendedPractice[]> {
+  const res = await http.get<{ data: RecommendedPractice[] }>('/quiz/recommendations', {
+    params: { limit: params?.limit, kpId: params?.kpId },
+  })
+  return res.data.data
+}
+
+export type QuizGenerateResult = {
+  sessionId: string
+  questionIds: number[]
+  title: string
+}
+
+export async function generateQuiz(payload: {
+  kpId: string
+  count?: number
+  difficulty?: string
+  title?: string
+}): Promise<QuizGenerateResult> {
+  const res = await http.post<{ data: QuizGenerateResult }>('/quiz/generate', payload)
+  return res.data.data
 }

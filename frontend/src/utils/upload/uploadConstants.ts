@@ -1,10 +1,26 @@
-/** 前端上传配置 — 待后端 GET /api/upload/config 对接后替换 */
+/** 前端上传配置 — 默认值可被 GET /api/upload/config 覆盖 */
 export const UPLOAD_CONFIG = {
   defaultTotalBytes: 5 * 1024 * 1024 * 1024,
   defaultMaxFileSizeBytes: 50 * 1024 * 1024,
   defaultPageSize: 8,
   clientQueuePageSize: 5,
-} as const
+}
+
+export function applyServerUploadConfig(config: {
+  defaultTotalBytes?: number
+  defaultMaxFileSizeBytes?: number
+  defaultPageSize?: number
+}): void {
+  if (config.defaultTotalBytes != null) {
+    UPLOAD_CONFIG.defaultTotalBytes = config.defaultTotalBytes
+  }
+  if (config.defaultMaxFileSizeBytes != null) {
+    UPLOAD_CONFIG.defaultMaxFileSizeBytes = config.defaultMaxFileSizeBytes
+  }
+  if (config.defaultPageSize != null) {
+    UPLOAD_CONFIG.defaultPageSize = config.defaultPageSize
+  }
+}
 
 export const SUPPORTED_EXTENSIONS = [
   'pdf',

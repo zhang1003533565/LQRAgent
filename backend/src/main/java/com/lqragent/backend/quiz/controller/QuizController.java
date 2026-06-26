@@ -10,10 +10,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.lqragent.backend.quiz.dto.QuizPreferencesDto;
 import com.lqragent.backend.quiz.dto.QuizToggleFavoriteRequest;
 import com.lqragent.backend.quiz.dto.QuizToggleMarkRequest;
+import com.lqragent.backend.quiz.dto.QuizGenerateRequest;
+import com.lqragent.backend.quiz.dto.QuizGenerateResponse;
+import com.lqragent.backend.quiz.dto.RecommendedPracticeDto;
 import com.lqragent.backend.quiz.entity.QuizRecord;
 import com.lqragent.backend.quiz.repository.QuizRecordRepository;
 import com.lqragent.backend.quiz.service.QuizService;
 import com.lqragent.backend.quiz.service.QuizSessionService;
+import com.lqragent.backend.quiz.service.QuizGenerateService;
+import com.lqragent.backend.quiz.service.QuizRecommendationService;
 import com.lqragent.backend.user.service.CurrentUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -34,6 +39,8 @@ public class QuizController {
 
     private final QuizService quizService;
     private final QuizSessionService quizSessionService;
+    private final QuizRecommendationService quizRecommendationService;
+    private final QuizGenerateService quizGenerateService;
     private final CurrentUserService currentUserService;
     private final QuizRecordRepository quizRecordRepository;
 
@@ -156,5 +163,24 @@ public class QuizController {
         Long userId = currentUserService.requireUserId(userDetails);
         quizSessionService.setMarked(userId, id, Boolean.TRUE.equals(request.getMarked()));
         return ApiResponse.ok(Map.of("questionId", id, "marked", request.getMarked()));
+    }
+
+    @Operation(summary = "推荐练习", description = "基于错题、路径节点与画像薄弱点推荐练习")
+    @GetMapping("/recommendations")
+    public ApiResponse<List<RecommendedPracticeDto>> getRecommendations(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestParam(defaultValue = "5") int limit,
+            @RequestParam(required = false) String kpId) {
+        Long userId = currentUserService.requireUserId(userDetails);
+        return ApiResponse.ok(quizRecommendationService.getRecommendations(userId, limit, kpId));
+    }
+
+    @Operation(summary = "按知识点生成练习", description = "从题库筛选题目并创建练习会话")
+    @PostMapping("/generate")
+    public ApiResponse<QuizGenerateResponse> generate(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @Valid @RequestBody QuizGenerateRequest request) {
+        Long userId = currentUserService.requireUserId(userDetails);
+        return ApiResponse.ok(quizGenerateService.generate(userId, request));
     }
 }

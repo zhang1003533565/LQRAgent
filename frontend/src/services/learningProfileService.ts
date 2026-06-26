@@ -1,10 +1,10 @@
 import { getCurrentPath } from '@/api/student/learningPath'
 import { listKnowledgePointsByIds } from '@/api/student/knowledge'
-import { getQuizRecords, getQuizStats } from '@/api/student/quiz'
+import { getQuizRecords, getQuizStats, generateQuiz } from '@/api/student/quiz'
 import { listUploadTasks } from '@/api/student/upload'
 import { getMe } from '@/api/student/user'
-import { fetchProfileDetailRaw, fetchProfileAchievements, fetchProfileTrends, mapApiAchievements, mapApiTrendPoints, refreshProfileRaw } from '@/api/student/profile'
-import { createPracticeSession } from '@/services/quizService'
+import { fetchProfileDetailRaw, fetchProfileAchievements, fetchProfileTrends, mapApiAchievements, mapApiTrendPoints, exportProfile, refreshProfileRaw } from '@/api/student/profile'
+import { createPracticeSession, getPracticeSession } from '@/services/quizService'
 import {
   buildAbilityDimensions,
   buildAchievements,
@@ -246,10 +246,24 @@ export async function refreshLearningProfile(
   return loadLearningProfile(filters)
 }
 
-/** TODO: GET /api/profile/export — 当前由前端生成 Markdown 报告 */
+/** 导出学习画像报告（优先服务端生成） */
 export async function exportLearningProfileReport(
-  profile: LearningProfile,
+  profile?: LearningProfile,
 ): Promise<{ downloadUrl: string }> {
+  try {
+    const result = await exportProfile('markdown')
+    if (result.content) {
+      const blob = new Blob([result.content], { type: 'text/markdown' })
+      return { downloadUrl: URL.createObjectURL(blob) }
+    }
+  } catch {
+    // fallback to client-side export
+  }
+
+  if (!profile) {
+    profile = await loadLearningProfile()
+  }
+
   const lines = [
     '# 学习画像报告',
     '',
@@ -263,17 +277,25 @@ export async function exportLearningProfileReport(
     ...profile.insights.map((i) => `- [${i.type}] ${i.title}：${i.content}`),
   ]
   const blob = new Blob([lines.join('\n')], { type: 'text/markdown' })
-  const downloadUrl = URL.createObjectURL(blob)
-  return { downloadUrl }
+  return { downloadUrl: URL.createObjectURL(blob) }
 }
 
 export async function startPracticeForKnowledgePoint(kpId: string) {
-  return createPracticeSession({
-    mode: 'review',
-    questionIds: [],
-    learningPathNodeId: kpId,
-    title: '薄弱点强化练习',
-  })
+  try {
+    const generated = await generateQuiz({
+      kpId,
+      count: 10,
+      title: '薄弱点强化练习',
+    })
+    return getPracticeSession(generated.sessionId)
+  } catch {
+    return createPracticeSession({
+      mode: 'review',
+      questionIds: [],
+      learningPathNodeId: kpId,
+      title: '薄弱点强化练习',
+    })
+  }
 }
 
 export type { BackendProfileDetail }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   createPracticeSession,
   getPracticeSession,
+  persistPracticeSession,
   submitPracticeSession,
   submitQuestionAnswer,
   favoriteQuestion,
@@ -74,6 +75,7 @@ export function usePracticeSession(sessionId: string | undefined) {
       if (!prev) return prev
       const updated = { ...prev, currentIndex: index }
       saveSession(updated)
+      void persistPracticeSession(updated)
       return updated
     })
   }, [])

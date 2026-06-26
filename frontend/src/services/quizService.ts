@@ -1,13 +1,16 @@
 import {
   deleteQuizSession as deleteQuizSessionApi,
   favoriteQuizQuestion,
+  generateQuiz,
   getNextQuizQuestion,
   getQuizPreferences,
   getQuizQuestionDetail,
+  getQuizRecommendations,
   getQuizRecords,
   getQuizSession as getQuizSessionApi,
   getQuizStats,
   listQuizQuestions,
+  listQuizSessions,
   markQuizQuestion,
   saveQuizSession,
   submitQuiz,
@@ -52,8 +55,8 @@ function newSessionId() {
 
 let preferencesSynced = false
 
-export async function syncQuizPreferences(): Promise<void> {
-  if (preferencesSynced) return
+export async function syncQuizPreferences(force = false): Promise<void> {
+  if (preferencesSynced && !force) return
   try {
     const prefs = await getQuizPreferences()
     for (const id of prefs.favoriteQuestionIds || []) {
@@ -66,6 +69,21 @@ export async function syncQuizPreferences(): Promise<void> {
   } catch {
     // 未登录或离线时保留本地缓存
   }
+}
+
+export async function syncQuizSessionsFromCloud(): Promise<void> {
+  try {
+    const sessions = await listQuizSessions()
+    for (const session of sessions) {
+      saveSession(session)
+    }
+  } catch {
+    // 离线时保留本地缓存
+  }
+}
+
+export async function persistPracticeSession(session: PracticeSession): Promise<void> {
+  await persistSessionToCloud(session)
 }
 
 async function persistSessionToCloud(session: PracticeSession): Promise<void> {
@@ -202,6 +220,22 @@ export async function getRecommendedPractices(params?: {
   limit?: number
 }): Promise<RecommendedPractice[]> {
   const limit = params?.limit ?? 3
+  const { selectedKpId } = usePathStore.getState()
+
+  try {
+    const remote = await getQuizRecommendations({
+      limit,
+      kpId: selectedKpId || undefined,
+    })
+    if (remote.length > 0) return remote
+  } catch {
+    // fallback below
+  }
+
+  return getLocalRecommendedPractices(limit)
+}
+
+async function getLocalRecommendedPractices(limit: number): Promise<RecommendedPractice[]> {
   const { selectedKpId, nodes } = usePathStore.getState()
   const [chapters, records] = await Promise.all([
     buildQuizCatalog({ learningPathId: 'current' }),
@@ -253,24 +287,18 @@ export async function getRecommendedPractices(params?: {
     }
   }
 
-  // TODO: 接入后端 AI 推荐接口 GET /api/quiz/recommendations
   return recommendations.slice(0, limit)
 }
 
-export async function getRecentPracticeRecords(params?: {
-  limit?: number
-}): Promise<PracticeRecord[]> {
-  const limit = params?.limit ?? 5
-  const sessions = Object.values(getStoredSessions())
+function sessionsToPracticeRecords(sessions: PracticeSession[], limit: number): PracticeRecord[] {
+  const inProgress = sessions
     .filter((s) => s.status !== 'submitted')
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
-
-  const submitted = Object.values(getStoredSessions())
+  const submitted = sessions
     .filter((s) => s.status === 'submitted')
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
 
-  const all = [...sessions, ...submitted]
-  return all.slice(0, limit).map((s) => ({
+  return [...inProgress, ...submitted].slice(0, limit).map((s) => ({
     id: s.id,
     sessionId: s.id,
     title: s.title,
@@ -282,6 +310,26 @@ export async function getRecentPracticeRecords(params?: {
     durationMinutes: Math.max(1, Math.round(s.completedCount * 2)),
     canContinue: s.status === 'in_progress',
   }))
+}
+
+function getLocalPracticeRecords(limit: number): PracticeRecord[] {
+  const sessions = Object.values(getStoredSessions())
+  return sessionsToPracticeRecords(sessions, limit)
+}
+
+export async function getRecentPracticeRecords(params?: {
+  limit?: number
+}): Promise<PracticeRecord[]> {
+  const limit = params?.limit ?? 5
+  try {
+    const remote = await listQuizSessions()
+    for (const session of remote) {
+      saveSession(session)
+    }
+    return sessionsToPracticeRecords(remote, limit)
+  } catch {
+    return getLocalPracticeRecords(limit)
+  }
 }
 
 export async function createPracticeSession(
@@ -524,18 +572,41 @@ export async function getQuestionTypeDistribution() {
 
 export async function generatePracticeFromPath(kpId?: string): Promise<PracticeSession> {
   const id = kpId || usePathStore.getState().selectedKpId
-  // TODO: POST /api/quiz/generate { kpId }
+  if (!id) {
+    throw new Error('请先选择学习路径节点')
+  }
+
+  try {
+    const nodeTitle =
+      usePathStore.getState().nodes.find((n) => n.kpId === id)?.title || id
+    const generated = await generateQuiz({
+      kpId: id,
+      count: 10,
+      title: `${nodeTitle} 专项练习`,
+    })
+    return await getPracticeSession(generated.sessionId)
+  } catch (e) {
+    const message = e instanceof Error ? e.message : ''
+    if (message.includes('暂无练习题')) {
+      throw e
+    }
+    // fallback: local session from question list
+  }
+
   const res = await listQuizQuestions({
     page: 1,
     size: 20,
-    knowledgePoint: id || undefined,
+    knowledgePoint: id,
   })
   const questionIds = (res.items || []).map((i: QuizQuestionListItem) => i.id)
+  if (questionIds.length === 0) {
+    throw new Error('该知识点暂无练习题，可先在聊天中请 AI 生成题目')
+  }
   return createPracticeSession({
     mode: 'ai_generated',
     questionIds,
-    learningPathNodeId: id || undefined,
-    title: id ? `${id} 专项练习` : 'AI 生成练习',
+    learningPathNodeId: id,
+    title: `${id} 专项练习`,
   })
 }
 

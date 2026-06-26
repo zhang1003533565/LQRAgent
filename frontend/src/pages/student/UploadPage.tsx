@@ -17,6 +17,8 @@ import {
   deleteUploadedFile,
   generateResourceFromFile,
   getFileDownloadUrl,
+  loadUploadConfigFromServer,
+  pruneLegacyFileSizes,
   retryParseFile,
   updateFileRelations,
 } from '@/services/uploadService'
@@ -78,6 +80,11 @@ export default function UploadPage() {
   useEffect(() => {
     syncWorkspaceFromSearchParams(searchParams)
   }, [searchParams])
+
+  useEffect(() => {
+    void loadUploadConfigFromServer()
+    void pruneLegacyFileSizes()
+  }, [])
 
   useEffect(() => {
     if (selectedKpId) {
