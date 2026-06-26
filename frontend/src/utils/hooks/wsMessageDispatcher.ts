@@ -11,7 +11,10 @@ import {
   looksLikeClarify,
   resolveStepId,
   normalizeStepLabel,
-  finalizeAgentSteps,
+  finalizeAssistantThinking,
+  isConsultationChunk,
+  pipelineStepsIndicateSuccess,
+  stripConsultationTranscript,
   resolveConsultationParentId,
   resolveConsultationRoleLabel,
   resolveConsultationTitle,
@@ -71,6 +74,8 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
         useChatStore.getState().updateMessage(last.id, {
           contentType: 'learning_path',
           streaming: false,
+          agentStepsCollapsed: true,
+          content: stripConsultationTranscript(last.content || ''),
         })
         saveMessageMetadata(last.id, { contentType: 'learning_path' })
       }
@@ -89,6 +94,8 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
           diagramCode: p.diagram,
           diagramFormat: p.format || 'mermaid',
           streaming: false,
+          agentStepsCollapsed: true,
+          content: stripConsultationTranscript(last.content || ''),
         })
         saveMessageMetadata(last.id, {
           contentType: 'diagram',
@@ -141,6 +148,8 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
           contentType: 'quiz',
           quizData: { title: p.title, topic: p.topic, difficulty: p.difficulty, questions: p.questions },
           streaming: false,
+          agentStepsCollapsed: true,
+          content: stripConsultationTranscript(last.content || ''),
         })
         saveMessageMetadata(last.id, { contentType: 'quiz', quizData: p })
       }
@@ -211,9 +220,13 @@ export function dispatchWsMessage(data: WsRawMessage) {
         useChatStore.getState().bumpSessionList()
       }
       break
-    case 'chunk':
-      appendToLastMessage(data.content ?? '')
+    case 'chunk': {
+      const text = data.content ?? ''
+      if (!isConsultationChunk(text)) {
+        appendToLastMessage(text)
+      }
       break
+    }
     case 'agent_step':
       if (data.agent && data.label && data.status) {
         upsertStep(buildAgentStepInput({
@@ -273,16 +286,13 @@ export function dispatchWsMessage(data: WsRawMessage) {
       break
     case 'consultation_round':
       if (data.agentId && data.role) {
-        if (data.textDelta) {
-          appendToLastMessage(`【协商第 ${data.round ?? 1} 轮·${resolveConsultationRoleLabel(data.role)}】${data.textDelta}\n`)
-        }
         upsertStep(buildAgentStepInput({
           id: `consultation-r${data.round}-${data.role}-${activeConsultationScene ?? 'path'}`,
           parentId: activeConsultationParentId,
           agent: data.agentId,
           label: `第 ${data.round ?? 1} 轮 · ${resolveConsultationRoleLabel(data.role)}`,
           status: 'done',
-          detail: data.summary,
+          detail: data.summary || data.textDelta,
         }))
       }
       break
@@ -291,7 +301,7 @@ export function dispatchWsMessage(data: WsRawMessage) {
         id: activeConsultationParentId,
         stepId: activeConsultationScene === 'QUIZ_DESIGN' ? 'quiz_consult' : 'path_consult',
         agent: activeConsultationScene === 'QUIZ_DESIGN' ? 'quiz_agent' : 'learning_path_agent',
-        label: activeConsultationScene === 'QUIZ_DESIGN' ? '出题协商' : '路径协商',
+        label: activeConsultationScene === 'QUIZ_DESIGN' ? '督导 · 出题协商' : '督导 · 路径协商',
         status: 'done',
         detail: data.stopReason,
       }))
@@ -332,11 +342,23 @@ export function dispatchWsMessage(data: WsRawMessage) {
         )
 
         if (!last.content?.trim() && !hasArtifact) {
-          updateMessage(last.id, {
-            content: '回答生成失败或超时，请重试。',
-            streaming: false,
-            agentStepsCollapsed: true,
-          })
+          if (pipelineStepsIndicateSuccess(last.agentSteps)) {
+            const thinking = finalizeAssistantThinking(
+              '讲义与学习资源已生成，可在「学习资源」中查看。',
+              last.agentSteps,
+              { hasArtifact: false },
+            )
+            updateMessage(last.id, {
+              streaming: false,
+              ...thinking,
+            })
+          } else {
+            updateMessage(last.id, {
+              content: '回答生成失败或超时，请重试。',
+              streaming: false,
+              agentStepsCollapsed: true,
+            })
+          }
         } else {
           const clarifyType =
             last.contentType === 'clarify' || looksLikeClarify(last.content)
@@ -362,11 +384,10 @@ export function dispatchWsMessage(data: WsRawMessage) {
               agentStepsCollapsed: true,
             })
           } else {
-            const finalizedSteps = finalizeAgentSteps(last.agentSteps)
+            const thinking = finalizeAssistantThinking(last.content, last.agentSteps, { hasArtifact })
             updateMessage(last.id, {
               streaming: false,
-              agentStepsCollapsed: true,
-              agentSteps: finalizedSteps,
+              ...thinking,
               ...(clarifyType && last.contentType !== 'clarify' ? { contentType: clarifyType } : {}),
             })
           }

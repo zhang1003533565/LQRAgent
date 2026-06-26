@@ -652,6 +652,9 @@ public class ChatRouteDispatcher {
             if ("learning_path".equals(metadata.get("contentType"))) {
                 return "学习路径已生成。";
             }
+            if (metadata.get("cards") != null || "multi_card".equals(metadata.get("contentType"))) {
+                return "讲义与学习资源已生成，可在「学习资源」中查看。";
+            }
         }
         StringBuilder allContent = new StringBuilder();
         List<StepResult> stepResults = pipelineResult != null ? pipelineResult.getStepResults() : null;
@@ -724,9 +727,14 @@ public class ChatRouteDispatcher {
                 extractRagSourcesFromPipeline(pipelineResult));
         String finalContent = buildAssistantPersistContent(pipelineResult, metadata);
 
-        if (!contentStreamed.get() && !finalContent.isBlank()
-                && !(runtimeConfig.isStreamProgressEnabled() && runtimeConfig.isStreamProgressSkipFinalDump())) {
-            sender.sendEvent(session, "chunk", finalContent);
+        if (!contentStreamed.get() && !finalContent.isBlank()) {
+            // 仅当步骤已流式推送过正文时才跳过终局 dump；未推送过则必须发 chunk，避免前端误判失败
+            boolean skipDuplicateDump = contentStreamed.get()
+                    && runtimeConfig.isStreamProgressEnabled()
+                    && runtimeConfig.isStreamProgressSkipFinalDump();
+            if (!skipDuplicateDump) {
+                sender.sendEvent(session, "chunk", finalContent);
+            }
         }
 
         // 层 3：core 路径先交付，询问是否生成讲义/资源

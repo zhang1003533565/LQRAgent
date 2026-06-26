@@ -46,9 +46,7 @@ function groupChildStepsByRound(children: MessageAgentStep[]) {
 }
 
 function ConsultationTimeline({ children }: { children: MessageAgentStep[] }) {
-  const [openRounds, setOpenRounds] = useState<Set<number>>(() => new Set(
-    groupChildStepsByRound(children).map(([round]) => round),
-  ))
+  const [openRounds, setOpenRounds] = useState<Set<number>>(() => new Set())
   const groups = groupChildStepsByRound(children)
 
   if (groups.length === 0) return null
@@ -164,6 +162,12 @@ export default function AgentChainPanel({
 }: Props) {
   const [, setTick] = useState(0)
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    if (!streaming && collapsed) {
+      setManualExpanded(null)
+    }
+  }, [streaming, collapsed])
 
   useEffect(() => {
     if (!streaming) return undefined

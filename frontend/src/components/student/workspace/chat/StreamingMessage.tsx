@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { ChatMessage } from '@/utils/types/chat'
 import { useChatStore } from '@/utils/store/chatStore'
-import { looksLikeClarify } from '@/utils/chat/messageAgentSteps'
+import { looksLikeClarify, stripConsultationTranscript } from '@/utils/chat/messageAgentSteps'
 import AgentChainPanel from './AgentChainPanel'
 import ClarifyMessageCard from './ClarifyMessageCard'
 import MultiCardMessage from './MultiCardMessage'
@@ -90,11 +90,12 @@ export default function StreamingMessage({ message }: Props) {
     }
 
     if (isLearningPath) {
+      const pathIntro = stripConsultationTranscript(message.content)
       return (
         <>
-          {message.content && (
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-          )}
+          {pathIntro ? (
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{pathIntro}</ReactMarkdown>
+          ) : null}
           <LearningPathCard />
         </>
       )

@@ -346,6 +346,11 @@ public class PlanningAgent {
         String s = m.trim().toLowerCase();
         if (s.length() > 30) return false;
         return s.contains("你能做什么")
+                || s.contains("你可以做什么")
+                || s.contains("你能干什么")
+                || s.contains("你可以干什么")
+                || s.contains("你能干嘛")
+                || s.contains("你可以干嘛")
                 || s.contains("有什么功能")
                 || s.contains("帮助")
                 || s.equals("help")

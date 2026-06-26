@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { sendChatWs } from '@/utils/chat/chatWebSocket'
+import { submitChatMessage } from '@/utils/chat/sendChatMessage'
 import { useChatStore } from '@/utils/store/chatStore'
 import { useAuthStore } from '@/utils/store/authStore'
 import { usePathStore } from '@/utils/store/pathStore'
 import { chatApi } from '@/api/student/chat'
 import { trackBehavior } from '@/utils/tracker'
-import { submitChatMessage } from '@/utils/chat/sendChatMessage'
 import ChatMessageList from './ChatMessageList'
 import {
   ChatLearningAuxPanel,
@@ -50,15 +49,15 @@ export default function ChatView() {
     loadRecentSession()
   }, [userId, autoLoaded, loadMessages, messages.length, sessionId, setAutoLoaded])
 
-  const trackSend = useCallback(
-    (content: string) => {
-      if (selectedKpId) {
-        trackBehavior({ kpId: selectedKpId, action: 'chat_send', extra: content.slice(0, 100) })
-      }
-      sendChatWs(content)
-    },
-    [selectedKpId],
-  )
+  const onBeforeSend = useCallback((content: string) => {
+    if (selectedKpId) {
+      trackBehavior({ kpId: selectedKpId, action: 'chat_send', extra: content.slice(0, 100) })
+    }
+  }, [selectedKpId])
+
+  const handleSend = useCallback((content: string) => {
+    submitChatMessage(content, onBeforeSend)
+  }, [onBeforeSend])
 
   const handleQuickPrompt = useCallback((prompt: string) => {
     setInputDraft(prompt)
@@ -69,8 +68,8 @@ export default function ChatView() {
   }, [])
 
   const handleQuickSend = useCallback((prompt: string) => {
-    submitChatMessage(prompt, trackSend)
-  }, [trackSend])
+    submitChatMessage(prompt, onBeforeSend)
+  }, [onBeforeSend])
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-[#F6F9FE] font-sans">
@@ -101,7 +100,7 @@ export default function ChatView() {
         <ChatLearningInput
           draft={inputDraft}
           onDraftChange={setInputDraft}
-          onSend={trackSend}
+          onSend={handleSend}
         />
         <ChatLearningFooter />
       </div>

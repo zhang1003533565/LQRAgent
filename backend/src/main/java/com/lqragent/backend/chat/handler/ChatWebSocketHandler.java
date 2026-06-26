@@ -172,9 +172,14 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
                                 planningState.originalGoal(), wsSender);
                         return;
                     }
-                    sendOrchestratorStep(session, "done", "等待确认");
-                    dispatcher.handleResourceConfirmReminder(session, userId, sessionIdStr, wsSender);
-                    return;
+                    if (IntentHeuristics.shouldBreakResourceConfirm(content)) {
+                        dispatcher.clearPlanningSessionState(chatSessionId);
+                        // 继续走下方正常规划，不拦截为新问题
+                    } else {
+                        sendOrchestratorStep(session, "done", "等待确认");
+                        dispatcher.handleResourceConfirmReminder(session, userId, sessionIdStr, wsSender);
+                        return;
+                    }
                 }
                 if (planningState != null
                         && PlanningSessionState.PHASE_AWAITING_CLARIFY.equals(planningState.phase())) {

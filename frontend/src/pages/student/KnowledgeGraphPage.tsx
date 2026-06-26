@@ -25,6 +25,7 @@ import {
   type KnowledgeGraphNode,
 } from '@/api/student/knowledge'
 import { fetchProfileDetailRaw } from '@/api/student/profile'
+import { generatePracticeFromPath } from '@/services/quizService'
 import { usePathStore } from '@/utils/store/pathStore'
 import { useProfileStore } from '@/utils/store/profileStore'
 import {
@@ -163,6 +164,7 @@ export default function KnowledgeGraphPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('chapter')
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null)
   const [zoom, setZoom] = useState(1)
+  const [quizStarting, setQuizStarting] = useState(false)
 
   const pathNodes = usePathStore((state) => state.nodes)
   const selectPathNode = usePathStore((state) => state.selectNode)
@@ -259,6 +261,20 @@ export default function KnowledgeGraphPage() {
     const index = pathIndexMap.get(selectedNode.kpId)
     return index != null ? index + 1 : null
   }, [selectedNode, pathIndexMap])
+
+  const handleStartQuizFromGraph = useCallback(async () => {
+    if (!selectedNode || quizStarting) return
+    setQuizStarting(true)
+    try {
+      const session = await generatePracticeFromPath(selectedNode.kpId)
+      navigate(`/workspace/quiz/session/${session.id}`)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '生成练习失败'
+      window.alert(msg)
+    } finally {
+      setQuizStarting(false)
+    }
+  }, [navigate, quizStarting, selectedNode])
 
   const drawMiniMap = useCallback(() => {
     const canvas = miniMapRef.current
@@ -776,7 +792,7 @@ export default function KnowledgeGraphPage() {
 
               <div className={styles.primaryActions}>
                 <button type="button" onClick={() => navigateToWorkspace(navigate, '/workspace/resources', selectedNode.kpId)}><BookOpen size={16} />查看资源</button>
-                <button type="button" onClick={() => navigateToWorkspace(navigate, '/workspace/quiz', selectedNode.kpId)}><Sparkles size={16} />开始练习</button>
+                <button type="button" disabled={quizStarting} onClick={() => void handleStartQuizFromGraph()}><Sparkles size={16} />{quizStarting ? '生成中…' : '开始练习'}</button>
                 <button
                   type="button"
                   onClick={() => {

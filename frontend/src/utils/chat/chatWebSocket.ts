@@ -69,13 +69,14 @@ function connect() {
   }
 }
 
-export function sendChatWs(content: string) {
+export function sendChatWs(content: string): boolean {
   if (ws?.readyState !== WebSocket.OPEN) {
     console.warn('[WebSocket] not connected')
-    return
+    return false
   }
   const sessionId = useChatStore.getState().sessionId
   ws.send(JSON.stringify({ type: 'message', content, session_id: sessionId }))
+  return true
 }
 
 /** 在工作台壳层挂载一次，避免多组件重复建连 */

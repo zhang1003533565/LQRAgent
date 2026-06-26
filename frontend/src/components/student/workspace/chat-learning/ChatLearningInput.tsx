@@ -7,8 +7,6 @@ import {
   Send,
   Wrench,
 } from 'lucide-react'
-import { useChatStore } from '@/utils/store/chatStore'
-
 type Props = {
   draft: string
   onDraftChange: (value: string) => void
@@ -17,7 +15,6 @@ type Props = {
 
 export default function ChatLearningInput({ draft, onDraftChange, onSend }: Props) {
   const [focused, setFocused] = useState(false)
-  const addMessage = useChatStore((s) => s.addMessage)
   const canSend = draft.trim().length > 0
 
   useEffect(() => {
@@ -28,25 +25,6 @@ export default function ChatLearningInput({ draft, onDraftChange, onSend }: Prop
     e.preventDefault()
     const content = draft.trim()
     if (!content) return
-
-    useChatStore.getState().finalizeStuckStreaming()
-
-    addMessage({
-      id: crypto.randomUUID(),
-      role: 'user',
-      content,
-      createdAt: new Date(),
-    })
-    addMessage({
-      id: crypto.randomUUID(),
-      role: 'assistant',
-      content: '',
-      streaming: true,
-      agentSteps: [],
-      agentStepsCollapsed: false,
-      createdAt: new Date(),
-    })
-
     onSend(content)
     onDraftChange('')
   }

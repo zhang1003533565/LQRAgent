@@ -115,7 +115,8 @@ export default function ProfilePage() {
           refreshing={refreshing}
           exporting={exporting}
           onRefresh={() => void refresh()}
-          onExport={() => void exportReport()}
+          onExportMarkdown={() => void exportReport('markdown')}
+          onExportPdf={() => void exportReport('pdf')}
         />
 
         <ProfileFilterBar

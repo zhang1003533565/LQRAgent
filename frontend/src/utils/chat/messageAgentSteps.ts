@@ -14,8 +14,8 @@ export function resolveConsultationParentId(scene?: string | null): string {
 
 export function resolveConsultationTitle(scene?: string | null, maxRounds?: number): string {
   const rounds = maxRounds ?? 2
-  if (scene === 'QUIZ_DESIGN') return `出题协商（最多 ${rounds} 轮）`
-  return `路径协商（最多 ${rounds} 轮）`
+  if (scene === 'QUIZ_DESIGN') return `督导 · 出题协商（最多 ${rounds} 轮）`
+  return `督导 · 路径协商（最多 ${rounds} 轮）`
 }
 
 export function resolveConsultationRoleLabel(role: string): string {
@@ -193,6 +193,64 @@ export function getChildAgentSteps(steps: MessageAgentStep[], parentId: string):
 /** done 时收尾：去掉悬空 pending，合并重复项 */
 export function finalizeAgentSteps(steps?: MessageAgentStep[]): MessageAgentStep[] {
   return normalizeAgentSteps(steps ?? [])
+}
+
+/** 协商过程流式写入正文的行（完成后应从气泡正文移除） */
+const CONSULTATION_LINE_RE = /^【协商第\s*\d+\s*轮[·・][^】]+】.*$/gm
+
+export function isConsultationChunk(text: string): boolean {
+  return /^【协商第\s*\d+\s*轮[·・]/.test(text.trim())
+}
+
+export function stripConsultationTranscript(content: string | undefined | null): string {
+  if (!content) return ''
+  return content.replace(CONSULTATION_LINE_RE, '').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+export function hasConsultationSteps(steps?: MessageAgentStep[]): boolean {
+  if (!steps?.length) return false
+  return steps.some(
+    (s) =>
+      s.id.includes('consult')
+      || s.parentId?.includes('consult')
+      || s.label.includes('协商'),
+  )
+}
+
+/** Pipeline 步骤已成功但无正文/产物卡片时的兜底判断 */
+export function pipelineStepsIndicateSuccess(steps?: MessageAgentStep[]): boolean {
+  if (!steps?.length) return false
+  return steps.some(
+    (s) =>
+      s.status === 'done'
+      && (
+        s.agent === 'resource_agent'
+        || s.agent === 'resource'
+        || s.label.includes('生成资源')
+        || s.label.includes('后置检查')
+        || s.label.includes('全部完成')
+        || s.label.includes('路径已生成')
+      ),
+  )
+}
+
+/** 结果已产出时：折叠步骤并清理正文中的协商流水 */
+export function finalizeAssistantThinking(
+  content: string | undefined,
+  agentSteps?: MessageAgentStep[],
+  opts?: { hasArtifact?: boolean },
+): { content: string; agentStepsCollapsed: true; agentSteps: MessageAgentStep[] } {
+  const finalizedSteps = finalizeAgentSteps(agentSteps)
+  const shouldStrip =
+    opts?.hasArtifact
+    || hasConsultationSteps(finalizedSteps)
+    || hasConsultationSteps(agentSteps)
+  const cleaned = shouldStrip ? stripConsultationTranscript(content) : (content ?? '').trim()
+  return {
+    content: cleaned,
+    agentStepsCollapsed: true,
+    agentSteps: finalizedSteps,
+  }
 }
 
 export function serializeAgentSteps(steps?: MessageAgentStep[]) {

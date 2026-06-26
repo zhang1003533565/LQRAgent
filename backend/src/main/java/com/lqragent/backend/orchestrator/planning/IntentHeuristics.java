@@ -86,6 +86,16 @@ public final class IntentHeuristics {
         return affirms && (aboutResources || m.length() <= 8);
     }
 
+    /**
+     * 等待「是否生成讲义」时，除明确确认/拒绝外的消息视为新意图，应退出确认态。
+     */
+    public static boolean shouldBreakResourceConfirm(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        return !isResourceGenerationConfirm(message) && !isResourceGenerationDecline(message);
+    }
+
     /** 层 3：用户拒绝生成资源 */
     public static boolean isResourceGenerationDecline(String message) {
         if (message == null || message.isBlank()) {

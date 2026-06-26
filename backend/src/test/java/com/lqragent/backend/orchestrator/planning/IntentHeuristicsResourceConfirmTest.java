@@ -51,4 +51,11 @@ class IntentHeuristicsResourceConfirmTest {
     void unrelatedLearningMessageNotConfirm() {
         assertFalse(IntentHeuristics.isResourceGenerationConfirm("我想继续学 Python 数据分析"));
     }
+
+    @Test
+    void shouldBreakResourceConfirmOnNewQuestion() {
+        assertTrue(IntentHeuristics.shouldBreakResourceConfirm("我有题目不会"));
+        assertFalse(IntentHeuristics.shouldBreakResourceConfirm("生成"));
+        assertFalse(IntentHeuristics.shouldBreakResourceConfirm("不用"));
+    }
 }

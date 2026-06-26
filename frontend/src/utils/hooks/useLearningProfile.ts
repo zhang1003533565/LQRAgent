@@ -67,21 +67,18 @@ export function useLearningProfile(initialFilters?: LearningProfileFilters) {
     }
   }, [filters])
 
-  const exportReport = useCallback(async () => {
-    if (!data) return null
-    setExporting(true)
-    try {
-      const res = await exportLearningProfileReport(data)
-      const a = document.createElement('a')
-      a.href = res.downloadUrl
-      a.download = '学习画像报告.md'
-      a.click()
-      URL.revokeObjectURL(res.downloadUrl)
-      return res
-    } finally {
-      setExporting(false)
-    }
-  }, [data])
+  const exportReport = useCallback(
+    async (format: 'markdown' | 'pdf' = 'markdown') => {
+      if (!data && format === 'markdown') return null
+      setExporting(true)
+      try {
+        return await exportLearningProfileReport(data ?? undefined, format)
+      } finally {
+        setExporting(false)
+      }
+    },
+    [data],
+  )
 
   const setRange = useCallback((range: ProfileRange) => {
     setFilters((f) => ({ ...f, range }))

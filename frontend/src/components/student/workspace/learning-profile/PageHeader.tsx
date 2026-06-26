@@ -4,10 +4,17 @@ type Props = {
   refreshing?: boolean
   exporting?: boolean
   onRefresh: () => void
-  onExport: () => void
+  onExportMarkdown: () => void
+  onExportPdf: () => void
 }
 
-export default function PageHeader({ refreshing, exporting, onRefresh, onExport }: Props) {
+export default function PageHeader({
+  refreshing,
+  exporting,
+  onRefresh,
+  onExportMarkdown,
+  onExportPdf,
+}: Props) {
   return (
     <header className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
       <div>
@@ -28,12 +35,21 @@ export default function PageHeader({ refreshing, exporting, onRefresh, onExport 
         </button>
         <button
           type="button"
-          onClick={onExport}
+          onClick={onExportMarkdown}
+          disabled={exporting}
+          className="inline-flex h-[42px] items-center gap-2 rounded-[10px] border border-[#D8E4F5] bg-white px-4 text-sm font-semibold text-[#2563EB] disabled:opacity-50"
+        >
+          <Download className="h-4 w-4" />
+          导出 Markdown
+        </button>
+        <button
+          type="button"
+          onClick={onExportPdf}
           disabled={exporting}
           className="inline-flex h-[42px] items-center gap-2 rounded-[10px] bg-gradient-to-br from-[#3B82F6] to-[#2563EB] px-4 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(37,99,235,0.18)] disabled:opacity-50"
         >
           <Download className="h-4 w-4" />
-          导出报告
+          导出 PDF
         </button>
       </div>
     </header>

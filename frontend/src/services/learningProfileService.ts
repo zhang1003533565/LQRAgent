@@ -246,38 +246,53 @@ export async function refreshLearningProfile(
   return loadLearningProfile(filters)
 }
 
-/** 导出学习画像报告（优先服务端生成） */
+export type ProfileExportFormat = 'markdown' | 'pdf'
+
+/** 导出学习画像报告（优先服务端 Markdown） */
 export async function exportLearningProfileReport(
   profile?: LearningProfile,
-): Promise<{ downloadUrl: string }> {
+  format: ProfileExportFormat = 'markdown',
+): Promise<{ downloadUrl?: string; content?: string; fileName?: string }> {
+  let markdown = ''
+  let fileName = `learning-profile-${new Date().toISOString().slice(0, 10)}.md`
+
   try {
     const result = await exportProfile('markdown')
     if (result.content) {
-      const blob = new Blob([result.content], { type: 'text/markdown' })
-      return { downloadUrl: URL.createObjectURL(blob) }
+      markdown = result.content
+      fileName = result.fileName || fileName
     }
   } catch {
-    // fallback to client-side export
+    // fallback below
   }
 
-  if (!profile) {
-    profile = await loadLearningProfile()
+  if (!markdown) {
+    if (!profile) {
+      profile = await loadLearningProfile()
+    }
+    markdown = [
+      '# 学习画像报告',
+      '',
+      `综合掌握度：${profile.overview.overallMasteryRate}%`,
+      `连续学习：${profile.overview.continuousLearningDays} 天`,
+      '',
+      '## 能力维度',
+      ...profile.abilityDimensions.map((d) => `- ${d.name}：${d.score}`),
+      '',
+      '## 学习洞察',
+      ...profile.insights.map((i) => `- [${i.type}] ${i.title}：${i.content}`),
+    ].join('\n')
   }
 
-  const lines = [
-    '# 学习画像报告',
-    '',
-    `综合掌握度：${profile.overview.overallMasteryRate}%`,
-    `连续学习：${profile.overview.continuousLearningDays} 天`,
-    '',
-    '## 能力维度',
-    ...profile.abilityDimensions.map((d) => `- ${d.name}：${d.score}`),
-    '',
-    '## 学习洞察',
-    ...profile.insights.map((i) => `- [${i.type}] ${i.title}：${i.content}`),
-  ]
-  const blob = new Blob([lines.join('\n')], { type: 'text/markdown' })
-  return { downloadUrl: URL.createObjectURL(blob) }
+  if (format === 'pdf') {
+    const { printProfileReportAsPdf } = await import('@/utils/learningProfile/exportReport')
+    printProfileReportAsPdf(markdown)
+    return { content: markdown, fileName: fileName.replace(/\.md$/i, '.pdf') }
+  }
+
+  const { downloadMarkdownFile } = await import('@/utils/learningProfile/exportReport')
+  downloadMarkdownFile(markdown, fileName)
+  return { content: markdown, fileName }
 }
 
 export async function startPracticeForKnowledgePoint(kpId: string) {

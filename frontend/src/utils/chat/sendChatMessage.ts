@@ -6,7 +6,11 @@ export function submitChatMessage(content: string, onSent?: (text: string) => vo
   const trimmed = content.trim()
   if (!trimmed) return
 
-  useChatStore.getState().finalizeStuckStreaming()
+  const state = useChatStore.getState()
+  const lastAssistant = [...state.messages].reverse().find((m) => m.role === 'assistant')
+  if (lastAssistant?.streaming) return
+
+  state.finalizeStuckStreaming()
 
   useChatStore.getState().addMessage({
     id: crypto.randomUUID(),
@@ -25,5 +29,15 @@ export function submitChatMessage(content: string, onSent?: (text: string) => vo
   })
 
   onSent?.(trimmed)
-  sendChatWs(trimmed)
+  const sent = sendChatWs(trimmed)
+  if (!sent) {
+    const msgs = useChatStore.getState().messages
+    const last = [...msgs].reverse().find((m) => m.role === 'assistant')
+    if (last?.streaming) {
+      useChatStore.getState().updateMessage(last.id, {
+        content: '连接未就绪，请稍候再试或刷新页面。',
+        streaming: false,
+      })
+    }
+  }
 }

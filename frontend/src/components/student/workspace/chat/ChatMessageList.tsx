@@ -11,6 +11,7 @@ function isRenderableMessage(msg: ChatMessage): boolean {
     return true
   }
   if (msg.contentType && msg.contentType !== 'text') return true
+  if (msg.agentSteps?.length) return true
   return false
 }
 

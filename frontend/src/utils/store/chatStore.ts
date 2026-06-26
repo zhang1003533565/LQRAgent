@@ -3,7 +3,7 @@ import type { ChatMessage, MessageContentType, QuizData } from '@/utils/types/ch
 import type { MultiCardBlock } from '@/utils/types/multi-card'
 import type { RagSource } from '@/utils/types/artifact'
 import { chatApi } from '@/api/student/chat'
-import { hydrateAgentSteps } from '@/utils/chat/messageAgentSteps'
+import { hydrateAgentSteps, stripConsultationTranscript } from '@/utils/chat/messageAgentSteps'
 
 interface ChatState {
   messages: ChatMessage[]
@@ -44,6 +44,27 @@ function flushChunk() {
     })
   }
   rafId = null
+}
+
+/** 历史记录中仅有用户消息、无助手回复时插入占位（后端未完成持久化） */
+function injectMissingAssistantPlaceholders(messages: ChatMessage[]): ChatMessage[] {
+  const result: ChatMessage[] = []
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i]
+    result.push(m)
+    if (m.role !== 'user') continue
+    const next = messages[i + 1]
+    if (!next || next.role !== 'assistant') {
+      result.push({
+        id: `incomplete-${m.id}`,
+        role: 'assistant',
+        content: '该条对话的回答未完成或未保存（可能因服务重启或生成超时）。请重新发送问题。',
+        createdAt: m.createdAt,
+        streaming: false,
+      })
+    }
+  }
+  return result
 }
 
 /** 在 done 等事件前刷掉尚未写入 store 的 chunk，避免误判为空内容 */
@@ -118,7 +139,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       const messages = await chatApi.getMessages(sessionId, 50)
       const reversed = [...messages].reverse()
-      const formattedMessages: ChatMessage[] = reversed.map((msg) => {
+      const formattedMessages: ChatMessage[] = injectMissingAssistantPlaceholders(reversed.map((msg) => {
         let metadataParsed: Record<string, unknown> = {}
         if (msg.metadata && typeof msg.metadata === 'string') {
           try { metadataParsed = JSON.parse(msg.metadata) } catch {}
@@ -140,6 +161,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
           if (!content?.trim() || content.length > 120) {
             content = '视频已生成。'
           }
+        } else if (
+          contentType === 'learning_path'
+          || contentType === 'quiz'
+          || contentType === 'diagram'
+          || metadataParsed.agentSteps
+        ) {
+          content = stripConsultationTranscript(content)
         }
         return {
           id: String(msg.id),
@@ -162,7 +190,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           createdAt: new Date(msg.createdAt),
           streaming: false,
         }
-      })
+      }))
       set({ messages: formattedMessages })
     } catch (err) {
       console.error('Failed to load messages:', err)
