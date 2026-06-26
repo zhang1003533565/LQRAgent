@@ -6,9 +6,14 @@ import com.lqragent.backend.quiz.dto.QuestionBankDetailDto;
 import com.lqragent.backend.quiz.dto.QuestionBankPageDto;
 import com.lqragent.backend.quiz.dto.QuizResultDto;
 import com.lqragent.backend.quiz.dto.QuizSubmitRequest;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.lqragent.backend.quiz.dto.QuizPreferencesDto;
+import com.lqragent.backend.quiz.dto.QuizToggleFavoriteRequest;
+import com.lqragent.backend.quiz.dto.QuizToggleMarkRequest;
 import com.lqragent.backend.quiz.entity.QuizRecord;
 import com.lqragent.backend.quiz.repository.QuizRecordRepository;
 import com.lqragent.backend.quiz.service.QuizService;
+import com.lqragent.backend.quiz.service.QuizSessionService;
 import com.lqragent.backend.user.service.CurrentUserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -28,6 +33,7 @@ import java.util.Map;
 public class QuizController {
 
     private final QuizService quizService;
+    private final QuizSessionService quizSessionService;
     private final CurrentUserService currentUserService;
     private final QuizRecordRepository quizRecordRepository;
 
@@ -84,5 +90,71 @@ public class QuizController {
                 "wrong", wrong,
                 "accuracy", total > 0 ? Math.round(correct * 100.0 / total) : 0
         ));
+    }
+
+    @Operation(summary = "保存练习会话", description = "创建或更新练习会话快照（JSON 与前端 PracticeSession 一致）")
+    @PostMapping("/sessions")
+    public ApiResponse<JsonNode> saveSession(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @RequestBody JsonNode sessionPayload) {
+        Long userId = currentUserService.requireUserId(userDetails);
+        return ApiResponse.ok(quizSessionService.saveSession(userId, sessionPayload));
+    }
+
+    @Operation(summary = "获取练习会话", description = "按会话 ID 返回完整练习快照")
+    @GetMapping("/sessions/{id}")
+    public ApiResponse<JsonNode> getSession(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id) {
+        Long userId = currentUserService.requireUserId(userDetails);
+        return ApiResponse.ok(quizSessionService.getSession(userId, id));
+    }
+
+    @Operation(summary = "我的练习会话列表", description = "按更新时间倒序返回当前用户的练习会话")
+    @GetMapping("/sessions")
+    public ApiResponse<List<JsonNode>> listSessions(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        Long userId = currentUserService.requireUserId(userDetails);
+        return ApiResponse.ok(quizSessionService.listSessions(userId));
+    }
+
+    @Operation(summary = "删除练习会话")
+    @DeleteMapping("/sessions/{id}")
+    public ApiResponse<Map<String, Object>> deleteSession(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable String id) {
+        Long userId = currentUserService.requireUserId(userDetails);
+        quizSessionService.deleteSession(userId, id);
+        return ApiResponse.ok(Map.of("message", "删除成功", "sessionId", id));
+    }
+
+    @Operation(summary = "题目偏好", description = "返回收藏与标记的题目 ID 列表")
+    @GetMapping("/preferences")
+    public ApiResponse<QuizPreferencesDto> getPreferences(
+            @AuthenticationPrincipal UserDetails userDetails) {
+        Long userId = currentUserService.requireUserId(userDetails);
+        return ApiResponse.ok(quizSessionService.getPreferences(userId));
+    }
+
+    @Operation(summary = "收藏题目")
+    @PostMapping("/questions/{id}/favorite")
+    public ApiResponse<Map<String, Object>> favoriteQuestion(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable Long id,
+            @Valid @RequestBody QuizToggleFavoriteRequest request) {
+        Long userId = currentUserService.requireUserId(userDetails);
+        quizSessionService.setFavorite(userId, id, Boolean.TRUE.equals(request.getFavorite()));
+        return ApiResponse.ok(Map.of("questionId", id, "favorite", request.getFavorite()));
+    }
+
+    @Operation(summary = "标记题目")
+    @PostMapping("/questions/{id}/mark")
+    public ApiResponse<Map<String, Object>> markQuestion(
+            @AuthenticationPrincipal UserDetails userDetails,
+            @PathVariable Long id,
+            @Valid @RequestBody QuizToggleMarkRequest request) {
+        Long userId = currentUserService.requireUserId(userDetails);
+        quizSessionService.setMarked(userId, id, Boolean.TRUE.equals(request.getMarked()));
+        return ApiResponse.ok(Map.of("questionId", id, "marked", request.getMarked()));
     }
 }

@@ -1,9 +1,15 @@
 import {
+  deleteQuizSession as deleteQuizSessionApi,
+  favoriteQuizQuestion,
   getNextQuizQuestion,
+  getQuizPreferences,
   getQuizQuestionDetail,
   getQuizRecords,
+  getQuizSession as getQuizSessionApi,
   getQuizStats,
   listQuizQuestions,
+  markQuizQuestion,
+  saveQuizSession,
   submitQuiz,
   type QuizQuestionListItem,
 } from '@/api/student/quiz'
@@ -44,7 +50,35 @@ function newSessionId() {
   return `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+let preferencesSynced = false
+
+export async function syncQuizPreferences(): Promise<void> {
+  if (preferencesSynced) return
+  try {
+    const prefs = await getQuizPreferences()
+    for (const id of prefs.favoriteQuestionIds || []) {
+      setQuestionFavorite(id, true)
+    }
+    for (const id of prefs.markedQuestionIds || []) {
+      setQuestionMarked(id, true)
+    }
+    preferencesSynced = true
+  } catch {
+    // 未登录或离线时保留本地缓存
+  }
+}
+
+async function persistSessionToCloud(session: PracticeSession): Promise<void> {
+  saveSession(session)
+  try {
+    await saveQuizSession(session)
+  } catch {
+    // 本地已保存，云端同步失败可忽略
+  }
+}
+
 async function loadQuestionsByIds(ids: number[]): Promise<Question[]> {
+  await syncQuizPreferences()
   const favorites = getFavoriteQuestionIds()
   const marked = getMarkedQuestionIds()
   const questions: Question[] = []
@@ -300,13 +334,20 @@ export async function createPracticeSession(
   }
 
   saveSession(session)
+  void persistSessionToCloud(session)
   return session
 }
 
 export async function getPracticeSession(sessionId: string): Promise<PracticeSession> {
-  const session = getStoredSession(sessionId)
-  if (!session) throw new Error('练习会话不存在或已过期')
-  return session
+  try {
+    const remote = await getQuizSessionApi(sessionId)
+    saveSession(remote)
+    return remote
+  } catch {
+    const session = getStoredSession(sessionId)
+    if (!session) throw new Error('练习会话不存在或已过期')
+    return session
+  }
 }
 
 export async function submitQuestionAnswer(payload: {
@@ -370,6 +411,7 @@ export async function submitQuestionAnswer(payload: {
     completedCount,
   }
   saveSession(updatedSession)
+  void persistSessionToCloud(updatedSession)
 
   return {
     questionId: payload.questionId,
@@ -385,16 +427,26 @@ export async function markQuestion(payload: {
   questionId: string
   marked: boolean
 }): Promise<void> {
-  setQuestionMarked(Number(payload.questionId), payload.marked)
-  // TODO: POST /api/quiz/questions/{id}/mark
+  const questionId = Number(payload.questionId)
+  setQuestionMarked(questionId, payload.marked)
+  try {
+    await markQuizQuestion(questionId, payload.marked)
+  } catch {
+    // 本地已更新
+  }
 }
 
 export async function favoriteQuestion(payload: {
   questionId: string
   favorite: boolean
 }): Promise<void> {
-  setQuestionFavorite(Number(payload.questionId), payload.favorite)
-  // TODO: POST /api/quiz/questions/{id}/favorite
+  const questionId = Number(payload.questionId)
+  setQuestionFavorite(questionId, payload.favorite)
+  try {
+    await favoriteQuizQuestion(questionId, payload.favorite)
+  } catch {
+    // 本地已更新
+  }
 }
 
 export async function submitPracticeSession(sessionId: string): Promise<PracticeResult> {
@@ -425,6 +477,7 @@ export async function submitPracticeSession(sessionId: string): Promise<Practice
   }
 
   saveSession({ ...session, status: 'submitted' })
+  void persistSessionToCloud({ ...session, status: 'submitted' })
   savePracticeResult(result)
   return result
 }
@@ -486,4 +539,13 @@ export async function generatePracticeFromPath(kpId?: string): Promise<PracticeS
   })
 }
 
-export { getNextQuizQuestion, deleteSession }
+export { getNextQuizQuestion }
+
+export async function removePracticeSession(sessionId: string): Promise<void> {
+  deleteSession(sessionId)
+  try {
+    await deleteQuizSessionApi(sessionId)
+  } catch {
+    // 本地已删除
+  }
+}

@@ -1,4 +1,4 @@
-import type { MyLibraryItem } from '@/mock/learningResources'
+import type { MyLibraryItem } from '@/utils/types/learningResources'
 
 const TONE_STYLE = {
   orange: 'bg-[#FFF7ED] text-[#EA580C]',

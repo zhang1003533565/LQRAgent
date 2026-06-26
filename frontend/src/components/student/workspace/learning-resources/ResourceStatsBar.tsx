@@ -1,4 +1,4 @@
-import type { ResourceCategory, ResourceStatItem } from '@/mock/learningResources'
+import type { ResourceCategory, ResourceStatItem } from '@/utils/types/learningResources'
 
 type Props = {
   stats: ResourceStatItem[]

@@ -93,11 +93,7 @@ export default function ProfilePage() {
           navigateToWorkspace(navigate, '/workspace/learning-path', action.targetId)
           break
         case 'view_graph':
-          navigate(
-            action.targetId
-              ? `/workspace/knowledge-graph?kpId=${encodeURIComponent(action.targetId)}`
-              : '/workspace/knowledge-graph',
-          )
+          navigateToWorkspace(navigate, '/workspace/knowledge-graph', action.targetId)
           break
         default:
           navigateToWorkspace(navigate, '/workspace/learning-path')
@@ -176,11 +172,9 @@ export default function ProfilePage() {
               />
               <KnowledgeMasteryCard
                 items={data.knowledgeMastery}
-                onViewGraph={() => navigate('/workspace/knowledge-graph')}
+                onViewGraph={() => navigateToWorkspace(navigate, '/workspace/knowledge-graph')}
                 onItemClick={(item) =>
-                  navigate(
-                    `/workspace/knowledge-graph?kpId=${encodeURIComponent(item.knowledgePointId)}`,
-                  )
+                  navigateToWorkspace(navigate, '/workspace/knowledge-graph', item.knowledgePointId)
                 }
               />
             </div>

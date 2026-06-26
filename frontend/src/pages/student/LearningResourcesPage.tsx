@@ -11,17 +11,26 @@ import {
   ResourceStatsBar,
   ResourcesAuxPanel,
 } from '@/components/student/workspace/learning-resources'
+import NoPathGuide from '@/components/student/workspace/shared/NoPathGuide'
 import {
-  MOCK_KNOWLEDGE_TOPICS,
-  MOCK_LATEST_RESOURCES,
-  MOCK_RECOMMENDED,
-  MOCK_RESOURCE_STATS,
-} from '@/mock/learningResources'
+  buildKnowledgeTopics,
+  buildMyLibrarySummary,
+  buildPathCoverage,
+  buildRecommendedResources,
+  buildResourceStats,
+  buildWeeklyPlan,
+  countResourcesByKp,
+  learningResourceToLatest,
+} from '@/utils/learningResources/resourceMappers'
+import {
+  getResourceFavoriteIds,
+  setResourceFavorite,
+} from '@/utils/learningResources/resourceFavoritesStorage'
 import { trackBehavior } from '@/utils/tracker'
 import { usePathStore } from '@/utils/store/pathStore'
 import { useArtifactStore } from '@/utils/store/artifactStore'
-import { syncKpFromSearchParams } from '@/utils/navigation/workspaceNav'
-import type { LatestResource, ResourceCategory } from '@/mock/learningResources'
+import { syncWorkspaceFromSearchParams } from '@/utils/navigation/workspaceNav'
+import type { LatestResource, ResourceCategory } from '@/utils/types/learningResources'
 import type { LearningResource, ResourceType } from '@/utils/types/media-resource'
 
 type SortKey = 'latest' | 'favorite' | 'rating'
@@ -29,45 +38,11 @@ type SortKey = 'latest' | 'favorite' | 'rating'
 function upsertResource(list: LearningResource[], next: LearningResource) {
   const sameIndex = list.findIndex(
     (item) =>
-      (next.id > 0 && item.id === next.id) ||
+      (next.id != null && next.id > 0 && item.id === next.id) ||
       (item.kpId === next.kpId && item.resourceType === next.resourceType && item.title === next.title),
   )
   if (sameIndex < 0) return [next, ...list]
   return list.map((item, index) => (index === sameIndex ? next : item))
-}
-
-function apiResourceToLatest(item: LearningResource): LatestResource | null {
-  if (!item.resourceType) return null
-
-  const typeMap: Record<ResourceType, string> = {
-    LESSON: '文档资料',
-    QUIZ: '练习题库',
-    CODE_CASE: '项目案例',
-    ILLUSTRATION: '思维导图',
-    VIDEO_CLIP: '视频课程',
-  }
-  const categoryMap: Record<ResourceType, ResourceCategory> = {
-    LESSON: 'document',
-    QUIZ: 'quiz',
-    CODE_CASE: 'project',
-    ILLUSTRATION: 'mindmap',
-    VIDEO_CLIP: 'video',
-  }
-
-  const typeLabel = typeMap[item.resourceType]
-  if (!typeLabel) return null
-
-  return {
-    id: `api-${item.id ?? Date.now()}`,
-    title: item.title?.trim() || '未命名资源',
-    description: item.content?.slice(0, 60) || 'AI 生成的学习资料',
-    typeLabel,
-    meta: item.mediaMime || 'AI 生成',
-    date: new Date().toISOString().slice(0, 10),
-    rating: 4.8,
-    knowledgeId: item.kpId || '',
-    category: categoryMap[item.resourceType],
-  }
 }
 
 function filterResources(
@@ -110,74 +85,110 @@ function sortResources(items: LatestResource[], sortKey: SortKey, favorites: Set
 
 export default function LearningResourcesPage() {
   const navigate = useNavigate()
-  const { selectedKpId, nodes } = usePathStore()
+  const { selectedKpId, nodes, loading: pathLoading } = usePathStore()
   const chatResources = useArtifactStore((s) => s.resources)
   const resourceRefreshToken = useArtifactStore((s) => s.resourceRefreshToken)
 
-  const [apiResources, setApiResources] = useState<LearningResource[]>([])
+  const [resourcesByKp, setResourcesByKp] = useState<Record<string, LearningResource[]>>({})
   const [search, setSearch] = useState('')
   const [activeCategory, setActiveCategory] = useState<ResourceCategory>('all')
   const [activeKnowledgeId, setActiveKnowledgeId] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('latest')
-  const [favorites, setFavorites] = useState<Set<string>>(new Set())
+  const [favorites, setFavorites] = useState<Set<string>>(() => getResourceFavoriteIds())
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
   const [genKnowledge, setGenKnowledge] = useState('')
+  const [genKpId, setGenKpId] = useState('')
   const [genTypes, setGenTypes] = useState<ResourceType[]>(['LESSON'])
   const [genDifficulty, setGenDifficulty] = useState('基础')
   const [genPrompt, setGenPrompt] = useState('')
 
-  const fallbackNode = nodes[1] || nodes[0]
-  const kpId = selectedKpId || fallbackNode?.kpId || 'python_basic_syntax'
+  const fallbackNode = nodes[0]
+  const kpId = selectedKpId || fallbackNode?.kpId
   const currentNode = nodes.find((node) => node.kpId === kpId) || fallbackNode
-  const currentTitle = currentNode?.title || 'Python 简介与环境搭建'
+  const currentTitle = currentNode?.title || '未选择知识点'
 
   const [searchParams] = useSearchParams()
   useEffect(() => {
-    syncKpFromSearchParams(searchParams)
+    syncWorkspaceFromSearchParams(searchParams)
   }, [searchParams])
 
   useEffect(() => {
     setGenKnowledge(currentTitle)
+    setGenKpId(kpId || '')
     setGenPrompt(`帮我生成适合初学者的 ${currentTitle} 讲义，包含步骤和常见问题`)
-  }, [currentTitle])
+  }, [currentTitle, kpId])
 
-  const refreshResources = useCallback(async () => {
-    if (!kpId) return
+  const refreshAllResources = useCallback(async () => {
+    if (nodes.length === 0) return
     setLoading(true)
     try {
-      const next = await getResources(kpId)
-      setApiResources(next)
-      const first = next[0]
-      if (first) trackBehavior({ kpId, action: 'view_resource', extra: first.title })
+      const entries = await Promise.all(
+        nodes.map(async (node) => {
+          try {
+            const list = await getResources(node.kpId)
+            return [node.kpId, list] as const
+          } catch {
+            return [node.kpId, []] as const
+          }
+        }),
+      )
+      setResourcesByKp(Object.fromEntries(entries))
+      if (kpId) {
+        const first = entries.find(([id]) => id === kpId)?.[1]?.[0]
+        if (first) trackBehavior({ kpId, action: 'view_resource', extra: first.title })
+      }
     } finally {
       setLoading(false)
     }
-  }, [kpId])
+  }, [nodes, kpId])
 
   useEffect(() => {
-    void refreshResources()
-  }, [refreshResources])
+    void refreshAllResources()
+  }, [refreshAllResources])
 
   useEffect(() => {
     if (resourceRefreshToken > 0) {
-      void refreshResources()
+      void refreshAllResources()
     }
-  }, [resourceRefreshToken, refreshResources])
+  }, [resourceRefreshToken, refreshAllResources])
 
-  const mergedApiLatest = useMemo(() => {
-    const chatForKp = chatResources.filter((item) => item.kpId === kpId)
-    const merged = chatForKp.reduce(upsertResource, apiResources)
-    return merged
-      .map(apiResourceToLatest)
-      .filter((item): item is LatestResource => item != null)
-  }, [chatResources, kpId, apiResources])
+  const allLatestResources = useMemo(() => {
+    const seen = new Set<string>()
+    const items: LatestResource[] = []
+
+    for (const node of nodes) {
+      const apiList = resourcesByKp[node.kpId] || []
+      const chatForKp = chatResources.filter((item) => item.kpId === node.kpId)
+      const merged = chatForKp.reduce(upsertResource, apiList)
+
+      for (const resource of merged) {
+        const latest = learningResourceToLatest(resource)
+        if (!latest) continue
+        const dedupeKey = `${latest.knowledgeId}:${latest.title}`
+        if (seen.has(dedupeKey)) continue
+        seen.add(dedupeKey)
+        items.push(latest)
+      }
+    }
+
+    return items.sort((a, b) => b.date.localeCompare(a.date))
+  }, [nodes, resourcesByKp, chatResources])
+
+  const countByKp = useMemo(() => countResourcesByKp(allLatestResources), [allLatestResources])
 
   const hasChatResources = chatResources.some((item) => item.kpId === kpId)
 
+  const resourceStats = useMemo(() => buildResourceStats(allLatestResources), [allLatestResources])
+
+  const knowledgeTopics = useMemo(
+    () => buildKnowledgeTopics(nodes, countByKp),
+    [nodes, countByKp],
+  )
+
   const recommendedResources = useMemo(() => {
-    let list = MOCK_RECOMMENDED
+    let list = buildRecommendedResources(allLatestResources, nodes, countByKp, kpId)
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       list = list.filter(
@@ -193,29 +204,31 @@ export default function LearningResourcesPage() {
       list = list.filter((item) => item.knowledgeId === activeKnowledgeId)
     }
     return list
-  }, [search, activeCategory, activeKnowledgeId])
+  }, [allLatestResources, nodes, countByKp, kpId, search, activeCategory, activeKnowledgeId])
 
   const latestResources = useMemo(() => {
-    const combined = [...mergedApiLatest, ...MOCK_LATEST_RESOURCES]
-    const seen = new Set<string>()
-    const deduped = combined.filter((item) => {
-      if (seen.has(item.title)) return false
-      seen.add(item.title)
-      return true
-    })
-    const filtered = filterResources(deduped, {
+    const filtered = filterResources(allLatestResources, {
       search,
       category: activeCategory,
       knowledgeId: activeKnowledgeId,
     })
-    return sortResources(filtered, sortKey, favorites).slice(0, 5)
-  }, [mergedApiLatest, search, activeCategory, activeKnowledgeId, sortKey, favorites])
+    return sortResources(filtered, sortKey, favorites).slice(0, 20)
+  }, [allLatestResources, search, activeCategory, activeKnowledgeId, sortKey, favorites])
+
+  const pathCoverage = useMemo(() => buildPathCoverage(nodes), [nodes])
+  const weeklyPlan = useMemo(() => buildWeeklyPlan(nodes), [nodes])
+  const libraryItems = useMemo(
+    () => buildMyLibrarySummary(favorites.size, allLatestResources),
+    [favorites.size, allLatestResources],
+  )
 
   const toggleFavorite = useCallback((id: string) => {
     setFavorites((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      const willFavorite = !next.has(id)
+      if (willFavorite) next.add(id)
+      else next.delete(id)
+      setResourceFavorite(id, willFavorite)
       return next
     })
   }, [])
@@ -226,20 +239,46 @@ export default function LearningResourcesPage() {
     )
   }, [])
 
+  const openGenerateForKp = useCallback(
+    (targetKpId: string) => {
+      const node = nodes.find((n) => n.kpId === targetKpId)
+      setGenKpId(targetKpId)
+      setGenKnowledge(node?.title || targetKpId)
+      setGenPrompt(`帮我生成适合初学者的 ${node?.title || '该知识点'} 讲义，包含步骤和常见问题`)
+      setModalOpen(true)
+    },
+    [nodes],
+  )
+
   const handleGenerateSubmit = useCallback(async () => {
-    if (!kpId || generating || genTypes.length === 0) return
+    const targetKpId = genKpId || kpId
+    if (!targetKpId || generating || genTypes.length === 0) return
     setGenerating(true)
     try {
       const prompt = `${genPrompt}\n知识点：${genKnowledge}\n难度：${genDifficulty}`
       const results = await Promise.all(
-        genTypes.map((resourceType) => generateResource({ kpId, resourceType, prompt })),
+        genTypes.map((resourceType) => generateResource({ kpId: targetKpId, resourceType, prompt })),
       )
-      setApiResources((prev) => results.reduce(upsertResource, prev))
+      setResourcesByKp((prev) => ({
+        ...prev,
+        [targetKpId]: results.reduce(upsertResource, prev[targetKpId] || []),
+      }))
       setModalOpen(false)
     } finally {
       setGenerating(false)
     }
-  }, [kpId, generating, genTypes, genPrompt, genKnowledge, genDifficulty])
+  }, [genKpId, kpId, generating, genTypes, genPrompt, genKnowledge, genDifficulty])
+
+  if (!pathLoading && nodes.length === 0) {
+    return (
+      <div className="h-full min-h-0 overflow-y-auto bg-[#F6F9FE] p-6">
+        <NoPathGuide
+          onGoPath={() => navigate('/workspace/learning-path')}
+          onGoChat={() => navigate('/workspace')}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-[#F6F9FE] font-sans">
@@ -248,7 +287,7 @@ export default function LearningResourcesPage() {
           search={search}
           loading={loading}
           onSearchChange={setSearch}
-          onRefresh={() => void refreshResources()}
+          onRefresh={() => void refreshAllResources()}
           onGenerate={() => setModalOpen(true)}
         />
 
@@ -258,23 +297,30 @@ export default function LearningResourcesPage() {
             <span>
               当前学习阶段：<strong className="text-[#0F2A5F]">{currentTitle}</strong>
               {hasChatResources ? ' · 聊天已生成资源已合并展示' : ''}
+              {allLatestResources.length > 0 ? ` · 路径共 ${allLatestResources.length} 份资源` : ' · 暂无资源，可点击生成'}
             </span>
           </div>
         ) : null}
 
         <ResourceStatsBar
-          stats={MOCK_RESOURCE_STATS}
+          stats={resourceStats}
           activeCategory={activeCategory}
           onSelect={setActiveCategory}
         />
 
         <RecommendedResourceSection
           resources={recommendedResources}
-          onResourceClick={(id) => trackBehavior({ kpId, action: 'view_resource', extra: id })}
+          onResourceClick={(id, resource) => {
+            if (resource?.isGapSuggestion) {
+              openGenerateForKp(resource.knowledgeId)
+              return
+            }
+            trackBehavior({ kpId, action: 'view_resource', extra: id })
+          }}
         />
 
         <KnowledgeResourceTabs
-          topics={MOCK_KNOWLEDGE_TOPICS}
+          topics={knowledgeTopics}
           activeId={activeKnowledgeId}
           onSelect={setActiveKnowledgeId}
         />
@@ -290,9 +336,14 @@ export default function LearningResourcesPage() {
       </div>
 
       <ResourcesAuxPanel
+        libraryItems={libraryItems}
+        coverage={pathCoverage}
+        weeklyPlan={weeklyPlan}
         onViewCoverage={() => navigate('/workspace/learning-path')}
         onViewPlan={() => navigate('/workspace/learning-path')}
-        onLibraryItemClick={() => undefined}
+        onLibraryItemClick={(id) => {
+          if (id === 'fav') setSortKey('favorite')
+        }}
       />
 
       <GenerateResourceModal

@@ -179,10 +179,25 @@ export function taskToUploadedFile(
 ): UploadedFile {
   const ext = extractExt(task.fileName)
   const analysis = parseAnalysis(task)
+  const manualKpIds = (task.manualKpIds || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+  let tags = analysis.suggestedTags
+  if (task.tags) {
+    try {
+      const parsed = JSON.parse(task.tags) as unknown
+      if (Array.isArray(parsed)) {
+        tags = parsed.map((t) => String(t)).filter(Boolean)
+      }
+    } catch {
+      // ignore malformed tags
+    }
+  }
   return {
     id: String(task.id),
     name: task.fileName,
-    sizeBytes,
+    sizeBytes: task.fileSizeBytes ?? sizeBytes,
     mimeType: inferMimeType(ext),
     extension: ext || undefined,
     uploadedAt: task.createdAt,
@@ -193,8 +208,8 @@ export function taskToUploadedFile(
     parseStatus: mapParseStatus(task.status),
     parseError: task.errorMessage,
     sourceType: inferSourceType(ext),
-    relatedKnowledgePointIds: analysis.mappedKpIds,
-    tags: analysis.suggestedTags,
+    relatedKnowledgePointIds: Array.from(new Set([...analysis.mappedKpIds, ...manualKpIds])),
+    tags,
   }
 }
 

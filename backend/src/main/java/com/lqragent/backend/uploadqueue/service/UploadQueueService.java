@@ -1,10 +1,16 @@
 package com.lqragent.backend.uploadqueue.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lqragent.backend.agents.summaryanalyzer.service.ContentAnalyzerService;
 import com.lqragent.backend.chat.proxy.AiServerClient;
 import com.lqragent.backend.storage.QiniuStorageService;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 import com.lqragent.backend.systemconfig.ConfigKeys;
+import com.lqragent.backend.uploadqueue.dto.UpdateFileRelationsRequest;
+import com.lqragent.backend.uploadqueue.dto.UploadConfigDto;
+import com.lqragent.backend.uploadqueue.dto.UploadStorageDto;
+import com.lqragent.backend.uploadqueue.support.UploadDefaults;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask.KbScope;
 import com.lqragent.backend.uploadqueue.entity.KbUploadTask.TaskStatus;
@@ -27,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -42,9 +49,23 @@ public class UploadQueueService {
     private final ContentAnalyzerService contentAnalyzerService;
     private final AppRuntimeConfig runtimeConfig;
     private final QiniuStorageService qiniuStorageService;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public KbUploadTask enqueue(Long userId, String fileName, String filePath, KbScope scope) {
+        return enqueue(userId, fileName, filePath, scope, null, null, null, null);
+    }
+
+    @Transactional
+    public KbUploadTask enqueue(
+            Long userId,
+            String fileName,
+            String filePath,
+            KbScope scope,
+            Long fileSizeBytes,
+            String learningPathId,
+            List<String> knowledgePointIds,
+            List<String> tags) {
         String normalizedFileName = normalizeFileName(fileName);
         // 检查是否有同名文件正在处理中
         if (taskRepository.existsByUserIdAndFileNameAndStatus(userId, normalizedFileName, TaskStatus.PROCESSING)) {
@@ -52,7 +73,7 @@ public class UploadQueueService {
             return taskRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
                     .filter(t -> normalizedFileName.equals(t.getFileName()) && t.getStatus() == TaskStatus.PROCESSING)
                     .findFirst()
-                    .orElse(createNewTask(userId, normalizedFileName, filePath, scope));
+                    .orElse(createNewTask(userId, normalizedFileName, filePath, scope, fileSizeBytes, learningPathId, knowledgePointIds, tags));
         }
         
         // 检查是否已经有同名文件的上传记录（状态为已完成）
@@ -69,7 +90,7 @@ public class UploadQueueService {
                 return taskRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
                         .filter(t -> normalizedFileName.equals(t.getFileName()) && t.getStatus() == TaskStatus.COMPLETED)
                         .findFirst()
-                        .orElse(createNewTask(userId, normalizedFileName, filePath, scope));
+                        .orElse(createNewTask(userId, normalizedFileName, filePath, scope, fileSizeBytes, learningPathId, knowledgePointIds, tags));
             } else {
                 // 文件已从知识库删除，允许重新上传
                 log.info("[UploadQueue] File deleted from knowledge base, allowing re-upload: userId={}, fileName={}", userId, normalizedFileName);
@@ -77,7 +98,7 @@ public class UploadQueueService {
         }
         
         // 创建新的上传任务
-        return createNewTask(userId, normalizedFileName, filePath, scope);
+        return createNewTask(userId, normalizedFileName, filePath, scope, fileSizeBytes, learningPathId, knowledgePointIds, tags);
     }
     
     /**
@@ -99,15 +120,101 @@ public class UploadQueueService {
         }
     }
     
-    private KbUploadTask createNewTask(Long userId, String fileName, String filePath, KbScope scope) {
+    private KbUploadTask createNewTask(
+            Long userId,
+            String fileName,
+            String filePath,
+            KbScope scope,
+            Long fileSizeBytes,
+            String learningPathId,
+            List<String> knowledgePointIds,
+            List<String> tags) {
         KbUploadTask task = KbUploadTask.builder()
                 .userId(userId)
                 .fileName(fileName)
                 .filePath(filePath)
                 .kbScope(scope)
                 .status(TaskStatus.PENDING)
+                .fileSizeBytes(fileSizeBytes)
+                .learningPathId(learningPathId)
+                .manualKpIds(joinKpIds(knowledgePointIds))
+                .tags(writeTags(tags))
                 .build();
         return taskRepository.save(task);
+    }
+
+    public UploadStorageDto getStorageUsage(Long userId) {
+        long usedBytes = taskRepository.sumFileSizeBytesByUserId(userId);
+        int fileCount = (int) taskRepository.countByUserId(userId);
+        return UploadStorageDto.builder()
+                .usedBytes(usedBytes)
+                .totalBytes(UploadDefaults.DEFAULT_TOTAL_BYTES)
+                .fileCount(fileCount)
+                .maxFileSizeBytes(UploadDefaults.DEFAULT_MAX_FILE_SIZE_BYTES)
+                .supportedMimeTypes(UploadDefaults.SUPPORTED_MIME_HINTS)
+                .build();
+    }
+
+    public UploadConfigDto getUploadConfig() {
+        return UploadConfigDto.builder()
+                .defaultTotalBytes(UploadDefaults.DEFAULT_TOTAL_BYTES)
+                .defaultMaxFileSizeBytes(UploadDefaults.DEFAULT_MAX_FILE_SIZE_BYTES)
+                .defaultPageSize(UploadDefaults.DEFAULT_PAGE_SIZE)
+                .supportedExtensions(UploadDefaults.SUPPORTED_EXTENSIONS)
+                .supportedMimeTypes(UploadDefaults.SUPPORTED_MIME_HINTS)
+                .build();
+    }
+
+    @Transactional
+    public KbUploadTask retryParseForUser(Long taskId, Long userId) {
+        KbUploadTask task = getTaskByIdForUser(taskId, userId);
+        task.setStatus(TaskStatus.PENDING);
+        task.setErrorMessage(null);
+        task.setStatusMessage("等待重新解析");
+        task.setProgressPercent(0);
+        task.setStartedAt(null);
+        task.setFinishedAt(null);
+        KbUploadTask saved = taskRepository.save(task);
+        processImmediatelyAsync(saved);
+        return saved;
+    }
+
+    @Transactional
+    public KbUploadTask updateFileRelations(Long taskId, Long userId, UpdateFileRelationsRequest request) {
+        KbUploadTask task = getTaskByIdForUser(taskId, userId);
+        if (request.getLearningPathId() != null) {
+            task.setLearningPathId(request.getLearningPathId());
+        }
+        if (request.getKnowledgePointIds() != null) {
+            task.setManualKpIds(joinKpIds(request.getKnowledgePointIds()));
+        }
+        if (request.getTags() != null) {
+            task.setTags(writeTags(request.getTags()));
+        }
+        return taskRepository.save(task);
+    }
+
+    private String joinKpIds(List<String> knowledgePointIds) {
+        if (knowledgePointIds == null || knowledgePointIds.isEmpty()) {
+            return null;
+        }
+        return knowledgePointIds.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(item -> !item.isEmpty())
+                .distinct()
+                .collect(Collectors.joining(","));
+    }
+
+    private String writeTags(List<String> tags) {
+        if (tags == null) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(tags);
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException("标签格式无效");
+        }
     }
 
     public List<KbUploadTask> listByUser(Long userId) {

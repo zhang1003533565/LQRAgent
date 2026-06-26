@@ -20,7 +20,6 @@ import type { AgentId, WsRawMessage } from '@/utils/types/agent-events'
 import type { ArtifactKind, MediaImagePayload, MediaVideoPayload, QuizArtifactPayload, RagSource } from '@/utils/types/artifact'
 import type { LearningPathArtifactPayload } from '@/utils/types/artifact'
 import type { MultiCardBlock } from '@/utils/types/multi-card'
-import type { ProfileSummary } from '@/utils/types/profile'
 import { artifactPayloadToResource } from '@/utils/artifact/artifactResource'
 
 let activeConsultationParentId = resolveConsultationParentId()
@@ -198,7 +197,6 @@ export function dispatchWsMessage(data: WsRawMessage) {
     addMessage,
     updateMessage,
   } = useChatStore.getState()
-  const patchSummary = useProfileStore.getState().patchSummary
 
   function upsertStep(step: Parameters<typeof upsertMessageAgentStep>[0]) {
     upsertMessageAgentStep(step)
@@ -309,7 +307,7 @@ export function dispatchWsMessage(data: WsRawMessage) {
       break
     case 'profile_patch':
       if (data.payload && typeof data.payload === 'object') {
-        patchSummary(data.payload as Partial<ProfileSummary>)
+        useProfileStore.getState().applyWsPatch(data.payload as Record<string, unknown>)
       }
       break
     case 'done': {

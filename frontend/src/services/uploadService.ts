@@ -1,7 +1,11 @@
 import {
   deleteUploadTask,
   getFileUrl,
+  getUploadConfig,
+  getUploadStorage,
   listUploadTasks,
+  retryParseUploadTask,
+  updateUploadFileRelations,
   uploadFile as apiUploadFile,
   type UploadTask,
 } from '@/api/student/upload'
@@ -10,6 +14,11 @@ import { getCurrentPath } from '@/api/student/learningPath'
 import { listKnowledgePointsByIds, searchKnowledgePoints } from '@/api/student/knowledge'
 import { trackBehavior } from '@/utils/tracker'
 import { usePathStore } from '@/utils/store/pathStore'
+import {
+  getUploadMetadata,
+  persistUploadMetadata,
+  removeUploadMetadata,
+} from '@/utils/upload/uploadMetadataStorage'
 import {
   UPLOAD_CONFIG,
   SUPPORTED_EXTENSIONS,
@@ -63,7 +72,20 @@ async function loadAllTasks(): Promise<UploadTask[]> {
 }
 
 function tasksToFiles(tasks: UploadTask[]): UploadedFile[] {
-  return tasks.map((t) => taskToUploadedFile(t, getPersistedSize(String(t.id))))
+  return tasks.map((t) => {
+    const fileId = String(t.id)
+    const file = taskToUploadedFile(t, getPersistedSize(fileId))
+    const meta = getUploadMetadata(fileId)
+    if (meta?.knowledgePointIds?.length && !t.manualKpIds) {
+      file.relatedKnowledgePointIds = Array.from(
+        new Set([...(file.relatedKnowledgePointIds || []), ...meta.knowledgePointIds]),
+      )
+    }
+    if (!file.sizeBytes && getPersistedSize(fileId) > 0) {
+      file.sizeBytes = getPersistedSize(fileId)
+    }
+    return file
+  })
 }
 
 function sortFiles(list: UploadedFile[], sort?: UploadedFilesFilters['sort']): UploadedFile[] {
@@ -120,18 +142,28 @@ function filterFiles(list: UploadedFile[], params?: UploadedFilesFilters): Uploa
   return result
 }
 
-/** TODO: GET /api/upload/storage — 当前由任务列表推导 */
+/** GET /api/upload/storage */
 export async function getStorageUsage(): Promise<StorageUsage> {
-  const tasks = await loadAllTasks()
-  const files = tasksToFiles(tasks)
-  const usedBytes = files.reduce((sum, f) => sum + f.sizeBytes, 0)
-
-  return {
-    usedBytes,
-    totalBytes: UPLOAD_CONFIG.defaultTotalBytes,
-    fileCount: files.length,
-    maxFileSizeBytes: UPLOAD_CONFIG.defaultMaxFileSizeBytes,
-    supportedMimeTypes: [...SUPPORTED_MIME_HINTS],
+  try {
+    const storage = await getUploadStorage()
+    return {
+      usedBytes: storage.usedBytes,
+      totalBytes: storage.totalBytes,
+      fileCount: storage.fileCount,
+      maxFileSizeBytes: storage.maxFileSizeBytes,
+      supportedMimeTypes: storage.supportedMimeTypes,
+    }
+  } catch {
+    const tasks = await loadAllTasks()
+    const files = tasksToFiles(tasks)
+    const usedBytes = files.reduce((sum, f) => sum + f.sizeBytes, 0)
+    return {
+      usedBytes,
+      totalBytes: UPLOAD_CONFIG.defaultTotalBytes,
+      fileCount: files.length,
+      maxFileSizeBytes: UPLOAD_CONFIG.defaultMaxFileSizeBytes,
+      supportedMimeTypes: [...SUPPORTED_MIME_HINTS],
+    }
   }
 }
 
@@ -177,11 +209,27 @@ export async function uploadFile(payload: UploadFilePayload): Promise<UploadedFi
     throw new Error('存储空间不足，请删除部分资料后再上传')
   }
 
-  const task = await apiUploadFile(file, 'PERSONAL', onProgress)
+  const task = await apiUploadFile(
+    file,
+    'PERSONAL',
+    onProgress,
+    {
+      learningPathId: payload.learningPathId,
+      knowledgePointIds: payload.knowledgePointIds,
+    },
+  )
   persistFileSize(String(task.id), file.size)
+  if (payload.knowledgePointIds?.length || payload.learningPathId) {
+    persistUploadMetadata(String(task.id), {
+      knowledgePointIds: payload.knowledgePointIds,
+      learningPathId: payload.learningPathId,
+      autoParse: payload.autoParse,
+      autoGenerateResource: payload.autoGenerateResource,
+    })
+  }
   trackBehavior({ kpId: payload.knowledgePointIds?.[0] || '', action: 'upload_file', extra: file.name })
 
-  // TODO: 后端支持 learningPathId / knowledgePointIds / autoParse / autoGenerateResource 后随表单提交
+  // 后端尚未接收 metadata 字段；本地持久化供筛选与关联展示
   if (payload.autoGenerateResource && payload.knowledgePointIds?.[0]) {
     try {
       await generateResource({
@@ -231,14 +279,12 @@ export async function uploadFiles(payload: {
 
 export async function deleteUploadedFile(fileId: string): Promise<void> {
   await deleteUploadTask(Number(fileId))
+  removeUploadMetadata(fileId)
 }
 
-/** TODO: POST /api/upload/tasks/{id}/retry-parse */
+/** POST /api/upload/tasks/{id}/retry-parse */
 export async function retryParseFile(fileId: string): Promise<FileParseResult> {
-  const tasks = await loadAllTasks()
-  const task = tasks.find((t) => String(t.id) === fileId)
-  if (!task) throw new Error('文件不存在')
-  // 后端重解析接口待对接，暂时返回当前解析状态
+  const task = await retryParseUploadTask(Number(fileId))
   return taskToParseResult(task)
 }
 
@@ -338,14 +384,28 @@ export async function getKnowledgePointOptions(params?: {
   }))
 }
 
-/** TODO: PATCH /api/upload/files/{id}/relations */
+/** PATCH /api/upload/files/{id}/relations */
 export async function updateFileRelations(
   payload: UpdateFileRelationsPayload,
 ): Promise<UploadedFile> {
-  const tasks = await loadAllTasks()
-  const task = tasks.find((t) => String(t.id) === payload.fileId)
-  if (!task) throw new Error('文件不存在')
+  const task = await updateUploadFileRelations(Number(payload.fileId), {
+    learningPathId: payload.learningPathId,
+    knowledgePointIds: payload.knowledgePointIds,
+    tags: payload.tags,
+  })
+  persistUploadMetadata(payload.fileId, {
+    knowledgePointIds: payload.knowledgePointIds,
+    learningPathId: payload.learningPathId,
+  })
   return taskToUploadedFile(task, getPersistedSize(payload.fileId))
+}
+
+export async function loadUploadConfigFromServer(): Promise<void> {
+  try {
+    await getUploadConfig()
+  } catch {
+    // keep local defaults
+  }
 }
 
 export async function getFileDownloadUrl(fileId: string): Promise<string> {

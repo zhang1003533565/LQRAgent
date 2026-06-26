@@ -22,6 +22,9 @@ export default function WorkspaceSidebar() {
   const loadMessages = useChatStore((s) => s.loadMessages)
   const setAutoLoaded = useChatStore((s) => s.setAutoLoaded)
   const hasPathUpdates = usePathStore((s) => s.hasUpdates)
+  const selectedKpId = usePathStore((s) => s.selectedKpId)
+  const pathNodes = usePathStore((s) => s.nodes)
+  const currentKpTitle = pathNodes.find((n) => n.kpId === selectedKpId)?.title
 
   const loadSessions = useCallback(async () => {
     if (!user?.userId) return
@@ -118,6 +121,13 @@ export default function WorkspaceSidebar() {
             </NavLink>
           ))}
         </nav>
+
+        {!collapsed && currentKpTitle ? (
+          <div className={styles.currentKp} title={currentKpTitle}>
+            <span className={styles.currentKpLabel}>当前学习</span>
+            <span className={styles.currentKpTitle}>{currentKpTitle}</span>
+          </div>
+        ) : null}
       </div>
 
       <div className={styles.historySection}>

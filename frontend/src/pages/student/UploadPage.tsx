@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ConfirmDialog,
   FileFilterBar,
@@ -27,6 +27,8 @@ import { useStorageUsage } from '@/utils/hooks/useStorageUsage'
 import { useUploadedFiles } from '@/utils/hooks/useUploadedFiles'
 import { useUploadQueue } from '@/utils/hooks/useUploadQueue'
 import { useUploadStats } from '@/utils/hooks/useUploadStats'
+import { syncWorkspaceFromSearchParams } from '@/utils/navigation/workspaceNav'
+import { usePathStore } from '@/utils/store/pathStore'
 import type {
   ParseStatus,
   SourceType,
@@ -45,6 +47,8 @@ const RECENT_LIMIT = 5
 
 export default function UploadPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const selectedKpId = usePathStore((s) => s.selectedKpId)
   const dropzoneRef = useRef<HTMLDivElement>(null)
   const recordsRef = useRef<HTMLDivElement>(null)
 
@@ -70,6 +74,19 @@ export default function UploadPage() {
   const [relationLoading, setRelationLoading] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+
+  useEffect(() => {
+    syncWorkspaceFromSearchParams(searchParams)
+  }, [searchParams])
+
+  useEffect(() => {
+    if (selectedKpId) {
+      setConfig((prev) => ({
+        ...prev,
+        knowledgePointIds: [selectedKpId],
+      }))
+    }
+  }, [selectedKpId])
 
   const { data: storage, loading: storageLoading, error: storageError, refresh: refreshStorage } =
     useStorageUsage()

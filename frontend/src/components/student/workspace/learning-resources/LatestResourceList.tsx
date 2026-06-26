@@ -1,5 +1,5 @@
 import { Bookmark, ChevronRight, Star } from 'lucide-react'
-import type { LatestResource } from '@/mock/learningResources'
+import type { LatestResource } from '@/utils/types/learningResources'
 
 type SortKey = 'latest' | 'favorite' | 'rating'
 

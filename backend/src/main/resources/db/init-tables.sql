@@ -559,3 +559,58 @@ SET @sql_add_pipeline_config_json := IF(
 PREPARE stmt_add_pipeline_config_json FROM @sql_add_pipeline_config_json;
 EXECUTE stmt_add_pipeline_config_json;
 DEALLOCATE PREPARE stmt_add_pipeline_config_json;
+
+-- ========== Sprint 2: quiz session / favorite / mark + upload metadata ==========
+
+CREATE TABLE IF NOT EXISTS `quiz_practice_session` (
+    `id`           VARCHAR(64)  NOT NULL COMMENT '会话ID',
+    `user_id`      BIGINT       NOT NULL COMMENT '学生ID',
+    `session_data` LONGTEXT     NOT NULL COMMENT '会话 JSON 快照',
+    `status`       VARCHAR(32)  DEFAULT NULL COMMENT '会话状态',
+    `created_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `updated_at`   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    KEY `idx_quiz_session_user` (`user_id`, `updated_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='答题练习会话表';
+
+CREATE TABLE IF NOT EXISTS `quiz_question_favorite` (
+    `id`          BIGINT   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `user_id`     BIGINT   NOT NULL COMMENT '学生ID',
+    `question_id` BIGINT   NOT NULL COMMENT '题目ID',
+    `created_at`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '收藏时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_user_question_fav` (`user_id`, `question_id`),
+    KEY `idx_fav_user` (`user_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='题目收藏表';
+
+CREATE TABLE IF NOT EXISTS `quiz_question_mark` (
+    `id`          BIGINT   NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+    `user_id`     BIGINT   NOT NULL COMMENT '学生ID',
+    `question_id` BIGINT   NOT NULL COMMENT '题目ID',
+    `created_at`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '标记时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_user_question_mark` (`user_id`, `question_id`),
+    KEY `idx_mark_user` (`user_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='题目标记表';
+
+SET @add_upload_file_size := (
+    SELECT COUNT(*) = 1 FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'kb_upload_task'
+) AND (
+    SELECT COUNT(*) = 0 FROM information_schema.columns
+    WHERE table_schema = DATABASE()
+      AND table_name = 'kb_upload_task'
+      AND column_name = 'file_size_bytes'
+);
+SET @sql_add_upload_file_size := IF(
+    @add_upload_file_size,
+    'ALTER TABLE `kb_upload_task`
+        ADD COLUMN `file_size_bytes` BIGINT NULL COMMENT ''文件大小（字节）'' AFTER `vector_index_name`,
+        ADD COLUMN `learning_path_id` VARCHAR(512) NULL COMMENT ''关联学习路径标识'' AFTER `file_size_bytes`,
+        ADD COLUMN `manual_kp_ids` TEXT NULL COMMENT ''用户手动关联知识点（逗号分隔）'' AFTER `learning_path_id`,
+        ADD COLUMN `tags` TEXT NULL COMMENT ''用户标签 JSON 数组'' AFTER `manual_kp_ids`',
+    'SELECT ''skip: kb_upload_task metadata columns exist or table missing'''
+);
+PREPARE stmt_add_upload_file_size FROM @sql_add_upload_file_size;
+EXECUTE stmt_add_upload_file_size;
+DEALLOCATE PREPARE stmt_add_upload_file_size;

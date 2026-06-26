@@ -9,6 +9,9 @@ type Props = {
   onRetry: () => void
   onBackCatalog: () => void
   onGenerateReview: () => void
+  onViewProfile?: () => void
+  onContinuePath?: () => void
+  onViewGraph?: () => void
 }
 
 export default function QuizResultModal({
@@ -19,6 +22,9 @@ export default function QuizResultModal({
   onRetry,
   onBackCatalog,
   onGenerateReview,
+  onViewProfile,
+  onContinuePath,
+  onViewGraph,
 }: Props) {
   if (!open) return null
 
@@ -60,6 +66,15 @@ export default function QuizResultModal({
           <button type="button" onClick={onRetry} className="h-10 rounded-xl border border-[#D8E4F5] text-sm font-semibold text-[#2563EB]">再练一次</button>
           <button type="button" onClick={onBackCatalog} className="h-10 rounded-xl bg-[#F8FBFF] text-sm font-semibold text-[#2563EB]">返回题库</button>
           <button type="button" onClick={onGenerateReview} className="h-10 rounded-xl bg-gradient-to-br from-[#3B82F6] to-[#2563EB] text-sm font-semibold text-white">生成复习资料</button>
+          {onContinuePath ? (
+            <button type="button" onClick={onContinuePath} className="h-10 rounded-xl border border-[#D8E4F5] text-sm font-semibold text-[#2563EB]">继续学习路径</button>
+          ) : null}
+          {onViewGraph ? (
+            <button type="button" onClick={onViewGraph} className="h-10 rounded-xl border border-[#D8E4F5] text-sm font-semibold text-[#2563EB]">查看知识图谱</button>
+          ) : null}
+          {onViewProfile ? (
+            <button type="button" onClick={onViewProfile} className="col-span-2 h-10 rounded-xl bg-[#EAF3FF] text-sm font-semibold text-[#2563EB]">查看学习画像</button>
+          ) : null}
         </div>
       </div>
     </div>

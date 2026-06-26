@@ -12,6 +12,7 @@ import {
   TimerProgressCard,
 } from '@/components/student/workspace/quiz'
 import { createPracticeSession } from '@/services/quizService'
+import { refreshProfileRaw } from '@/api/student/profile'
 import { usePracticeSession } from '@/utils/hooks/usePracticeSession'
 import { navigateToWorkspace } from '@/utils/navigation/workspaceNav'
 import type { SubmitAnswerResult } from '@/utils/types/quiz'
@@ -74,6 +75,7 @@ export default function QuizTakingPage() {
     const isLast = session.currentIndex >= session.totalQuestions - 1
     if (isLast) {
       await submitSession()
+      void refreshProfileRaw().catch(() => undefined)
       return
     }
     goToIndex(session.currentIndex + 1)
@@ -169,6 +171,9 @@ export default function QuizTakingPage() {
           onRetry={handleRetry}
           onBackCatalog={() => navigate('/workspace/quiz')}
           onGenerateReview={() => navigateToWorkspace(navigate, '/workspace/resources', session.kpId)}
+          onViewProfile={() => navigate('/workspace/profile')}
+          onContinuePath={() => navigateToWorkspace(navigate, '/workspace/learning-path', session.kpId)}
+          onViewGraph={() => navigateToWorkspace(navigate, '/workspace/knowledge-graph', session.kpId)}
         />
       ) : null}
     </div>

@@ -28,6 +28,7 @@ export default function LearningGoalInput({
       <div className="flex flex-col gap-3.5 lg:flex-row lg:items-center">
         <div className="min-w-0 flex-[68]">
           <input
+            id="learning-goal-input"
             className="h-[52px] w-full rounded-xl border border-[#D8E4F5] bg-white px-4 text-sm text-[#334155] placeholder:text-[#94A3B8] outline-none transition-colors focus:border-[#93C5FD]"
             value={goal}
             onChange={(e) => onGoalChange(e.target.value)}

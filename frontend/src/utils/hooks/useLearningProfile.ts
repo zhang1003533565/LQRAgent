@@ -10,8 +10,10 @@ import type {
   ProfileRange,
   TrendMetric,
 } from '@/utils/types/learningProfile'
+import { useProfileStore } from '@/utils/store/profileStore'
 
 export function useLearningProfile(initialFilters?: LearningProfileFilters) {
+  const profileRevision = useProfileStore((s) => s.revision)
   const [filters, setFilters] = useState<LearningProfileFilters>(initialFilters ?? { range: '30d' })
   const [data, setData] = useState<LearningProfile | null>(null)
   const [loading, setLoading] = useState(true)
@@ -21,22 +23,27 @@ export function useLearningProfile(initialFilters?: LearningProfileFilters) {
 
   const filterKey = useMemo(() => JSON.stringify(filters), [filters])
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLoading(true)
     setError(null)
     try {
       setData(await loadLearningProfile(filters))
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载学习画像失败')
-      setData(null)
+      if (!options?.silent) setData(null)
     } finally {
-      setLoading(false)
+      if (!options?.silent) setLoading(false)
     }
   }, [filterKey, filters])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (profileRevision <= 0) return
+    void load({ silent: true })
+  }, [profileRevision, load])
 
   const refresh = useCallback(async () => {
     setRefreshing(true)

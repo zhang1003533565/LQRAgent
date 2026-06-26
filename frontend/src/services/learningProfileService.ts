@@ -3,7 +3,7 @@ import { listKnowledgePointsByIds } from '@/api/student/knowledge'
 import { getQuizRecords, getQuizStats } from '@/api/student/quiz'
 import { listUploadTasks } from '@/api/student/upload'
 import { getMe } from '@/api/student/user'
-import { fetchProfileDetailRaw, refreshProfileRaw } from '@/api/student/profile'
+import { fetchProfileDetailRaw, fetchProfileAchievements, fetchProfileTrends, mapApiAchievements, mapApiTrendPoints, refreshProfileRaw } from '@/api/student/profile'
 import { createPracticeSession } from '@/services/quizService'
 import {
   buildAbilityDimensions,
@@ -126,18 +126,32 @@ export async function getLearningInsights(
 export async function getLearningTrends(
   filters?: LearningProfileFilters & { metric?: TrendMetric },
 ): Promise<LearningTrendPoint[]> {
+  const range = filters?.range ?? '30d'
+  const metric = filters?.metric ?? filters?.trendMetric ?? 'mastery'
+  try {
+    const apiTrends = await fetchProfileTrends(range, metric)
+    if (apiTrends.length > 0) return mapApiTrendPoints(apiTrends)
+  } catch {
+    // fallback below
+  }
   const ctx = await loadContext(filters)
   return buildTrends(
     ctx.records,
     ctx.detail.knowledgeMap ?? [],
-    filters?.range ?? '30d',
-    filters?.metric ?? filters?.trendMetric ?? 'mastery',
+    range,
+    metric,
   )
 }
 
 export async function getLearningAchievements(
   filters?: LearningProfileFilters,
 ): Promise<LearningAchievement[]> {
+  try {
+    const apiAchievements = await fetchProfileAchievements()
+    if (apiAchievements.length > 0) return mapApiAchievements(apiAchievements)
+  } catch {
+    // fallback below
+  }
   const ctx = await loadContext(filters)
   const dimensions = buildAbilityDimensions(ctx.detail, ctx.stats.accuracy, ctx.path)
   const overview = buildOverview(ctx.userId, ctx.detail, dimensions, ctx.stats.accuracy, ctx.path, ctx.stats.total)
@@ -188,18 +202,35 @@ export async function loadLearningProfile(filters?: LearningProfileFilters): Pro
     ? [{ id: ctx.path.goal, title: formattedGoal?.title || '当前学习路径' }]
     : []
 
+  const range = filters?.range ?? '30d'
+  const trendMetric = filters?.trendMetric ?? 'mastery'
+
+  let trends = buildTrends(
+    ctx.records,
+    ctx.detail.knowledgeMap ?? [],
+    range,
+    trendMetric,
+  )
+  let achievements = buildAchievements(overview, ctx.uploads.length, ctx.stats.total)
+
+  try {
+    const [apiTrends, apiAchievements] = await Promise.all([
+      fetchProfileTrends(range, trendMetric),
+      fetchProfileAchievements(),
+    ])
+    if (apiTrends.length > 0) trends = mapApiTrendPoints(apiTrends)
+    if (apiAchievements.length > 0) achievements = mapApiAchievements(apiAchievements)
+  } catch {
+    // 保留本地推导结果
+  }
+
   return {
     overview,
     abilityDimensions: dimensions,
     knowledgeMastery,
     insights: buildInsights(overview, dimensions, weakKnowledgePoints, ctx.detail),
-    trends: buildTrends(
-      ctx.records,
-      ctx.detail.knowledgeMap ?? [],
-      filters?.range ?? '30d',
-      filters?.trendMetric ?? 'mastery',
-    ),
-    achievements: buildAchievements(overview, ctx.uploads.length, ctx.stats.total),
+    trends,
+    achievements,
     weakKnowledgePoints,
     recentActivities: buildRecentActivities(ctx.records, ctx.uploads, ctx.path),
     pathOptions,

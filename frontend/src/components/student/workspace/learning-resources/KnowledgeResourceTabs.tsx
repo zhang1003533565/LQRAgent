@@ -1,4 +1,4 @@
-import type { KnowledgeTopic } from '@/mock/learningResources'
+import type { KnowledgeTopic } from '@/utils/types/learningResources'
 
 type Props = {
   topics: KnowledgeTopic[]

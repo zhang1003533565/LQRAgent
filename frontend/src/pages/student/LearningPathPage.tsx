@@ -1,23 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getCurrentPath } from '@/api/student/learningPath'
 import {
   ChapterAccordion,
   LearningGoalInput,
+  LearningPathEmpty,
   LearningPathSkeleton,
   PageHeader,
   PathAuxPanel,
   PathOverviewCards,
 } from '@/components/student/workspace/learning-path'
-import {
-  MOCK_CHAPTERS,
-  MOCK_CYCLE_OPTIONS,
-  MOCK_GOAL,
-  MOCK_OVERVIEW,
-  MOCK_TODAY_GOAL,
-} from '@/mock/learningPath'
+import { MOCK_CYCLE_OPTIONS } from '@/mock/learningPath'
 import { useOrchestrator } from '@/utils/hooks/useOrchestrator'
-import { navigateToWorkspace } from '@/utils/navigation/workspaceNav'
+import { navigateToWorkspace, syncWorkspaceFromSearchParams } from '@/utils/navigation/workspaceNav'
 import {
   buildChaptersFromPathNodes,
   computeOverviewFromChapters,
@@ -87,6 +82,7 @@ function buildOverviewStats(
 
 export default function LearningPathPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { start: startOrch, running: orchRunning, error: orchError } = useOrchestrator()
   const {
     goal,
@@ -101,16 +97,12 @@ export default function LearningPathPage() {
     clearUpdates,
   } = usePathStore()
 
-  const [inputGoal, setInputGoal] = useState(goal || MOCK_GOAL)
+  const [inputGoal, setInputGoal] = useState('')
   const [cycle, setCycle] = useState('2 周')
   const [error, setError] = useState<string | null>(null)
-  const [previewSelectedId, setPreviewSelectedId] = useState<string | null>(
-    () => MOCK_CHAPTERS[0]?.nodes.find((n) => n.status === 'current')?.id ?? null,
-  )
 
   const isGenerating = loading || orchRunning
   const hasPath = nodes.length > 0
-  const usePreview = !hasPath && !isGenerating
 
   useEffect(() => {
     clearUpdates()
@@ -118,31 +110,31 @@ export default function LearningPathPage() {
   }, [clearUpdates, refresh])
 
   useEffect(() => {
+    syncWorkspaceFromSearchParams(searchParams)
+  }, [searchParams])
+
+  useEffect(() => {
     if (goal) setInputGoal(goal)
   }, [goal])
 
   const chapters = useMemo(() => {
-    if (hasPath) return buildChaptersFromPathNodes(nodes, selectedKpId)
-    if (usePreview) return MOCK_CHAPTERS
-    return []
-  }, [hasPath, usePreview, nodes, selectedKpId])
-
-  const effectiveSelectedId = hasPath ? selectedKpId : previewSelectedId
+    if (!hasPath) return []
+    return buildChaptersFromPathNodes(nodes, selectedKpId)
+  }, [hasPath, nodes, selectedKpId])
 
   const selectedNode = useMemo(
-    () => findNodeInChapters(chapters, effectiveSelectedId),
-    [chapters, effectiveSelectedId],
+    () => findNodeInChapters(chapters, selectedKpId),
+    [chapters, selectedKpId],
   )
 
   const overviewStats = useMemo(() => {
-    if (usePreview) return MOCK_OVERVIEW
     if (!hasPath) return buildOverviewStats(0, 0, 0, 0, '—')
     const stats = computeOverviewFromChapters(chapters)
     return buildOverviewStats(stats.total, stats.completed, stats.current, stats.pending, stats.eta)
-  }, [usePreview, hasPath, chapters])
+  }, [hasPath, chapters])
 
   const todayGoal = useMemo(() => {
-    if (!hasPath) return MOCK_TODAY_GOAL
+    if (!hasPath) return { label: '完成 1 个学习任务', current: 0, total: 1 }
     const completed = chapters
       .flatMap((c) => c.nodes)
       .filter((n) => n.status === 'completed').length
@@ -152,13 +144,9 @@ export default function LearningPathPage() {
   const handleSelectNode = useCallback(
     (nodeId: string) => {
       trackBehavior({ kpId: nodeId, action: 'view_path' })
-      if (hasPath) {
-        selectNode(nodeId)
-      } else {
-        setPreviewSelectedId(nodeId)
-      }
+      selectNode(nodeId)
     },
-    [hasPath, selectNode],
+    [selectNode],
   )
 
   const handleGenerate = useCallback(() => {
@@ -166,6 +154,10 @@ export default function LearningPathPage() {
     const cycleValue = cycle.replace(/\s/g, '')
     startOrch(inputGoal, cycleValue)
   }, [inputGoal, cycle, startOrch])
+
+  const focusGoalInput = useCallback(() => {
+    document.getElementById('learning-goal-input')?.focus()
+  }, [])
 
   const handleRestore = useCallback(async () => {
     setLoading(true)
@@ -182,25 +174,21 @@ export default function LearningPathPage() {
   }, [setLoading, setPath])
 
   const handleStartLearning = useCallback(() => {
-    const kpId = effectiveSelectedId
-    if (!kpId) return
-    selectNode(kpId)
-    const search = `?kpId=${encodeURIComponent(kpId)}`
-    navigate(`/workspace${search}`)
-  }, [effectiveSelectedId, navigate, selectNode])
+    if (!selectedKpId) return
+    navigate('/workspace')
+  }, [navigate, selectedKpId])
 
   const handleGenerateNotes = useCallback(() => {
-    if (!effectiveSelectedId) return
-    navigateToWorkspace(navigate, '/workspace/resources', effectiveSelectedId)
-  }, [effectiveSelectedId, navigate])
+    if (!selectedKpId) return
+    navigateToWorkspace(navigate, '/workspace/resources', selectedKpId)
+  }, [navigate, selectedKpId])
 
   const handleGenerateQuiz = useCallback(() => {
-    if (!effectiveSelectedId) return
-    navigateToWorkspace(navigate, '/workspace/quiz', effectiveSelectedId)
-  }, [effectiveSelectedId, navigate])
+    if (!selectedKpId) return
+    navigateToWorkspace(navigate, '/workspace/quiz', selectedKpId)
+  }, [navigate, selectedKpId])
 
   const showSkeleton = isGenerating && !hasPath
-  const showChapters = hasPath || usePreview
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-[#F6F9FE] font-sans">
@@ -235,13 +223,13 @@ export default function LearningPathPage() {
           onGenerate={handleGenerate}
         />
 
-        {showChapters || showSkeleton ? <PathOverviewCards stats={overviewStats} /> : null}
+        {hasPath || showSkeleton ? <PathOverviewCards stats={overviewStats} /> : null}
 
-        {showChapters ? (
+        {hasPath ? (
           <>
             <ChapterAccordion
               chapters={chapters}
-              selectedNodeId={effectiveSelectedId}
+              selectedNodeId={selectedKpId}
               onSelectNode={handleSelectNode}
             />
             {planDescription ? (
@@ -253,11 +241,19 @@ export default function LearningPathPage() {
           </>
         ) : null}
 
+        {!hasPath && !isGenerating ? (
+          <LearningPathEmpty
+            onGenerate={focusGoalInput}
+            onGoChat={() => navigate('/workspace')}
+            loading={false}
+          />
+        ) : null}
+
         {showSkeleton ? <LearningPathSkeleton /> : null}
       </div>
 
       <PathAuxPanel
-        selectedNode={showChapters ? selectedNode : null}
+        selectedNode={hasPath ? selectedNode : null}
         todayGoal={todayGoal}
         onStartLearning={handleStartLearning}
         onGenerateNotes={handleGenerateNotes}

@@ -94,6 +94,22 @@ public class KbUploadTask {
     @Comment("向量索引名称")
     private String vectorIndexName;
 
+    @Column(name = "file_size_bytes")
+    @Comment("文件大小（字节）")
+    private Long fileSizeBytes;
+
+    @Column(name = "learning_path_id", length = 512)
+    @Comment("关联学习路径标识")
+    private String learningPathId;
+
+    @Column(name = "manual_kp_ids", columnDefinition = "TEXT")
+    @Comment("用户手动关联的知识点 ID（逗号分隔）")
+    private String manualKpIds;
+
+    @Column(name = "tags", columnDefinition = "TEXT")
+    @Comment("用户标签 JSON 数组")
+    private String tags;
+
     @CreationTimestamp
     @Comment("任务创建时间")
     private LocalDateTime createdAt;

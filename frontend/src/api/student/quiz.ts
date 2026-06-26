@@ -1,5 +1,6 @@
 import http from '@/api/http'
 import type { LearningResource } from '@/utils/types/media-resource'
+import type { PracticeSession } from '@/utils/types/quiz'
 
 export interface QuizQuestionListItem {
   id: number
@@ -129,4 +130,41 @@ export interface QuizRecordItem {
 export async function getQuizRecords(): Promise<QuizRecordItem[]> {
   const res = await http.get<{ data: QuizRecordItem[] }>('/quiz/records')
   return res.data.data
+}
+
+export interface QuizPreferences {
+  favoriteQuestionIds: number[]
+  markedQuestionIds: number[]
+}
+
+export async function getQuizPreferences(): Promise<QuizPreferences> {
+  const res = await http.get<{ data: QuizPreferences }>('/quiz/preferences')
+  return res.data.data
+}
+
+export async function saveQuizSession(session: PracticeSession): Promise<PracticeSession> {
+  const res = await http.post<{ data: PracticeSession }>('/quiz/sessions', session)
+  return res.data.data
+}
+
+export async function getQuizSession(sessionId: string): Promise<PracticeSession> {
+  const res = await http.get<{ data: PracticeSession }>(`/quiz/sessions/${sessionId}`)
+  return res.data.data
+}
+
+export async function listQuizSessions(): Promise<PracticeSession[]> {
+  const res = await http.get<{ data: PracticeSession[] }>('/quiz/sessions')
+  return res.data.data
+}
+
+export async function deleteQuizSession(sessionId: string): Promise<void> {
+  await http.delete(`/quiz/sessions/${sessionId}`)
+}
+
+export async function favoriteQuizQuestion(questionId: number, favorite: boolean): Promise<void> {
+  await http.post(`/quiz/questions/${questionId}/favorite`, { favorite })
+}
+
+export async function markQuizQuestion(questionId: number, marked: boolean): Promise<void> {
+  await http.post(`/quiz/questions/${questionId}/mark`, { marked })
 }

@@ -1,5 +1,5 @@
 import { Loader2, Sparkles, X } from 'lucide-react'
-import { GENERATE_DIFFICULTIES, GENERATE_MATERIAL_TYPES } from '@/mock/learningResources'
+import { GENERATE_DIFFICULTIES, GENERATE_MATERIAL_TYPES } from '@/utils/types/learningResources'
 import type { ResourceType } from '@/utils/types/media-resource'
 
 type Props = {

@@ -14,7 +14,8 @@ import { useQuizCatalog } from '@/utils/hooks/useQuizCatalog'
 import { useQuizOverview } from '@/utils/hooks/useQuizOverview'
 import { useRecommendedPractices } from '@/utils/hooks/useRecommendedPractices'
 import { usePathStore } from '@/utils/store/pathStore'
-import { syncKpFromSearchParams } from '@/utils/navigation/workspaceNav'
+import { syncWorkspaceFromSearchParams } from '@/utils/navigation/workspaceNav'
+import NoPathGuide from '@/components/student/workspace/shared/NoPathGuide'
 import type { QuizCatalogFilters, QuizSection, RecommendedPractice } from '@/utils/types/quiz'
 
 const DEFAULT_FILTERS: QuizCatalogFilters = {
@@ -27,7 +28,7 @@ const DEFAULT_FILTERS: QuizCatalogFilters = {
 
 export default function QuizHomePage() {
   const navigate = useNavigate()
-  const { selectedKpId, nodes } = usePathStore()
+  const { selectedKpId, nodes, loading: pathLoading } = usePathStore()
   const [searchParams] = useSearchParams()
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<QuizCatalogFilters>(DEFAULT_FILTERS)
@@ -36,7 +37,7 @@ export default function QuizHomePage() {
   const [generating, setGenerating] = useState(false)
 
   useEffect(() => {
-    syncKpFromSearchParams(searchParams)
+    syncWorkspaceFromSearchParams(searchParams)
     if (searchParams.get('kpId')) {
       setFilters((f) => ({ ...f, learningPathId: 'current' }))
     }
@@ -133,6 +134,17 @@ export default function QuizHomePage() {
   }, [navigate, selectedKpId])
 
   const suggestion = recommendations[0]?.description || recommendations[0]?.reason || null
+
+  if (!pathLoading && nodes.length === 0) {
+    return (
+      <div className="h-full min-h-0 overflow-y-auto bg-[#F6F9FE] p-6">
+        <NoPathGuide
+          onGoPath={() => navigate('/workspace/learning-path')}
+          onGoChat={() => navigate('/workspace')}
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-[#F6F9FE] font-sans">

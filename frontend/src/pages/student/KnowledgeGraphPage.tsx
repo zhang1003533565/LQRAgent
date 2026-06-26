@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   BookOpen,
   ChevronRight,
@@ -24,11 +24,18 @@ import {
   type KnowledgeGraphEdge,
   type KnowledgeGraphNode,
 } from '@/api/student/knowledge'
+import { fetchProfileDetailRaw } from '@/api/student/profile'
 import { usePathStore } from '@/utils/store/pathStore'
-import { navigateToWorkspace } from '@/utils/navigation/workspaceNav'
+import { useProfileStore } from '@/utils/store/profileStore'
+import {
+  buildMasteryMap,
+  resolveGraphNodeStatus,
+  type GraphStatus,
+  type KpMasteryEntry,
+} from '@/utils/knowledgeGraph/graphStatus'
+import { navigateToWorkspace, syncWorkspaceFromSearchParams } from '@/utils/navigation/workspaceNav'
 import styles from './KnowledgeGraphPage.module.css'
 
-type GraphStatus = 'mastered' | 'learning' | 'weak' | 'unlearned'
 type ViewMode = 'chapter' | 'subject' | 'path'
 
 interface GraphNode extends KnowledgeGraphNode {
@@ -82,23 +89,21 @@ function drawSoftArrow(ctx: CanvasRenderingContext2D, from: GraphNode, to: Graph
   ctx.fill()
 }
 
-function getStatus(node: KnowledgeGraphNode, pathSet: Set<string>): GraphStatus {
-  if (pathSet.has(node.kpId)) return 'learning'
-  if ((node.difficulty ?? 0) >= 4) return 'weak'
-  if ((node.difficulty ?? 0) <= 2 && node.difficulty !== undefined) return 'mastered'
-  return 'unlearned'
-}
-
 function getNodeDegree(kpId: string, edges: KnowledgeGraphEdge[]) {
   return edges.reduce((count, edge) => count + (edge.fromKpId === kpId || edge.toKpId === kpId ? 1 : 0), 0)
 }
 
-function getNodeRadius(node: KnowledgeGraphNode, edges: KnowledgeGraphEdge[], pathSet: Set<string>) {
+function getNodeRadius(
+  node: KnowledgeGraphNode,
+  edges: KnowledgeGraphEdge[],
+  pathSet: Set<string>,
+  status: GraphStatus,
+) {
   const degree = getNodeDegree(node.kpId, edges)
   const base = 20 + Math.min(10, degree * 1.8)
   const pathBoost = pathSet.has(node.kpId) ? 5 : 0
-  const difficultyBoost = (node.difficulty ?? 0) >= 4 ? 2 : 0
-  return Math.max(20, Math.min(36, base + pathBoost + difficultyBoost))
+  const statusBoost = status === 'mastered' ? 3 : status === 'weak' ? 2 : 0
+  return Math.max(20, Math.min(36, base + pathBoost + statusBoost))
 }
 
 function isFunctionDefinitionNode(node: KnowledgeGraphNode) {
@@ -141,6 +146,8 @@ function scaleCanvasForDpr(canvas: HTMLCanvasElement) {
 
 export default function KnowledgeGraphPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const pendingKpIdRef = useRef<string | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const miniMapRef = useRef<HTMLCanvasElement>(null)
   const nodesRef = useRef<GraphNode[]>([])
@@ -159,12 +166,50 @@ export default function KnowledgeGraphPage() {
 
   const pathNodes = usePathStore((state) => state.nodes)
   const selectPathNode = usePathStore((state) => state.selectNode)
+  const profileRevision = useProfileStore((state) => state.revision)
   const pathSet = useMemo(() => new Set(pathNodes.map((node) => node.kpId)), [pathNodes])
+  const pathCompletedSet = useMemo(
+    () => new Set(pathNodes.filter((node) => node.completed).map((node) => node.kpId)),
+    [pathNodes],
+  )
+  const [masteryByKp, setMasteryByKp] = useState<Map<string, KpMasteryEntry>>(new Map())
   const pathIndexMap = useMemo(() => {
     const map = new Map<string, number>()
     pathNodes.forEach((node, index) => map.set(node.kpId, index))
     return map
   }, [pathNodes])
+
+  useEffect(() => {
+    syncWorkspaceFromSearchParams(searchParams)
+    const kpId = searchParams.get('kpId')
+    if (kpId) pendingKpIdRef.current = kpId
+  }, [searchParams])
+
+  useEffect(() => {
+    void fetchProfileDetailRaw()
+      .then((detail) => setMasteryByKp(buildMasteryMap(detail.knowledgeMap ?? [])))
+      .catch(() => setMasteryByKp(new Map()))
+  }, [profileRevision])
+
+  const focusKpNode = useCallback((kpId: string) => {
+    const graphNode = nodesRef.current.find((item) => item.kpId === kpId)
+    if (graphNode) {
+      setSelectedNode(graphNode)
+      setStatusFilter('all')
+      setSearch('')
+      drawGraphRef.current()
+    }
+  }, [])
+
+  useEffect(() => {
+    const kpId = pendingKpIdRef.current ?? usePathStore.getState().selectedKpId
+    if (!kpId || !data) return
+    const exists = data.nodes.some((node) => node.kpId === kpId)
+    if (exists) {
+      focusKpNode(kpId)
+      pendingKpIdRef.current = null
+    }
+  }, [data, focusKpNode])
 
   const getVisibleNodes = useCallback(() => {
     const keyword = search.trim().toLowerCase()
@@ -368,14 +413,15 @@ export default function KnowledgeGraphPage() {
       const layer = viewMode === 'chapter' ? chapterHash % 4 : viewMode === 'path' && isPath ? 1 : index % 4
       const angle = (2 * Math.PI * index) / total + layer * 0.18
       const radius = isDefaultFocus ? 0 : viewMode === 'path' && isPath ? radiusBase * 0.72 : radiusBase * (0.68 + layer * 0.22)
+      const status = resolveGraphNodeStatus(node.kpId, masteryByKp, pathSet, pathCompletedSet)
       return {
         ...node,
         x: centerX + Math.cos(angle) * radius + (isDefaultFocus ? 0 : (Math.random() - 0.5) * 24),
         y: centerY + Math.sin(angle) * radius + (isDefaultFocus ? 0 : (Math.random() - 0.5) * 24),
         vx: 0,
         vy: 0,
-        radius: getNodeRadius(node, graph.edges, pathSet),
-        status: getStatus(node, pathSet),
+        radius: getNodeRadius(node, graph.edges, pathSet, status),
+        status,
       }
     })
 
@@ -434,7 +480,7 @@ export default function KnowledgeGraphPage() {
       return selectedStillExists || getDefaultFocusNode(nodes) || nodes.find((node) => pathSet.has(node.kpId)) || nodes[0] || null
     })
     requestAnimationFrame(() => drawGraphRef.current())
-  }, [pathSet, viewMode])
+  }, [pathSet, pathCompletedSet, masteryByKp, viewMode])
 
   const resizeCanvas = useCallback(() => {
     const canvas = canvasRef.current
@@ -462,7 +508,7 @@ export default function KnowledgeGraphPage() {
 
   useEffect(() => {
     if (data) runLayout(data)
-  }, [data, viewMode])
+  }, [data, viewMode, runLayout])
 
   useEffect(() => {
     resizeCanvas()
