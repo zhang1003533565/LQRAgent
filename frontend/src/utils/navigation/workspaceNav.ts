@@ -1,7 +1,12 @@
 import type { NavigateFunction } from 'react-router-dom'
 import { usePathStore } from '@/utils/store/pathStore'
 
-type WorkspaceTarget = '/workspace/resources' | '/workspace/quiz' | '/workspace/learning-path' | '/workspace/upload'
+type WorkspaceTarget =
+  | '/workspace/resources'
+  | '/workspace/quiz'
+  | '/workspace/learning-path'
+  | '/workspace/upload'
+  | '/workspace/profile'
 
 export function navigateToWorkspace(
   navigate: NavigateFunction,

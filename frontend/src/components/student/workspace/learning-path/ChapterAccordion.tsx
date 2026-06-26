@@ -17,11 +17,7 @@ export default function ChapterAccordion({
   onSelectNode,
   defaultExpandedChapterId,
 }: Props) {
-  const initialExpanded =
-    defaultExpandedChapterId ??
-    chapters.find((ch) => ch.nodes.some((n) => n.status === 'current'))?.id ??
-    chapters[0]?.id ??
-    null
+  const initialExpanded = defaultExpandedChapterId ?? null
 
   const [expandedId, setExpandedId] = useState<string | null>(initialExpanded)
 
