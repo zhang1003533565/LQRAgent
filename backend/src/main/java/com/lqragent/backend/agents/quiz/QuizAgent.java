@@ -7,7 +7,10 @@ import org.springframework.stereotype.Component;
 import com.lqragent.backend.agents.aiserver.tools.AiServerToolFactory;
 import com.lqragent.backend.agents.base.AgentTool;
 import com.lqragent.backend.agents.base.AgentToolRegistry;
+import com.lqragent.backend.agents.base.AgentRequest;
+import com.lqragent.backend.agents.base.AgentResponse;
 import com.lqragent.backend.agents.base.LlmClient;
+import com.lqragent.backend.orchestrator.consultation.QuizConsultationEngine;
 import com.lqragent.backend.agents.base.RagSearchTool;
 import com.lqragent.backend.agents.quiz.tools.GenerateQuizTool;
 import com.lqragent.backend.orchestrator.AgentIds;
@@ -15,6 +18,7 @@ import com.lqragent.backend.orchestrator.agents.BaseAgent;
 import com.lqragent.backend.orchestrator.card.AgentCard;
 import com.lqragent.backend.orchestrator.card.ToolSpec;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
+import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.prompt.service.PromptService;
 
@@ -24,15 +28,18 @@ public class QuizAgent extends BaseAgent {
     private final RagSearchTool ragSearchTool;
     private final GenerateQuizTool generateQuizTool;
     private final AiServerToolFactory aiServerToolFactory;
+    private final QuizConsultationEngine quizConsultationEngine;
 
     public QuizAgent(RedisStreamsService streams, LlmClient llmClient,
                      AgentToolRegistry toolRegistry, RagSearchTool ragSearchTool,
                      GenerateQuizTool generateQuizTool, PromptService promptService,
-                     AiServerToolFactory aiServerToolFactory) {
+                     AiServerToolFactory aiServerToolFactory,
+                     QuizConsultationEngine quizConsultationEngine) {
         super(AgentIds.QUIZ, streams, llmClient, toolRegistry, promptService);
         this.ragSearchTool = ragSearchTool;
         this.generateQuizTool = generateQuizTool;
         this.aiServerToolFactory = aiServerToolFactory;
+        this.quizConsultationEngine = quizConsultationEngine;
     }
 
     @Override
@@ -48,6 +55,14 @@ public class QuizAgent extends BaseAgent {
     @Override
     public AgentMessage process(AgentMessage request) {
         return executeLlmLoop(request);
+    }
+
+    @Override
+    public AgentResponse process(AgentRequest request, TaskContext context) {
+        if ("consult_quiz".equals(request.action())) {
+            return quizConsultationEngine.consultAsAgentResponse(request, context);
+        }
+        return super.process(request, context);
     }
 
     @Override

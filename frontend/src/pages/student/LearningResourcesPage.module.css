@@ -103,6 +103,20 @@
   margin-bottom: 14px;
 }
 
+.chatHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .currentStage {
   color: #283e69;
   font-size: 15px;

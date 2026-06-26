@@ -5,8 +5,10 @@ import java.util.List;
 
 import org.springframework.stereotype.Service;
 
+import com.lqragent.backend.orchestrator.AgentIds;
 import com.lqragent.backend.orchestrator.context.LearnerContextDto;
 import com.lqragent.backend.orchestrator.pipeline.PipelineConfig;
+import com.lqragent.backend.orchestrator.pipeline.PipelineStep;
 import com.lqragent.backend.orchestrator.pipeline.PipelineTemplates;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
 
@@ -33,6 +35,11 @@ public class PlanningGateService {
 
         String msg = message.trim();
         LearnerContextDto ctx = learnerContext != null ? learnerContext : LearnerContextDto.builder().build();
+
+        if (IntentHeuristics.isQuizGenerationIntent(msg) && shouldNormalizeQuizPlan(plan)) {
+            log.info("[PlanningGate] quiz generation → quiz_consult pipeline");
+            return forceQuiz(plan);
+        }
 
         if (IntentHeuristics.isExplicitFullLearningPlan(msg)) {
             log.info("[PlanningGate] G4 explicit full learning plan");
@@ -165,6 +172,39 @@ public class PlanningGateService {
 
     private PlanResult forceLearningPath(PlanResult plan, PipelineConfig config) {
         return PlanResult.pipeline(config, config.getSteps());
+    }
+
+    private PlanResult forceQuiz(PlanResult plan) {
+        PipelineConfig config = PipelineTemplates.quiz();
+        return PlanResult.pipeline(config, config.getSteps());
+    }
+
+    /** 将 LLM 动态 quiz 计划或 SIMPLE/PIPELINE quiz 意图统一为 quiz 模板 */
+    private boolean shouldNormalizeQuizPlan(PlanResult plan) {
+        if (plan.isSimple() && plan.intent() == PlanIntent.QUIZ) {
+            return true;
+        }
+        if (!plan.isPipeline() || plan.pipelineConfig() == null) {
+            return false;
+        }
+        PipelineConfig config = plan.pipelineConfig();
+        if ("quiz".equals(config.getPipelineId())) {
+            return false;
+        }
+        if (config.getPipelineId() != null && config.getPipelineId().contains("quiz")) {
+            return true;
+        }
+        return config.getSteps() != null && config.getSteps().stream().anyMatch(this::isQuizStep);
+    }
+
+    private boolean isQuizStep(PipelineStep step) {
+        if (step == null || step.getAgentId() == null) {
+            return false;
+        }
+        String agentId = step.getAgentId();
+        return AgentIds.QUIZ.equals(agentId)
+                || "quiz_agent".equals(agentId)
+                || agentId.contains("quiz");
     }
 
     private boolean isLearningPathRelated(PlanResult plan, String msg) {

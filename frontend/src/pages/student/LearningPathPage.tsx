@@ -1,9 +1,9 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePathStore } from '@/utils/store/pathStore'
 import { trackBehavior } from '@/utils/tracker'
 import { useOrchestrator } from '@/utils/hooks/useOrchestrator'
-import { getCurrentPath } from '@/api/student/learningPath'
+import { navigateToWorkspace } from '@/utils/navigation/workspaceNav'
 import styles from './WorkspacePage.module.css'
 
 
@@ -11,11 +11,16 @@ import styles from './WorkspacePage.module.css'
 export default function LearningPathPage() {
   const navigate = useNavigate()
   const { start: startOrch, progress: orchProgress, running: orchRunning, error: orchError } = useOrchestrator()
-  const { goal, planDescription, nodes, selectedKpId, loading, setPath, setLoading, selectNode } =
+  const { goal, planDescription, nodes, selectedKpId, loading, setPath, setLoading, selectNode, refresh, clearUpdates } =
     usePathStore()
   const [inputGoal, setInputGoal] = useState(goal || '学习Python基础语法，包括变量、数据类型、控制流和函数')
   const [cycle, setCycle] = useState('2周')
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    clearUpdates()
+    void refresh()
+  }, [clearUpdates, refresh])
 
   const handleSelectNode = useCallback((kpId: string) => {
     trackBehavior({ kpId, action: 'view_path' })
@@ -276,7 +281,9 @@ export default function LearningPathPage() {
                 { label: '查看关联资源', icon: 'folder', path: '/workspace/resources' },
               ].map((action) => (
                 <button key={action.label} type="button" className={styles.resourceBtn} disabled={!selectedNode}
-                  onClick={() => { if (selectedNode) navigate(action.path) }}>
+                  onClick={() => {
+                    if (selectedNode) navigateToWorkspace(navigate, action.path as '/workspace/resources' | '/workspace/quiz', selectedNode.kpId)
+                  }}>
                   <span className={`${styles.resourceIcon} ${styles[`icon${action.icon}`]}`} />
                   <span>{action.label}</span>
                 </button>

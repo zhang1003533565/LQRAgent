@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft,
   ArrowRight,
@@ -27,6 +28,11 @@ import {
   type QuizQuestionListItem,
   type QuizResult,
 } from '@/api/student/quiz'
+import { useAuthStore } from '@/utils/store/authStore'
+import { usePathStore } from '@/utils/store/pathStore'
+import { buildPathLabel, resolveKpDisplay } from '@/utils/kp/kpDisplay'
+import { syncKpFromSearchParams } from '@/utils/navigation/workspaceNav'
+import type { PathNode } from '@/utils/types/learning-path'
 import styles from './QuizPage.module.css'
 
 type ChoiceKey = 'A' | 'B' | 'C' | 'D'
@@ -38,11 +44,14 @@ type QuizGroup = {
   title: string
   subtitle: string
   knowledgePoint: string
+  displayKp: string
   pathLabel: string
   questionType: string
   difficulty: number
   questions: QuizQuestionListItem[]
 }
+
+type PathContext = { goal: string; nodes: PathNode[] }
 
 type AnswerMap = Record<number, string>
 type ResultMap = Record<number, QuizResult>
@@ -103,7 +112,7 @@ function getQuestionOptions(detail: QuizQuestionDetail | null) {
     .filter((item) => item.label)
 }
 
-function buildGroups(items: QuizQuestionListItem[]) {
+function buildGroups(items: QuizQuestionListItem[], ctx: PathContext) {
   const map = new Map<string, QuizQuestionListItem[]>()
   items.forEach((item) => {
     const knowledgePoint = item.knowledgePoint?.trim() || '综合练习'
@@ -114,18 +123,21 @@ function buildGroups(items: QuizQuestionListItem[]) {
     map.set(key, list)
   })
 
+  const pathLabel = buildPathLabel(ctx.goal)
+
   return Array.from(map.entries()).map(([key, questions]) => {
     const first = questions[0]
     const knowledgePoint = first.knowledgePoint?.trim() || key.split('::')[0] || '综合练习'
+    const displayKp = resolveKpDisplay(knowledgePoint, ctx.nodes)
     const avgDifficulty =
       Math.round(questions.reduce((sum, item) => sum + (item.difficulty || 1), 0) / Math.max(1, questions.length)) || 1
-    const typeLabel = formatQuestionType(first.questionType)
     return {
       id: key,
-      title: `${knowledgePoint} · ${formatDifficulty(avgDifficulty)}练习`,
-      subtitle: `掌握 ${knowledgePoint} 的核心概念与常见题型`,
+      title: `${displayKp} · ${formatDifficulty(avgDifficulty)}练习`,
+      subtitle: `掌握 ${displayKp} 的核心概念与常见题型`,
       knowledgePoint,
-      pathLabel: `学习路径 > Python基础入门`,
+      displayKp,
+      pathLabel,
       questionType: first.questionType,
       difficulty: avgDifficulty,
       questions,
@@ -146,7 +158,7 @@ function formatStatus(status: StatusFilter) {
   return '未开始'
 }
 
-function makeFallbackGroups(): QuizGroup[] {
+function makeFallbackGroups(ctx: PathContext): QuizGroup[] {
   const names = [
     'Python简介与环境搭建',
     '输入输出',
@@ -159,6 +171,8 @@ function makeFallbackGroups(): QuizGroup[] {
     'while 循环',
     '函数定义与调用',
   ]
+
+  const pathLabel = buildPathLabel(ctx.goal)
 
   return names.map((name, index) => {
     const difficulty = index < 4 ? 1 : index < 8 ? 2 : 3
@@ -176,7 +190,8 @@ function makeFallbackGroups(): QuizGroup[] {
       title: `${name} · ${formatDifficulty(difficulty)}练习`,
       subtitle: `掌握 ${name} 的基础用法与常见场景`,
       knowledgePoint: name,
-      pathLabel: '学习路径 > Python基础入门',
+      displayKp: name,
+      pathLabel,
       questionType: questions[0].questionType,
       difficulty,
       questions,
@@ -184,7 +199,20 @@ function makeFallbackGroups(): QuizGroup[] {
   })
 }
 
+function matchesKpFilter(group: QuizGroup, kpId: string | null, nodes: PathNode[]): boolean {
+  if (!kpId) return true
+  const raw = group.knowledgePoint.toLowerCase()
+  const target = kpId.toLowerCase()
+  if (raw === target) return true
+  const display = resolveKpDisplay(group.knowledgePoint, nodes).toLowerCase()
+  const targetDisplay = resolveKpDisplay(kpId, nodes).toLowerCase()
+  return display === targetDisplay || raw.includes(target.replace(/^kp_/, ''))
+}
+
 export default function QuizPage() {
+  const { goal, nodes, selectedKpId } = usePathStore()
+  const userRole = useAuthStore((s) => s.user?.role)
+  const [searchParams] = useSearchParams()
   const [groups, setGroups] = useState<QuizGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -193,6 +221,7 @@ export default function QuizPage() {
   const [typeFilter, setTypeFilter] = useState<QuestionFilter>('all')
   const [difficultyFilter, setDifficultyFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [pathFilter, setPathFilter] = useState<'all' | 'current'>('all')
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -208,15 +237,22 @@ export default function QuizPage() {
     setLoadFailed(false)
     listQuizQuestions({ page: 1, size: 1000 })
       .then((res) => {
-        const built = buildGroups(res.items || [])
-        setGroups(built.length > 0 ? built : makeFallbackGroups())
+        const ctx = usePathStore.getState()
+        const built = buildGroups(res.items || [], { goal: ctx.goal, nodes: ctx.nodes })
+        setGroups(built.length > 0 ? built : makeFallbackGroups({ goal: ctx.goal, nodes: ctx.nodes }))
       })
       .catch(() => {
-        setGroups(makeFallbackGroups())
+        const ctx = usePathStore.getState()
+        setGroups(makeFallbackGroups({ goal: ctx.goal, nodes: ctx.nodes }))
         setLoadFailed(true)
       })
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    syncKpFromSearchParams(searchParams)
+    if (searchParams.get('kpId')) setPathFilter('current')
+  }, [searchParams])
 
   useEffect(() => {
     fetchGroups()
@@ -263,15 +299,17 @@ export default function QuizPage() {
       const keyword = keywordSearch.trim().toLowerCase()
       const keywordMatch =
         !keyword ||
+        group.displayKp.toLowerCase().includes(keyword) ||
         group.knowledgePoint.toLowerCase().includes(keyword) ||
         group.pathLabel.toLowerCase().includes(keyword) ||
         group.questions.some((item) => item.title.toLowerCase().includes(keyword))
       const typeMatch = typeFilter === 'all' || normalizedType === typeFilter
       const difficultyMatch = difficultyFilter === 'all' || formatDifficulty(group.difficulty) === difficultyFilter
       const statusMatch = statusFilter === 'all' || groupStatus === statusFilter
-      return titleMatch && keywordMatch && typeMatch && difficultyMatch && statusMatch
+      const pathMatch = pathFilter === 'all' || matchesKpFilter(group, selectedKpId, nodes)
+      return titleMatch && keywordMatch && typeMatch && difficultyMatch && statusMatch && pathMatch
     })
-  }, [answers, difficultyFilter, groupSearch, groups, keywordSearch, statusFilter, typeFilter])
+  }, [answers, difficultyFilter, groupSearch, groups, keywordSearch, nodes, pathFilter, selectedKpId, statusFilter, typeFilter])
 
   const stats = useMemo(() => {
     const questionTotal = groups.reduce((sum, group) => sum + group.questions.length, 0)
@@ -300,6 +338,7 @@ export default function QuizPage() {
     setTypeFilter('all')
     setDifficultyFilter('all')
     setStatusFilter('all')
+    setPathFilter('all')
   }
 
   const selectAnswer = (value: string) => {
@@ -384,10 +423,12 @@ export default function QuizPage() {
           </p>
         </div>
 
-        <button type="button" className={styles.manageButton}>
-          <Settings size={15} />
-          题库管理
-        </button>
+        {userRole !== 'student' ? (
+          <button type="button" className={styles.manageButton}>
+            <Settings size={15} />
+            题库管理
+          </button>
+        ) : null}
       </header>
 
       <section className={styles.statGrid}>
@@ -440,9 +481,14 @@ export default function QuizPage() {
             <ChevronDown size={14} />
           </label>
           <label className={styles.selectButton}>
-            所属路径：全部
-            <select value="all" onChange={() => undefined} aria-label="所属路径">
+            所属路径：
+            <select
+              value={pathFilter}
+              onChange={(event) => setPathFilter(event.target.value as 'all' | 'current')}
+              aria-label="所属路径"
+            >
               <option value="all">全部</option>
+              {goal ? <option value="current">{goal}</option> : null}
             </select>
             <ChevronDown size={14} />
           </label>
@@ -503,7 +549,7 @@ export default function QuizPage() {
                       <small>{group.subtitle}</small>
                     </span>
                     <span className={styles.pathCell}>
-                      <strong>{group.knowledgePoint}</strong>
+                      <strong>{group.displayKp}</strong>
                       <small>{group.pathLabel}</small>
                     </span>
                     <span className={styles.tagGroup}>

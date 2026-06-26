@@ -111,6 +111,28 @@
   padding: 4px;
 }
 
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.secondaryBtn {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #93c5fd;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.85);
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondaryBtn:hover {
+  background: #fff;
+}
+
 .viewBtn {
   width: 100%;
   display: flex;

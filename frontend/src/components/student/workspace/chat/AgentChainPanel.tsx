@@ -33,6 +33,67 @@ function formatElapsed(step: MessageAgentStep, now: number): string {
   return `${Math.round(ms / 60000)}m`
 }
 
+function groupChildStepsByRound(children: MessageAgentStep[]) {
+  const groups = new Map<number, MessageAgentStep[]>()
+  children.forEach((child) => {
+    const match = child.label.match(/第\s*(\d+)\s*轮/)
+    const round = match ? Number(match[1]) : 0
+    const list = groups.get(round) ?? []
+    list.push(child)
+    groups.set(round, list)
+  })
+  return Array.from(groups.entries()).sort(([a], [b]) => a - b)
+}
+
+function ConsultationTimeline({ children }: { children: MessageAgentStep[] }) {
+  const [openRounds, setOpenRounds] = useState<Set<number>>(() => new Set(
+    groupChildStepsByRound(children).map(([round]) => round),
+  ))
+  const groups = groupChildStepsByRound(children)
+
+  if (groups.length === 0) return null
+
+  const toggleRound = (round: number) => {
+    setOpenRounds((prev) => {
+      const next = new Set(prev)
+      if (next.has(round)) next.delete(round)
+      else next.add(round)
+      return next
+    })
+  }
+
+  return (
+    <div className={styles.consultTimeline}>
+      {groups.map(([round, items]) => {
+        const open = openRounds.has(round)
+        return (
+          <div key={round} className={styles.consultRound}>
+            <button type="button" className={styles.consultRoundHead} onClick={() => toggleRound(round)}>
+              <span>第 {round} 轮协商</span>
+              <span>{open ? '▴' : '▾'}</span>
+            </button>
+            {open && (
+              <div className={styles.consultRoundBody}>
+                {items.map((child) => (
+                  <div key={child.id} className={styles.childRow}>
+                    <span className={styles.childDot}>·</span>
+                    <span className={styles.childLabel}>{child.label.replace(/^第\s*\d+\s*轮\s*·\s*/, '')}</span>
+                    {child.detail && (
+                      <span className={styles.childDetail} title={child.detail}>
+                        {child.detail.length > 64 ? `${child.detail.slice(0, 64)}…` : child.detail}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function StepRow({
   step,
   index,
@@ -71,7 +132,9 @@ function StepRow({
           <div className={styles.stepDetail}>{step.detail}</div>
         )}
       </div>
-      {childSteps.length > 0 && (
+      {childSteps.length > 0 && childSteps.some((c) => c.parentId) ? (
+        <ConsultationTimeline children={childSteps} />
+      ) : childSteps.length > 0 ? (
         <div className={styles.childTimeline}>
           {childSteps.map((child) => {
             const childLabel = child.label || AGENT_LABELS[child.agent as keyof typeof AGENT_LABELS] || child.agent
@@ -88,7 +151,7 @@ function StepRow({
             )
           })}
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

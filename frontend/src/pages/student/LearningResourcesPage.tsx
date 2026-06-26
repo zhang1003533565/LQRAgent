@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Bot,
   Check,
@@ -18,6 +19,9 @@ import { getResources, generateResource } from '@/api/student/resources'
 import { generateImage, getVideoTaskStatus, submitVideoTask } from '@/api/student/media'
 import { trackBehavior } from '@/utils/tracker'
 import { usePathStore } from '@/utils/store/pathStore'
+import { useArtifactStore } from '@/utils/store/artifactStore'
+import { syncKpFromSearchParams } from '@/utils/navigation/workspaceNav'
+import type { PathNode } from '@/utils/types/learning-path'
 import type { LearningResource, ResourceType } from '@/utils/types/media-resource'
 import styles from './LearningResourcesPage.module.css'
 
@@ -40,7 +44,7 @@ const RESOURCE_TABS: ResourceTab[] = [
   { type: 'QUIZ', label: 'AI生成', icon: Sparkles },
 ]
 
-const PATH_STEPS = ['环境搭建', '基础语法', '条件判断', '循环结构', '综合练习']
+const PATH_STEPS_FALLBACK = ['环境搭建', '基础语法', '条件判断', '循环结构', '综合练习']
 
 const QUICK_REQUESTS = ['当前阶段知识点', '变量', '输入输出', '注释', '流程图', '对比图', '3分钟讲解视频']
 
@@ -124,14 +128,21 @@ function findResource(resources: LearningResource[], type: ResourceType) {
   return resources.find((item) => item.resourceType === type)
 }
 
-function StageProgress({ activeIndex }: { activeIndex: number }) {
+function StageProgress({ nodes, activeKpId }: { nodes: PathNode[]; activeKpId: string | null }) {
+  const steps = nodes.length > 0
+    ? nodes.map((node) => node.title)
+    : PATH_STEPS_FALLBACK
+  const activeIndex = nodes.length > 0
+    ? Math.max(0, nodes.findIndex((node) => node.kpId === activeKpId))
+    : 1
+
   return (
     <div className={styles.stageCard}>
       <div className={styles.currentStage}>
-        当前阶段：<strong>{PATH_STEPS[activeIndex] ?? PATH_STEPS[1]}</strong>
+        当前阶段：<strong>{steps[activeIndex] ?? steps[0]}</strong>
       </div>
       <div className={styles.stageTrack}>
-        {PATH_STEPS.map((step, index) => {
+        {steps.map((step, index) => {
           const isActive = index === activeIndex
           const isDone = index < activeIndex
           return (
@@ -224,6 +235,8 @@ function VideoPreview({ video, videoUrl }: { video?: LearningResource; videoUrl?
 
 export default function LearningResourcesPage() {
   const { selectedKpId, nodes } = usePathStore()
+  const chatResources = useArtifactStore((s) => s.resources)
+  const resourceRefreshToken = useArtifactStore((s) => s.resourceRefreshToken)
   const [resources, setResources] = useState<LearningResource[]>([])
   const [activeTab, setActiveTab] = useState<ResourceType>('LESSON')
   const [mode, setMode] = useState<GenerateMode>('image')
@@ -243,13 +256,16 @@ export default function LearningResourcesPage() {
   const kpId = selectedKpId || fallbackNode?.kpId || 'python_basic_syntax'
   const currentNode = nodes.find((node) => node.kpId === kpId) || fallbackNode
   const currentTitle = currentNode?.title || '基础语法入门'
-  const activeIndex = nodes.findIndex((node) => node.kpId === kpId)
-  const normalizedActiveIndex = activeIndex >= 0 ? Math.min(activeIndex, PATH_STEPS.length - 1) : 1
 
-  const illustration = useMemo(() => findResource(resources, 'ILLUSTRATION'), [resources])
-  const video = useMemo(() => findResource(resources, 'VIDEO_CLIP'), [resources])
-  const lesson = useMemo(() => findResource(resources, 'LESSON'), [resources])
-  const codeCase = useMemo(() => findResource(resources, 'CODE_CASE'), [resources])
+  const [searchParams] = useSearchParams()
+  useEffect(() => {
+    syncKpFromSearchParams(searchParams)
+  }, [searchParams])
+
+  const illustration = useMemo(() => findResource(mergedResources, 'ILLUSTRATION'), [mergedResources])
+  const video = useMemo(() => findResource(mergedResources, 'VIDEO_CLIP'), [mergedResources])
+  const lesson = useMemo(() => findResource(mergedResources, 'LESSON'), [mergedResources])
+  const codeCase = useMemo(() => findResource(mergedResources, 'CODE_CASE'), [mergedResources])
   const previewImageUrl = illustration?.mediaUrl || generatedImageUrl || undefined
   const previewVideoUrl = video?.mediaUrl || generatedVideoUrl || undefined
   const previewImageTitle = generatedImageTitle
@@ -282,6 +298,19 @@ export default function LearningResourcesPage() {
   useEffect(() => {
     void refreshResources()
   }, [refreshResources])
+
+  useEffect(() => {
+    if (resourceRefreshToken > 0) {
+      void refreshResources()
+    }
+  }, [resourceRefreshToken, refreshResources])
+
+  const mergedResources = useMemo(() => {
+    const chatForKp = chatResources.filter((item) => item.kpId === kpId)
+    return chatForKp.reduce(upsertResource, resources)
+  }, [chatResources, kpId, resources])
+
+  const hasChatResources = chatResources.some((item) => item.kpId === kpId)
 
   async function handleGenerateText(type: ResourceType) {
     if (!kpId || generating) return
@@ -366,7 +395,7 @@ export default function LearningResourcesPage() {
     }
   }
 
-  const activeResource = findResource(resources, activeTab)
+  const activeResource = findResource(mergedResources, activeTab)
   const openPreviewImage = () => {
     if (previewImageUrl) {
       setImageModalOpen(true)
@@ -392,7 +421,14 @@ export default function LearningResourcesPage() {
         </div>
       </header>
 
-      <StageProgress activeIndex={normalizedActiveIndex} />
+      <StageProgress nodes={nodes} activeKpId={kpId} />
+
+      {hasChatResources ? (
+        <div className={styles.chatHint}>
+          <Sparkles size={14} />
+          聊天已为当前知识点生成资源，已合并展示
+        </div>
+      ) : null}
 
       <main className={styles.workspace}>
         <section className={styles.generatorPanel}>

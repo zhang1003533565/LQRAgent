@@ -19,6 +19,7 @@ import com.lqragent.backend.orchestrator.card.AgentCard;
 import com.lqragent.backend.orchestrator.card.ToolSpec;
 import com.lqragent.backend.orchestrator.consultation.PathReviewDecision;
 import com.lqragent.backend.orchestrator.consultation.PathReviewService;
+import com.lqragent.backend.orchestrator.consultation.QuizReviewService;
 import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
@@ -30,15 +31,18 @@ public class DifficultyAgent extends BaseAgent {
 
     private final AdjustDifficultyTool tool;
     private final PathReviewService pathReviewService;
+    private final QuizReviewService quizReviewService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public DifficultyAgent(RedisStreamsService streams, LlmClient llmClient,
                             AgentToolRegistry toolRegistry, AdjustDifficultyTool tool,
                             PathReviewService pathReviewService,
+                            QuizReviewService quizReviewService,
                             PromptService promptService) {
         super(AgentIds.DIFFICULTY, streams, llmClient, toolRegistry, promptService);
         this.tool = tool;
         this.pathReviewService = pathReviewService;
+        this.quizReviewService = quizReviewService;
     }
 
     @Override
@@ -61,7 +65,52 @@ public class DifficultyAgent extends BaseAgent {
         if ("review_path".equals(request.action())) {
             return reviewPath(request, context);
         }
+        if ("review_quiz".equals(request.action())) {
+            return reviewQuiz(request, context);
+        }
         return super.process(request, context);
+    }
+
+    @SuppressWarnings("unchecked")
+    private AgentResponse reviewQuiz(AgentRequest request, TaskContext context) {
+        Map<String, Object> draft = resolveQuizDraft(request, context);
+        if (draft == null || draft.isEmpty()) {
+            return AgentResponse.failure("缺少题目草案");
+        }
+        String goal = request.goal() != null ? request.goal() : "";
+        String profileSummary = resolveProfileSummary(request, context);
+        PathReviewDecision decision = quizReviewService.review(profileSummary, draft, goal);
+
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("approved", decision.approved());
+        meta.put("summary", decision.summary());
+        if (decision.feedback() != null) {
+            meta.put("feedback", decision.feedback());
+        }
+        meta.put("role", decision.approved() ? "approve" : "revise");
+        return AgentResponse.success(decision.summary(), List.of(), meta);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> resolveQuizDraft(AgentRequest request, TaskContext context) {
+        if (context != null) {
+            Map<String, Object> fromTask = asStringObjectMap(context.get("quiz.draft"));
+            if (fromTask != null) {
+                return fromTask;
+            }
+        }
+        if (request.context() != null) {
+            return asStringObjectMap(request.context().get("quiz"));
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asStringObjectMap(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        return null;
     }
 
     private AgentResponse reviewPath(AgentRequest request, TaskContext context) {
@@ -129,10 +178,11 @@ public class DifficultyAgent extends BaseAgent {
                 AgentIds.DIFFICULTY,
                 "难度调节",
                 "根据学习者水平调整内容难度、题目难度与学习节奏",
-                List.of("difficulty", "level", "难度", "adjust", "review_path"),
+                List.of("difficulty", "level", "难度", "adjust", "review_path", "review_quiz"),
                 List.of(
                         ToolSpec.of("adjust_difficulty", "调整难度"),
-                        ToolSpec.of("review_path", "评审学习路径难度")),
+                        ToolSpec.of("review_path", "评审学习路径难度"),
+                        ToolSpec.of("review_quiz", "评审题目难度")),
                 List.of("profile", "text", "learning_path"),
                 List.of("profile"),
                 1, 20000L

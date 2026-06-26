@@ -153,6 +153,23 @@
   text-overflow: ellipsis;
 }
 
+.navLabelWrap {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.navBadge {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px #fff;
+}
+
 .historySection {
   flex: 1;
   min-height: 0;

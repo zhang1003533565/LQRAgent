@@ -1,9 +1,12 @@
 import { Outlet } from 'react-router-dom'
+import { useChatWebSocket } from '@/utils/chat/chatWebSocket'
 import WorkspaceSidebar from './WorkspaceSidebar'
 import styles from './WorkspaceShell.module.css'
 
 /** 工作台壳：左导航 + 右主区（对齐 DeepTutor flex 布局） */
 export default function WorkspaceShell() {
+  useChatWebSocket()
+
   return (
     <div className={styles.shell}>
       <WorkspaceSidebar />

@@ -37,6 +37,7 @@ public class ConsultationEngine {
     private final LearningPathService learningPathService;
     private final LearnerProfileService learnerProfileService;
     private final ConsultationAgentInvoker consultationAgentInvoker;
+    private final ConsultationLogService consultationLogService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public AgentResponse consultAsAgentResponse(AgentRequest request, TaskContext context) {
@@ -155,6 +156,7 @@ public class ConsultationEngine {
         Map<String, Object> stepResult = pathToStepMap(path);
         context.setResult("path_consult", stepResult);
         context.setResult("path_gen", stepResult);
+        consultationLogService.persistIfEnabled(context, transcript);
     }
 
     @SuppressWarnings("unchecked")

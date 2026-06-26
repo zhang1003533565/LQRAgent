@@ -166,4 +166,34 @@ public class AppRuntimeConfig {
         }
         return false;
     }
+
+    // --- Phase 3：Supervisor ---
+
+    public boolean isSupervisorEnabled() {
+        return Boolean.parseBoolean(get(ConfigKeys.SUPERVISOR_ENABLED, "false"));
+    }
+
+    public String getSupervisorScenes() {
+        return get(ConfigKeys.SUPERVISOR_SCENES, "path_generation,quiz_design");
+    }
+
+    public boolean isSupervisorPersistTranscript() {
+        return Boolean.parseBoolean(get(ConfigKeys.SUPERVISOR_PERSIST_TRANSCRIPT, "true"));
+    }
+
+    public boolean isSupervisorStreamLive() {
+        return Boolean.parseBoolean(get(ConfigKeys.SUPERVISOR_STREAM_LIVE, "false"));
+    }
+
+    public boolean isSupervisorSceneEnabled(String scene) {
+        if (!isSupervisorEnabled() || scene == null || scene.isBlank()) {
+            return false;
+        }
+        for (String s : getSupervisorScenes().split(",")) {
+            if (s.trim().equalsIgnoreCase(scene.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

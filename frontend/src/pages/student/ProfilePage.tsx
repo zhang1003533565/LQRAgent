@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 import { getProfileDetail, patchProfile } from '@/api/student/profile'
+import { useProfileStore } from '@/utils/store/profileStore'
 import type { ProfileDetail } from '@/utils/types/profile'
 import {
   RefreshCw,
@@ -197,6 +198,7 @@ function KnowledgeProgressBar({
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileDetail | null>(null)
+  const storeSummary = useProfileStore((s) => s.summary)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [animated, setAnimated] = useState(false)
@@ -205,6 +207,13 @@ export default function ProfilePage() {
     try {
       const detail = await getProfileDetail()
       setProfile(detail)
+      useProfileStore.getState().setSummary({
+        displayName: detail.displayName,
+        masteryLevel: detail.masteryLevel,
+        completedKpCount: detail.completedKpCount,
+        weakTopics: detail.weakTopics,
+        streakDays: detail.streakDays,
+      })
     } catch {
       // ignore
     } finally {
@@ -212,18 +221,25 @@ export default function ProfilePage() {
     }
   }, [])
 
+  const displayProfile = useMemo((): ProfileDetail | null => {
+    if (!profile && !storeSummary) return null
+    if (!profile) return storeSummary as ProfileDetail
+    if (!storeSummary) return profile
+    return { ...profile, ...storeSummary }
+  }, [profile, storeSummary])
+
   useEffect(() => {
     fetchData()
   }, [fetchData])
 
   useEffect(() => {
-    if (!loading && profile) {
+    if (!loading && displayProfile) {
       const raf = requestAnimationFrame(() =>
         requestAnimationFrame(() => setAnimated(true)),
       )
       return () => cancelAnimationFrame(raf)
     }
-  }, [loading, profile])
+  }, [loading, displayProfile])
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -236,9 +252,9 @@ export default function ProfilePage() {
   }
 
   const handleExport = () => {
-    if (!profile) return
-    const scores = computeScores(profile)
-    const insights = generateInsights(profile, scores)
+    if (!displayProfile) return
+    const scores = computeScores(displayProfile)
+    const insights = generateInsights(displayProfile, scores)
     const lines = [
       '# 学习画像报告',
       '',
@@ -276,7 +292,7 @@ export default function ProfilePage() {
     )
   }
 
-  if (!profile) {
+  if (!displayProfile) {
     return (
       <div className="flex h-full items-center justify-center bg-[#f8fafc]">
         <div className="text-center">
@@ -287,9 +303,9 @@ export default function ProfilePage() {
     )
   }
 
-  const scores = computeScores(profile)
-  const insights = generateInsights(profile, scores)
-  const knowledgeMap = (profile.knowledgeMap ?? []).map((k) => ({
+  const scores = computeScores(displayProfile)
+  const insights = generateInsights(displayProfile, scores)
+  const knowledgeMap = (displayProfile.knowledgeMap ?? []).map((k) => ({
     ...k,
     displayTitle: sanitizeKpTitle(k.kpId || k.title),
   }))

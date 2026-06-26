@@ -7,6 +7,23 @@ public final class IntentHeuristics {
 
     private IntentHeuristics() {}
 
+    /** 出题 / 练习题生成（Phase 3：映射到 quiz_consult pipeline） */
+    public static boolean isQuizGenerationIntent(String message) {
+        if (message == null || message.isBlank()) {
+            return false;
+        }
+        String m = message.trim();
+        if (containsAny(m, "视频", "图片", "示意图", "海报", "动画", "画图", "画一张")) {
+            return false;
+        }
+        if (isObviousQa(m) && !containsAny(m, "出题", "练习题", "道题", "习题", "考题", "刷题", "测验题")) {
+            return false;
+        }
+        return containsAny(m, "出题", "练习题", "习题", "考题", "刷题", "测验题", "考几题")
+                || m.matches("(?s).*出\\s*\\d+\\s*道.*题.*")
+                || m.matches("(?s).*\\d+\\s*道.*题.*");
+    }
+
     /** 明显问答：可跳过 PlanningAgent 直调 QaAgent */
     public static boolean isObviousQa(String message) {
         if (message == null || message.isBlank()) {

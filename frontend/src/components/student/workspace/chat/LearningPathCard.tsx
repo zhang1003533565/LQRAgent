@@ -1,14 +1,16 @@
 import { useNavigate } from 'react-router-dom'
 import { usePathStore } from '@/utils/store/pathStore'
+import { navigateToWorkspace } from '@/utils/navigation/workspaceNav'
 import styles from './LearningPathCard.module.css'
 
 export default function LearningPathCard() {
   const navigate = useNavigate()
-  const { goal, nodes } = usePathStore()
+  const { goal, nodes, selectedKpId } = usePathStore()
 
   const completedCount = nodes.filter((n) => n.completed || n.status === 'COMPLETED').length
   const activeCount = nodes.filter((n) => n.status === 'ACTIVE').length
   const pendingCount = nodes.length - completedCount - activeCount
+  const focusKpId = selectedKpId || nodes[0]?.kpId || null
 
   return (
     <div className={styles.card}>
@@ -53,6 +55,23 @@ export default function LearningPathCard() {
         {nodes.length > 3 && (
           <div className={styles.nodeMore}>+{nodes.length - 3} 个节点</div>
         )}
+      </div>
+
+      <div className={styles.actions}>
+        <button
+          type="button"
+          className={styles.secondaryBtn}
+          onClick={() => navigateToWorkspace(navigate, '/workspace/resources', focusKpId)}
+        >
+          查看资源
+        </button>
+        <button
+          type="button"
+          className={styles.secondaryBtn}
+          onClick={() => navigateToWorkspace(navigate, '/workspace/quiz', focusKpId)}
+        >
+          开始练习
+        </button>
       </div>
 
       <button

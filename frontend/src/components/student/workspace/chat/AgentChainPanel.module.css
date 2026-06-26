@@ -254,3 +254,39 @@
   white-space: nowrap;
   color: #94a3b8;
 }
+
+.consultTimeline {
+  margin: -2px 0 8px 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.consultRound {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.consultRoundHead {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 700;
+  color: #334155;
+  cursor: pointer;
+}
+
+.consultRoundBody {
+  padding: 4px 10px 8px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

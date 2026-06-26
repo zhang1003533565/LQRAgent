@@ -113,4 +113,5 @@ export interface WsRawMessage {
   stopReason?: string
   maxRounds?: number
   participants?: string[]
+  scene?: string
 }

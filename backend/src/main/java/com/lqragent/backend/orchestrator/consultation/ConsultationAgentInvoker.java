@@ -26,6 +26,7 @@ public class ConsultationAgentInvoker {
 
     private final AgentRegistry agentRegistry;
     private final PathReviewService pathReviewService;
+    private final QuizReviewService quizReviewService;
 
     public PathReviewDecision reviewPath(
             String goal, TaskContext context, LearningPathDto draft, String profileSummary) {
@@ -63,5 +64,45 @@ public class ConsultationAgentInvoker {
         }
 
         return pathReviewService.review(profileSummary, draft, goal);
+    }
+
+    @SuppressWarnings("unchecked")
+    public PathReviewDecision reviewQuiz(
+            String goal, TaskContext context, Map<String, Object> draft, String profileSummary) {
+        if (context != null) {
+            context.put("quiz.draft", draft);
+        }
+
+        var agentOpt = agentRegistry.getAgent(AgentIds.DIFFICULTY);
+        if (agentOpt.isPresent()) {
+            try {
+                PeerCallContext peerCtx = new PeerCallContext().enter(AgentIds.DIFFICULTY);
+                Map<String, Object> reqCtx = new HashMap<>();
+                reqCtx.put("peerCallContext", peerCtx);
+                reqCtx.put("profileSummary", profileSummary);
+                reqCtx.put("quiz", draft);
+
+                AgentResponse response = agentOpt.get().process(
+                        new AgentRequest("review_quiz", goal, reqCtx), context);
+                if (response.isSuccess() && response.getMetadata() != null) {
+                    Object approved = response.getMetadata().get("approved");
+                    String summary = String.valueOf(response.getMetadata().getOrDefault("summary", response.getContent()));
+                    String feedback = response.getMetadata().get("feedback") != null
+                            ? String.valueOf(response.getMetadata().get("feedback")) : null;
+                    if (Boolean.TRUE.equals(approved) || "true".equals(String.valueOf(approved))) {
+                        return PathReviewDecision.approve(summary);
+                    }
+                    if (feedback != null && !feedback.isBlank()) {
+                        return PathReviewDecision.revise(summary, feedback);
+                    }
+                    return PathReviewDecision.revise(summary, summary);
+                }
+                log.warn("[Consultation] difficulty quiz review failed: {}", response.getError());
+            } catch (Exception e) {
+                log.warn("[Consultation] difficulty quiz review error: {}", e.getMessage());
+            }
+        }
+
+        return quizReviewService.review(profileSummary, draft, goal);
     }
 }

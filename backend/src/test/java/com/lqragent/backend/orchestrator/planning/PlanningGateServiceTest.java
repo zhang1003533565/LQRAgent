@@ -166,4 +166,31 @@ class PlanningGateServiceTest {
 
         assertTrue(result.isSimple());
     }
+
+    @Test
+    void quizGenerationIntent_normalizesDynamicQuizPlan() {
+        PlanResult dynamic = PlanResult.pipeline(buildDynamicQuizPlan(), buildDynamicQuizPlan().getSteps());
+
+        PlanResult result = gate.apply(dynamic, "出 5 道闭包练习题", LearnerContextDto.builder().build(), false);
+
+        assertTrue(result.isPipeline());
+        assertEquals("quiz", result.pipelineConfig().getPipelineId());
+        assertTrue(result.pipelineConfig().getSteps().stream()
+                .anyMatch(s -> "quiz_consult".equals(s.getStepId())));
+        assertTrue(result.pipelineConfig().getSteps().stream()
+                .anyMatch(s -> "consult_quiz".equals(s.getAction())));
+    }
+
+    private static com.lqragent.backend.orchestrator.pipeline.PipelineConfig buildDynamicQuizPlan() {
+        return com.lqragent.backend.orchestrator.pipeline.PipelineConfig.builder()
+                .pipelineId("dynamic_plan-test")
+                .name("动态出题")
+                .steps(java.util.List.of(
+                        com.lqragent.backend.orchestrator.pipeline.PipelineStep.builder()
+                                .stepId("s1")
+                                .agentId("quiz_agent")
+                                .action("generate")
+                                .build()))
+                .build();
+    }
 }

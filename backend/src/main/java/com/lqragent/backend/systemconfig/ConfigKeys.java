@@ -95,4 +95,10 @@ public final class ConfigKeys {
     public static final String CONSULTATION_STREAM_TRANSCRIPT = "consultation.stream_transcript";
     public static final String CONSULTATION_TIMEOUT_MS = "consultation.timeout_ms";
 
+    // --- Phase 3：Supervisor 多场景协作（默认关）---
+    public static final String SUPERVISOR_ENABLED = "supervisor.enabled";
+    public static final String SUPERVISOR_SCENES = "supervisor.scenes";
+    public static final String SUPERVISOR_PERSIST_TRANSCRIPT = "supervisor.persist_transcript";
+    public static final String SUPERVISOR_STREAM_LIVE = "supervisor.stream_live";
+
 }

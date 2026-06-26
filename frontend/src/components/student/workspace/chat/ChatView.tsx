@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react'
-import { useWebSocket } from '@/utils/hooks/useWebSocket'
+import { sendChatWs } from '@/utils/chat/chatWebSocket'
 import { useChatStore } from '@/utils/store/chatStore'
 import { useAuthStore } from '@/utils/store/authStore'
 import { usePathStore } from '@/utils/store/pathStore'
@@ -10,7 +10,6 @@ import ChatComposer from './ChatComposer'
 import styles from './ChatView.module.css'
 
 export default function ChatView() {
-  const { send } = useWebSocket()
   const sessionId = useChatStore((s) => s.sessionId)
   const isConnected = useChatStore((s) => s.isConnected)
   const loadMessages = useChatStore((s) => s.loadMessages)
@@ -47,8 +46,8 @@ export default function ChatView() {
     if (selectedKpId) {
       trackBehavior({ kpId: selectedKpId, action: 'chat_send', extra: content.slice(0, 100) })
     }
-    send(content)
-  }, [send, selectedKpId])
+    sendChatWs(content)
+  }, [selectedKpId])
 
   return (
     <section className={styles.page}>

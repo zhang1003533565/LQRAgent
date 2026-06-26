@@ -30,6 +30,7 @@ import com.lqragent.backend.orchestrator.card.AgentCardRegistry;
 import com.lqragent.backend.orchestrator.context.LearnerContextDto;
 import com.lqragent.backend.orchestrator.context.LearnerContextService;
 import com.lqragent.backend.orchestrator.planning.PlanningGateService;
+import com.lqragent.backend.orchestrator.supervisor.SupervisorService;
 import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.pipeline.PipelineConfig;
@@ -69,6 +70,7 @@ public class OrchestratorCore {
     private final PipelineTaskService pipelineTaskService;
     private final LearnerContextService learnerContextService;
     private final PlanningGateService planningGateService;
+    private final SupervisorService supervisorService;
     private final ObjectMapper mapper = new ObjectMapper();
 
     // 任务状态跟踪（用于 learn 流程的 WebSocket 推送）
@@ -81,7 +83,8 @@ public class OrchestratorCore {
                            LearningPathService learningPathService,
                            PipelineTaskService pipelineTaskService,
                            LearnerContextService learnerContextService,
-                           PlanningGateService planningGateService) {
+                           PlanningGateService planningGateService,
+                           SupervisorService supervisorService) {
         this.streams = streams;
         this.runLogService = runLogService;
         this.llmClient = llmClient;
@@ -93,6 +96,7 @@ public class OrchestratorCore {
         this.pipelineTaskService = pipelineTaskService;
         this.learnerContextService = learnerContextService;
         this.planningGateService = planningGateService;
+        this.supervisorService = supervisorService;
     }
 
     @PostConstruct
@@ -209,6 +213,7 @@ public class OrchestratorCore {
         if (contextSetup != null) {
             contextSetup.accept(context);
         }
+        supervisorService.run(plan, context);
 
         log.info("[Orchestrator] async pipeline: {}, steps={}",
                 config.getName(), config.getSteps().size());

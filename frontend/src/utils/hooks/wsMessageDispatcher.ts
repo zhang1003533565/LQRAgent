@@ -12,13 +12,19 @@ import {
   resolveStepId,
   normalizeStepLabel,
   finalizeAgentSteps,
-  CONSULTATION_PARENT_STEP_ID,
+  resolveConsultationParentId,
+  resolveConsultationRoleLabel,
+  resolveConsultationTitle,
 } from '@/utils/chat/messageAgentSteps'
 import type { AgentId, WsRawMessage } from '@/utils/types/agent-events'
 import type { ArtifactKind, MediaImagePayload, MediaVideoPayload, QuizArtifactPayload, RagSource } from '@/utils/types/artifact'
 import type { LearningPathArtifactPayload } from '@/utils/types/artifact'
 import type { MultiCardBlock } from '@/utils/types/multi-card'
 import type { ProfileSummary } from '@/utils/types/profile'
+import { artifactPayloadToResource } from '@/utils/artifact/artifactResource'
+
+let activeConsultationParentId = resolveConsultationParentId()
+let activeConsultationScene: string | null = null
 
 function isDbMessageId(id: string): boolean {
   return /^\d+$/.test(id)
@@ -54,6 +60,12 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
         nodes: p.nodes,
         planDescription: p.planDescription ?? '',
       })
+      usePathStore.getState().markUpdated()
+      const firstKp = p.nodes[0]?.kpId
+      if (firstKp) {
+        useArtifactStore.getState().setActiveKpId(firstKp)
+        usePathStore.getState().selectNode(firstKp)
+      }
       const msgs = useChatStore.getState().messages
       const last = [...msgs].reverse().find((m) => m.role === 'assistant')
       if (last) {
@@ -152,6 +164,11 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
   if (kind === 'media_image' && payload) {
     const p = payload as MediaImagePayload
     if (p.url) {
+      const kpId = usePathStore.getState().selectedKpId || useArtifactStore.getState().activeKpId
+      if (kpId) {
+        const item = artifactPayloadToResource('media_image', payload, kpId)
+        if (item) artifact.addResource(item)
+      }
       const msgs = useChatStore.getState().messages
       const last = [...msgs].reverse().find((m) => m.role === 'assistant')
       if (last) {
@@ -164,6 +181,12 @@ function handleArtifact(kind: ArtifactKind, payload: unknown) {
       }
     }
     return
+  }
+
+  const kpId = usePathStore.getState().selectedKpId || useArtifactStore.getState().activeKpId
+  if (kpId && (kind === 'text' || kind === 'lesson' || kind === 'code_case')) {
+    const item = artifactPayloadToResource(kind, payload, kpId)
+    if (item) artifact.addResource(item)
   }
 }
 
@@ -203,16 +226,25 @@ export function dispatchWsMessage(data: WsRawMessage) {
           status: data.status,
           detail: data.detail,
         }))
+        if (data.status === 'done' && (data.agent === 'resource_agent' || data.stepId === 'resource_gen')) {
+          const kpId = usePathStore.getState().selectedKpId || useArtifactStore.getState().activeKpId
+          if (kpId) useArtifactStore.getState().markResourceReady(kpId)
+        }
       } else if (data.stepId && data.agentId) {
         const stepLabel = STEP_LABELS[data.stepId] || AGENT_LABELS[data.agentId as AgentId] || data.stepId
+        const stepStatus = data.success === true ? 'done' : data.success === false ? 'failed' : 'running'
         upsertStep(buildAgentStepInput({
           stepId: data.stepId,
           id: `pipeline-${data.stepId}`,
           agent: data.agentId,
           label: stepLabel,
-          status: data.success === true ? 'done' : data.success === false ? 'failed' : 'running',
+          status: stepStatus,
           detail: data.taskId,
         }))
+        if (stepStatus === 'done' && (data.agentId === 'resource_agent' || data.stepId === 'resource_gen')) {
+          const kpId = usePathStore.getState().selectedKpId || useArtifactStore.getState().activeKpId
+          if (kpId) useArtifactStore.getState().markResourceReady(kpId)
+        }
       }
       break
     case 'pipeline_start':
@@ -231,30 +263,26 @@ export function dispatchWsMessage(data: WsRawMessage) {
       }
       break
     case 'consultation_start':
+      activeConsultationScene = data.scene ?? null
+      activeConsultationParentId = resolveConsultationParentId(activeConsultationScene)
       upsertStep(buildAgentStepInput({
-        id: CONSULTATION_PARENT_STEP_ID,
-        stepId: 'path_consult',
-        agent: 'learning_path_agent',
-        label: `路径协商（最多 ${data.maxRounds ?? 2} 轮）`,
+        id: activeConsultationParentId,
+        stepId: activeConsultationScene === 'QUIZ_DESIGN' ? 'quiz_consult' : 'path_consult',
+        agent: activeConsultationScene === 'QUIZ_DESIGN' ? 'quiz_agent' : 'learning_path_agent',
+        label: resolveConsultationTitle(activeConsultationScene, data.maxRounds),
         status: 'running',
       }))
       break
     case 'consultation_round':
       if (data.agentId && data.role) {
         if (data.textDelta) {
-          appendToLastMessage(`【协商第 ${data.round ?? 1} 轮·${data.role}】${data.textDelta}\n`)
+          appendToLastMessage(`【协商第 ${data.round ?? 1} 轮·${resolveConsultationRoleLabel(data.role)}】${data.textDelta}\n`)
         }
-        const roleLabel =
-          data.role === 'constraints' ? '画像约束'
-          : data.role === 'draft' ? '路径草案'
-          : data.role === 'revise' ? '难度调整'
-          : data.role === 'approve' ? '评审通过'
-          : data.role
         upsertStep(buildAgentStepInput({
-          id: `consultation-r${data.round}-${data.role}`,
-          parentId: CONSULTATION_PARENT_STEP_ID,
+          id: `consultation-r${data.round}-${data.role}-${activeConsultationScene ?? 'path'}`,
+          parentId: activeConsultationParentId,
           agent: data.agentId,
-          label: `第 ${data.round ?? 1} 轮 · ${roleLabel}`,
+          label: `第 ${data.round ?? 1} 轮 · ${resolveConsultationRoleLabel(data.role)}`,
           status: 'done',
           detail: data.summary,
         }))
@@ -262,11 +290,11 @@ export function dispatchWsMessage(data: WsRawMessage) {
       break
     case 'consultation_end':
       upsertStep(buildAgentStepInput({
-        id: CONSULTATION_PARENT_STEP_ID,
-        stepId: 'path_consult',
-        agent: 'learning_path_agent',
-        label: '路径协商',
-        status: 'running',
+        id: activeConsultationParentId,
+        stepId: activeConsultationScene === 'QUIZ_DESIGN' ? 'quiz_consult' : 'path_consult',
+        agent: activeConsultationScene === 'QUIZ_DESIGN' ? 'quiz_agent' : 'learning_path_agent',
+        label: activeConsultationScene === 'QUIZ_DESIGN' ? '出题协商' : '路径协商',
+        status: 'done',
         detail: data.stopReason,
       }))
       break

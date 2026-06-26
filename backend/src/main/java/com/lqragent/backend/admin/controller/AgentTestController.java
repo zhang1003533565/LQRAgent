@@ -22,6 +22,8 @@ import com.lqragent.backend.agents.path.service.LearningPathService;
 import com.lqragent.backend.agents.resourcegeneration.service.ResourceGenerationService;
 import com.lqragent.backend.agents.qa.QaAgent;
 import com.lqragent.backend.core.session.RequestContext;
+import com.lqragent.backend.orchestrator.consultation.ConsultationLogService;
+import com.lqragent.backend.orchestrator.supervisor.SupervisorService;
 import com.lqragent.backend.orchestrator.test.OrchestratorTestService;
 import com.lqragent.backend.orchestrator.test.dto.OrchestratorTestDtos.AgentRunTestResult;
 import com.lqragent.backend.orchestrator.test.dto.OrchestratorTestDtos.CapabilityTestResult;
@@ -45,6 +47,8 @@ public class AgentTestController {
     private final ResourceGenerationService resourceGenerationService;
     private final EffectAssessmentService effectAssessmentService;
     private final QaAgent qaAgent;
+    private final ConsultationLogService consultationLogService;
+    private final SupervisorService supervisorService;
 
     private static String userId(Map<String, String> body) {
         return body.getOrDefault("userId", "1");
@@ -324,5 +328,17 @@ public class AgentTestController {
             data.put("pipelineError", result.pipeline().error());
         }
         return data;
+    }
+
+    /** Phase 3：按 sessionId 回放协商 transcript */
+    @GetMapping("/consultation/{sessionId}")
+    public Map<String, Object> getConsultationLogs(@PathVariable String sessionId) {
+        var logs = consultationLogService.findBySessionId(sessionId);
+        return Map.of(
+                "success", true,
+                "sessionId", sessionId,
+                "count", logs.size(),
+                "logs", logs,
+                "supervisor", supervisorService.statusSnapshot());
     }
 }

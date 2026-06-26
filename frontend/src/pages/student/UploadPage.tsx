@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { usePathStore } from '@/utils/store/pathStore'
 import { uploadFile, listUploadTasks, deleteUploadTask } from '@/api/student/upload'
 import { trackBehavior } from '@/utils/tracker'
 import { listKnowledgePointsByIds } from '@/api/student/knowledge'
@@ -512,7 +513,10 @@ export default function UploadPage() {
                     key={point.id}
                     type="button"
                     className={`${styles.knowledgeRow} ${point.value != null ? styles.knowledgeRowAnimated : ''}`}
-                    onClick={() => navigate('/workspace/learning-path')}
+                    onClick={() => {
+                      usePathStore.getState().selectNode(point.id)
+                      navigate('/workspace/learning-path')
+                    }}
                     title={point.id}
                   >
                     <div className={styles.knowledgeNameWrap}>

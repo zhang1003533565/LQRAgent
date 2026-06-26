@@ -257,7 +257,7 @@ public class PipelineTemplates {
                 .build();
     }
 
-    /** 题目生成 */
+    /** 题目生成（Phase 3：含 quiz_consult 协商） */
     public static PipelineConfig quiz() {
         return PipelineConfig.builder()
                 .pipelineId("quiz")
@@ -265,10 +265,10 @@ public class PipelineTemplates {
                 .description("按要求或基于知识库资料生成混合题型练习题")
                 .steps(List.of(
                         PipelineStep.builder()
-                                .stepId("quiz")
+                                .stepId("quiz_consult")
                                 .agentId(AgentIds.QUIZ)
-                                .action("generate_quiz")
-                                .timeoutMs(60000)
+                                .action("consult_quiz")
+                                .timeoutMs(90000)
                                 .build()
                 ))
                 .build();

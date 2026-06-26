@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { STUDENT_NAV_ITEMS } from '@/components/student/studentNavItems'
 import { useAuthStore } from '@/utils/store/authStore'
 import { useChatStore } from '@/utils/store/chatStore'
+import { usePathStore } from '@/utils/store/pathStore'
 import { chatApi } from '@/api/student/chat'
 import styles from './WorkspaceSidebar.module.css'
 
@@ -20,6 +21,7 @@ export default function WorkspaceSidebar() {
   const clearMessages = useChatStore((s) => s.clearMessages)
   const loadMessages = useChatStore((s) => s.loadMessages)
   const setAutoLoaded = useChatStore((s) => s.setAutoLoaded)
+  const hasPathUpdates = usePathStore((s) => s.hasUpdates)
 
   const loadSessions = useCallback(async () => {
     if (!user?.userId) return
@@ -105,7 +107,14 @@ export default function WorkspaceSidebar() {
               title={collapsed ? item.label : undefined}
             >
               <span className={styles.navIcon}>{item.icon}</span>
-              {!collapsed && <span className={styles.navLabel}>{item.label}</span>}
+              {!collapsed && (
+                <span className={styles.navLabelWrap}>
+                  <span className={styles.navLabel}>{item.label}</span>
+                  {item.to === '/workspace/learning-path' && hasPathUpdates ? (
+                    <span className={styles.navBadge} title="路径已更新" />
+                  ) : null}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

@@ -1,7 +1,7 @@
 import type { ChatMessage } from '@/utils/types/chat'
 import { useChatStore } from '@/utils/store/chatStore'
 import { useChatAutoScroll } from '@/utils/hooks/useChatAutoScroll'
-import { useWebSocket } from '@/utils/hooks/useWebSocket'
+import { submitChatMessage } from '@/utils/chat/sendChatMessage'
 import StreamingMessage from './StreamingMessage'
 import styles from './ChatPanel.module.css'
 
@@ -26,8 +26,6 @@ export default function ChatMessageList() {
   const messages = useChatStore((s) => s.messages)
   const loadingMessages = useChatStore((s) => s.loadingMessages)
   const bottomRef = useChatAutoScroll([messages], loadingMessages)
-  const { send } = useWebSocket()
-
   return (
     <div className={styles.messages}>
       {messages.length === 0 && (
@@ -47,7 +45,7 @@ export default function ChatMessageList() {
                 key={s.text}
                 type="button"
                 className={styles.suggestionCard}
-                onClick={() => send(s.text)}
+                onClick={() => submitChatMessage(s.text)}
               >
                 <span className={styles.suggestionIcon}>{s.icon}</span>
                 {s.text}

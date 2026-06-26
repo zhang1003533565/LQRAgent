@@ -80,6 +80,7 @@ public class ChatRouteDispatcher {
             Map.entry("profile", "获取画像"),
             Map.entry("path_gen", "生成路径"),
             Map.entry("path_consult", "路径协商"),
+            Map.entry("quiz_consult", "出题协商"),
             Map.entry("resources", "生成资源"),
             Map.entry("effect", "效果评估"),
             Map.entry("quality", "质量检查"),
@@ -276,7 +277,10 @@ public class ChatRouteDispatcher {
             PipelineResult pipelineResult = orchestratorCore.handlePipelineAsync(
                     plan, String.valueOf(userId), content,
                     buildStepCallback(session, userId, sessionId, sender, contentStreamed),
-                    ctx -> ctx.put(ConsultationEngine.LISTENER_KEY, buildConsultationListener(session, sender)));
+                    ctx -> {
+                        ctx.put(ConsultationEngine.LISTENER_KEY, buildConsultationListener(session, sender));
+                        ctx.put("chat.sessionId", sessionId);
+                    });
 
             String agent = plan.pipelineConfig().getPipelineId();
 

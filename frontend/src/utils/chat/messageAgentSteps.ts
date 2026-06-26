@@ -5,6 +5,26 @@ import { STEP_LABELS } from '@/utils/constants/agent-labels'
 
 /** 路径协商步骤 ID，与 pipeline-path_consult 对齐 */
 export const CONSULTATION_PARENT_STEP_ID = 'pipeline-path_consult'
+export const QUIZ_CONSULTATION_PARENT_STEP_ID = 'pipeline-quiz_consult'
+
+export function resolveConsultationParentId(scene?: string | null): string {
+  if (scene === 'QUIZ_DESIGN') return QUIZ_CONSULTATION_PARENT_STEP_ID
+  return CONSULTATION_PARENT_STEP_ID
+}
+
+export function resolveConsultationTitle(scene?: string | null, maxRounds?: number): string {
+  const rounds = maxRounds ?? 2
+  if (scene === 'QUIZ_DESIGN') return `出题协商（最多 ${rounds} 轮）`
+  return `路径协商（最多 ${rounds} 轮）`
+}
+
+export function resolveConsultationRoleLabel(role: string): string {
+  if (role === 'constraints') return '画像约束'
+  if (role === 'draft') return '草案'
+  if (role === 'revise') return '难度调整'
+  if (role === 'approve') return '评审通过'
+  return role
+}
 
 const PIPELINE_STEP_IDS = new Set(Object.keys(STEP_LABELS))
 const BACKGROUND_AGENTS = new Set(['learner_profile'])

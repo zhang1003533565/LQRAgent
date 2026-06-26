@@ -5,6 +5,7 @@ export const STEP_LABELS: Record<string, string> = {
   profile: '获取画像',
   path_gen: '生成路径',
   path_consult: '路径协商',
+  quiz_consult: '出题协商',
   resources: '生成资源',
   effect: '效果评估',
   quality: '质量检查',

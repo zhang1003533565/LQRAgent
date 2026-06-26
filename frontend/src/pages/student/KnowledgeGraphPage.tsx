@@ -25,6 +25,7 @@ import {
   type KnowledgeGraphNode,
 } from '@/api/student/knowledge'
 import { usePathStore } from '@/utils/store/pathStore'
+import { navigateToWorkspace } from '@/utils/navigation/workspaceNav'
 import styles from './KnowledgeGraphPage.module.css'
 
 type GraphStatus = 'mastered' | 'learning' | 'weak' | 'unlearned'
@@ -680,13 +681,13 @@ export default function KnowledgeGraphPage() {
               </div>
 
               <div className={styles.primaryActions}>
-                <button type="button" onClick={() => navigate('/workspace/resources')}><BookOpen size={16} />查看资源</button>
-                <button type="button" onClick={() => navigate('/workspace/quiz')}><Sparkles size={16} />开始练习</button>
+                <button type="button" onClick={() => navigateToWorkspace(navigate, '/workspace/resources', selectedNode.kpId)}><BookOpen size={16} />查看资源</button>
+                <button type="button" onClick={() => navigateToWorkspace(navigate, '/workspace/quiz', selectedNode.kpId)}><Sparkles size={16} />开始练习</button>
                 <button
                   type="button"
                   onClick={() => {
                     selectPathNode(selectedNode.kpId)
-                    navigate('/workspace/path')
+                    navigate('/workspace/learning-path')
                   }}
                 >
                   <GitBranch size={16} />加入学习路径

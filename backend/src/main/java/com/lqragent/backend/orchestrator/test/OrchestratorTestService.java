@@ -354,7 +354,9 @@ public class OrchestratorTestService {
         }
 
         try {
-            PipelineResult result = orchestratorCore.handlePipelineAsync(plan, userId, message, null);
+            PipelineResult result = orchestratorCore.handlePipelineAsync(
+                    plan, userId, message, null,
+                    ctx -> ctx.put("chat.sessionId", "test-pipeline-" + userId));
             List<StepResultDto> stepDtos = mapStepResults(result.getStepResults());
             List<com.lqragent.backend.orchestrator.artifact.Artifact> artifacts =
                     OrchestratorTestSupport.collectAllArtifacts(stepDtos);

@@ -20,7 +20,10 @@ import com.lqragent.backend.agents.learnerprofile.service.LearnerProfileService;
 import com.lqragent.backend.agents.path.dto.LearningPathDto;
 import com.lqragent.backend.agents.path.service.LearningPathService;
 import com.lqragent.backend.orchestrator.context.TaskContext;
+import com.lqragent.backend.orchestrator.consultation.repository.AgentConsultationLogRepository;
 import com.lqragent.backend.systemconfig.AppRuntimeConfig;
+
+import static org.mockito.Mockito.mock;
 
 class ConsultationEngineTest {
 
@@ -46,7 +49,11 @@ class ConsultationEngineTest {
                 enabledConfig(),
                 new StubLearningPathService(dto),
                 new StubLearnerProfileService(),
-                new ConsultationAgentInvoker(new AgentRegistry(), new StubPathReviewService(decisions)));
+                new ConsultationAgentInvoker(
+                        new AgentRegistry(),
+                        new StubPathReviewService(decisions),
+                        new QuizReviewService()),
+                noopLogService());
     }
 
     @Test
@@ -90,7 +97,11 @@ class ConsultationEngineTest {
                 enabledConfig(),
                 new StubLearningPathService(samplePath()),
                 new StubLearnerProfileService(),
-                new ConsultationAgentInvoker(new AgentRegistry(), new StubPathReviewService(alwaysRevise)));
+                new ConsultationAgentInvoker(
+                        new AgentRegistry(),
+                        new StubPathReviewService(alwaysRevise),
+                        new QuizReviewService()),
+                noopLogService());
 
         TaskContext ctx = new TaskContext("t-max", "1", "s1", "学 Python");
         StopReason[] stop = new StopReason[1];
@@ -165,7 +176,11 @@ class ConsultationEngineTest {
                 enabledConfig(),
                 new StubLearningPathService(beginnerHeavy),
                 new StubLearnerProfileService(),
-                new ConsultationAgentInvoker(new AgentRegistry(), new StubPathReviewService(decisions)));
+                new ConsultationAgentInvoker(
+                        new AgentRegistry(),
+                        new StubPathReviewService(decisions),
+                        new QuizReviewService()),
+                noopLogService());
 
         TaskContext ctx = new TaskContext("t-revise", "1", "s1", "学 Python\n补充信息：有一点基础");
         ctx.setResult("profile", Map.of("summary", "有一点基础"));
@@ -214,7 +229,11 @@ class ConsultationEngineTest {
                 shortTimeout,
                 new StubLearningPathService(samplePath()),
                 new StubLearnerProfileService(),
-                new ConsultationAgentInvoker(new AgentRegistry(), new SlowReviseReviewService()));
+                new ConsultationAgentInvoker(
+                        new AgentRegistry(),
+                        new SlowReviseReviewService(),
+                        new QuizReviewService()),
+                noopLogService());
 
         StopReason[] stop = new StopReason[1];
         TaskContext ctx = new TaskContext("t-timeout", "1", "s1", "学 Python");
@@ -297,7 +316,11 @@ class ConsultationEngineTest {
                 off,
                 new StubLearningPathService(dto),
                 new StubLearnerProfileService(),
-                new ConsultationAgentInvoker(new AgentRegistry(), new StubPathReviewService(new LinkedList<>())));
+                new ConsultationAgentInvoker(
+                        new AgentRegistry(),
+                        new StubPathReviewService(new LinkedList<>()),
+                        new QuizReviewService()),
+                noopLogService());
 
         AgentResponse resp = disabledEngine.consultAsAgentResponse(
                 new AgentRequest("consult_path", "学 Python", java.util.Map.of()),
@@ -367,5 +390,25 @@ class ConsultationEngineTest {
         public String getProfileSummary(Long userId) {
             return "";
         }
+    }
+
+    private static ConsultationLogService noopLogService() {
+        AppRuntimeConfig cfg = new AppRuntimeConfig(null, null) {
+            @Override
+            public boolean isSupervisorPersistTranscript() {
+                return false;
+            }
+
+            @Override
+            public String get(String key) {
+                return "";
+            }
+
+            @Override
+            public String get(String key, String defaultValue) {
+                return defaultValue;
+            }
+        };
+        return new ConsultationLogService(cfg, mock(AgentConsultationLogRepository.class));
     }
 }

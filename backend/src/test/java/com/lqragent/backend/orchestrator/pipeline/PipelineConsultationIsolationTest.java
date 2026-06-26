@@ -21,6 +21,12 @@ class PipelineConsultationIsolationTest {
     }
 
     @Test
+    void quizPipeline_usesQuizConsult() {
+        assertTrue(PipelineTemplates.quiz().getSteps().stream()
+                .anyMatch(s -> "quiz_consult".equals(s.getStepId())));
+    }
+
+    @Test
     void qaPipeline_hasNoConsultationStep() {
         assertFalse(PipelineTemplates.questionAnswer().getSteps().stream()
                 .anyMatch(s -> "path_consult".equals(s.getStepId()) || "consult_path".equals(s.getAction())));
