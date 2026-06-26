@@ -26,12 +26,18 @@ export interface UploadTask {
 export async function uploadFile(
   file: File,
   scope: KbScope = 'PERSONAL',
+  onProgress?: (progress: number) => void,
 ): Promise<UploadTask> {
   const form = new FormData()
   form.append('file', file)
   form.append('scope', scope)
   const res = await http.post<{ data: UploadTask }>('/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: (event) => {
+      if (onProgress && event.total) {
+        onProgress(Math.round((event.loaded / event.total) * 100))
+      }
+    },
   })
   return res.data.data
 }
