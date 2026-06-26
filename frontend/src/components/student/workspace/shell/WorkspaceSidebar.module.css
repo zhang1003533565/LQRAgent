@@ -1,13 +1,13 @@
 .sidebar {
   position: relative;
-  width: 240px;
+  width: 220px;
   height: 100vh;
   height: 100dvh;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  background: #fafcff;
-  border-right: 1px solid #e8edf5;
+  background: #f8fbff;
+  border-right: 1px solid #e6eefa;
   transition: width 0.2s ease;
   overflow: hidden;
 }
@@ -30,7 +30,7 @@
 
 .topSection {
   flex-shrink: 0;
-  padding: 12px;
+  padding: 16px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -41,11 +41,12 @@
   align-items: center;
   gap: 10px;
   padding: 4px;
+  min-height: 72px;
 }
 
 .brandMark {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -69,9 +70,9 @@
 }
 
 .brandText {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 700;
-  color: #1e293b;
+  color: #0f172a;
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
@@ -107,11 +108,12 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
-  border-radius: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
   text-decoration: none;
   color: #64748b;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   transition: background 0.15s, color 0.15s;
   white-space: nowrap;
@@ -123,19 +125,19 @@
 }
 
 .navItem:hover {
-  background: #f1f5f9;
-  color: #1e293b;
+  background: #f1f7ff;
+  color: #334155;
 }
 
 .navItemActive {
   color: #2563eb;
-  background: #eff6ff;
+  background: #eaf3ff;
   font-weight: 600;
 }
 
 .navIcon {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
   display: flex;
   align-items: center;

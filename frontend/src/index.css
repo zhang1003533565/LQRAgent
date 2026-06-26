@@ -1,4 +1,7 @@
 /* 全局最小重置（学生端 CSS Modules 自管样式，管理端走 dev-console.css + Tailwind） */
+@tailwind components;
+@tailwind utilities;
+
 *,
 *::before,
 *::after {

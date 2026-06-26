@@ -14,5 +14,5 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--ws-main-bg);
+  background: #f6f9fe;
 }

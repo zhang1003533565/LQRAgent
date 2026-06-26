@@ -135,7 +135,7 @@ export default function WorkspaceSidebar() {
               {sessions.length === 0 && (
                 <div className={styles.emptyHistory}>暂无对话</div>
               )}
-              {sessions.map((s) => (
+              {sessions.slice(0, 5).map((s) => (
                 <div
                   key={s.id}
                   className={`${styles.historyItem} ${currentSessionId === s.id ? styles.historyItemActive : ''}`}
