@@ -45,6 +45,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // 公开接口
                 .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/health").permitAll()
                 // WebSocket 握手
                 .requestMatchers("/ws/**").permitAll()
                 // Swagger / SpringDoc
@@ -67,8 +68,13 @@ public class SecurityConfig {
                 .requestMatchers("/api/media/**").permitAll()
                 // 题库（前端学生端答题）
                 .requestMatchers("/api/quiz/**").permitAll()
-                // WebSocket 端点（JWT 由握手拦截器校验）
-                .requestMatchers("/ws/**").permitAll()
+                // 学生端：知识图谱 / 画像 / 路径 / 资源（读接口）
+                .requestMatchers(
+                    "/api/knowledge-points/**",
+                    "/api/profile/**",
+                    "/api/learning-path/**",
+                    "/api/resources/**"
+                ).permitAll()
                 // 其余接口需要认证
                 .anyRequest().authenticated()
             )

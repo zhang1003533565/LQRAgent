@@ -40,7 +40,7 @@ public class ProfileController {
     @Operation(summary = "获取画像详情", description = "6 维度 + 知识点掌握地图")
     @GetMapping("/detail")
     public ApiResponse<ProfileDetailDto> getDetail(@AuthenticationPrincipal UserDetails userDetails) {
-        Long userId = currentUserService.requireUserId(userDetails);
+        Long userId = currentUserService.resolveUserId(userDetails);
         return ApiResponse.ok(profileService.getDetail(userId));
     }
 

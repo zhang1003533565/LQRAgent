@@ -14,6 +14,10 @@ export interface KnowledgeGraphNode {
   chapter?: string
   description?: string
   difficulty?: number
+  shortName?: string
+  alias?: string
+  displayName?: string
+  label?: string
 }
 
 export interface KnowledgeGraphEdge {
@@ -63,6 +67,19 @@ export async function searchKnowledgePoints(keyword: string): Promise<KnowledgeP
 /** 获取完整知识图谱（节点+边） */
 export async function getKnowledgeGraph(subject?: string): Promise<KnowledgeGraphData> {
   const params = subject ? { subject } : {}
-  const res = await http.get<{ data: KnowledgeGraphData }>('/knowledge-points/graph', { params })
-  return res.data.data
+  const res = await http.get<{ code: number; message: string; data: KnowledgeGraphData }>(
+    '/knowledge-points/graph',
+    { params },
+  )
+  const payload = res.data?.data
+  if (!payload || !Array.isArray(payload.nodes)) {
+    throw new Error(res.data?.message || '知识图谱数据格式异常')
+  }
+  return {
+    nodes: payload.nodes,
+    edges: payload.edges ?? [],
+    nodeCount: payload.nodeCount ?? payload.nodes.length,
+    edgeCount: payload.edgeCount ?? (payload.edges?.length ?? 0),
+    subjects: payload.subjects ?? [],
+  }
 }

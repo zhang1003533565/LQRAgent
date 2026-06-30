@@ -87,17 +87,12 @@ public class LearnerProfileService {
 
     @Transactional(readOnly = true)
     public ProfileDetailDto getDetail(Long userId) {
+        if (userId == null) {
+            return emptyDetail(null);
+        }
         LearnerProfile profile = profileRepo.findByUserId(userId).orElse(null);
         if (profile == null) {
-            return ProfileDetailDto.builder()
-                    .summary(ProfileSummaryDto.builder().userId(userId).knowledgeLevel("BEGINNER").build())
-                    .knowledgeLevel("BEGINNER")
-                    .weakTopics(List.of())
-                    .recentGoals(List.of())
-                    .knowledgeMap(List.of())
-                    .completedKpCount(0)
-                    .streakDays(0)
-                    .build();
+            return emptyDetail(userId);
         }
 
         Map<String, String> topics = profileMergeService.readTopicMastery(profile.getTopicMastery());
@@ -273,6 +268,18 @@ public class LearnerProfileService {
 
     private String nullToEmpty(String value) {
         return value != null ? value : "";
+    }
+
+    private ProfileDetailDto emptyDetail(Long userId) {
+        return ProfileDetailDto.builder()
+                .summary(ProfileSummaryDto.builder().userId(userId).knowledgeLevel("BEGINNER").build())
+                .knowledgeLevel("BEGINNER")
+                .weakTopics(List.of())
+                .recentGoals(List.of())
+                .knowledgeMap(List.of())
+                .completedKpCount(0)
+                .streakDays(0)
+                .build();
     }
 
     private ProfileSummaryDto toDto(LearnerProfile p) {

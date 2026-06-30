@@ -24,4 +24,16 @@ public class CurrentUserService {
     public Long requireUserId(UserDetails userDetails) {
         return requireUser(userDetails).getId();
     }
+
+    /** 未登录时返回 null，不抛异常（供 permitAll 读接口使用） */
+    public Long resolveUserId(UserDetails userDetails) {
+        if (userDetails == null) {
+            return null;
+        }
+        try {
+            return requireUserId(userDetails);
+        } catch (BusinessException e) {
+            return null;
+        }
+    }
 }

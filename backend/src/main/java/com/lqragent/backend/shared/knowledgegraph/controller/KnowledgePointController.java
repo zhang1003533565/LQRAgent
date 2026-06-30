@@ -63,31 +63,6 @@ public class KnowledgePointController {
 
     public record KnowledgePointDto(String kpId, String title, String subject, String description) {}
 
-    @Operation(summary = "按 kpId 查询单个知识点详情")
-    @GetMapping("/{kpId}")
-    public ApiResponse<KnowledgePointDto> getByKpId(
-            @PathVariable String kpId) {
-        return knowledgePointRepository.findByKpId(kpId)
-                .map(kp -> ApiResponse.ok(toDto(kp)))
-                .orElse(ApiResponse.fail(404, "知识点不存在: " + kpId));
-    }
-
-    @Operation(summary = "按关键词搜索知识点")
-    @GetMapping("/search")
-    public ApiResponse<List<KnowledgePointDto>> search(
-            @Parameter(description = "搜索关键词")
-            @RequestParam String keyword) {
-        if (keyword == null || keyword.isBlank()) {
-            return ApiResponse.ok(List.of());
-        }
-        List<KnowledgePointDto> result = knowledgePointRepository
-                .findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(keyword, keyword)
-                .stream()
-                .map(KnowledgePointController::toDto)
-                .collect(Collectors.toList());
-        return ApiResponse.ok(result);
-    }
-
     @Operation(summary = "获取完整知识图谱（节点+边）")
     @GetMapping("/graph")
     public ApiResponse<Map<String, Object>> getGraph(
@@ -101,7 +76,9 @@ public class KnowledgePointController {
         }
 
         List<String> kpIds = points.stream().map(KnowledgePoint::getKpId).collect(Collectors.toList());
-        List<KnowledgeEdge> edges = knowledgeEdgeRepository.findByFromKpIdInOrToKpIdIn(kpIds, kpIds);
+        List<KnowledgeEdge> edges = kpIds.isEmpty()
+                ? List.of()
+                : knowledgeEdgeRepository.findByFromKpIdInOrToKpIdIn(kpIds, kpIds);
 
         List<Map<String, Object>> nodeDtos = points.stream().map(kp -> {
             Map<String, Object> m = new LinkedHashMap<>();
@@ -137,5 +114,30 @@ public class KnowledgePointController {
         result.put("subjects", subjects);
 
         return ApiResponse.ok(result);
+    }
+
+    @Operation(summary = "按关键词搜索知识点")
+    @GetMapping("/search")
+    public ApiResponse<List<KnowledgePointDto>> search(
+            @Parameter(description = "搜索关键词")
+            @RequestParam String keyword) {
+        if (keyword == null || keyword.isBlank()) {
+            return ApiResponse.ok(List.of());
+        }
+        List<KnowledgePointDto> result = knowledgePointRepository
+                .findByTitleContainingIgnoreCaseOrDescriptionContainingIgnoreCase(keyword, keyword)
+                .stream()
+                .map(KnowledgePointController::toDto)
+                .collect(Collectors.toList());
+        return ApiResponse.ok(result);
+    }
+
+    @Operation(summary = "按 kpId 查询单个知识点详情")
+    @GetMapping("/{kpId}")
+    public ApiResponse<KnowledgePointDto> getByKpId(
+            @PathVariable String kpId) {
+        return knowledgePointRepository.findByKpId(kpId)
+                .map(kp -> ApiResponse.ok(toDto(kp)))
+                .orElse(ApiResponse.fail(404, "知识点不存在: " + kpId));
     }
 }
