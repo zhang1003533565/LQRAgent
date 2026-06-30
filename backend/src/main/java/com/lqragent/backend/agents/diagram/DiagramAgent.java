@@ -4,7 +4,6 @@ import java.util.List;
 
 import org.springframework.stereotype.Component;
 
-import com.lqragent.backend.agents.aiserver.tools.AiServerToolFactory;
 import com.lqragent.backend.agents.base.AgentTool;
 import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.LlmClient;
@@ -20,14 +19,12 @@ import com.lqragent.backend.prompt.service.PromptService;
 public class DiagramAgent extends BaseAgent {
 
     private final GenerateDiagramTool tool;
-    private final AiServerToolFactory aiServerToolFactory;
 
     public DiagramAgent(RedisStreamsService streams, LlmClient llmClient,
                         AgentToolRegistry toolRegistry, GenerateDiagramTool tool,
-                        PromptService promptService, AiServerToolFactory aiServerToolFactory) {
+                        PromptService promptService) {
         super("diagram_agent", streams, llmClient, toolRegistry, promptService);
         this.tool = tool;
-        this.aiServerToolFactory = aiServerToolFactory;
     }
 
     @Override
@@ -37,7 +34,7 @@ public class DiagramAgent extends BaseAgent {
 
     @Override
     protected List<AgentTool> getTools() {
-        return List.of(tool, aiServerToolFactory.visualizeTool());
+        return List.of(tool);
     }
 
     @Override
@@ -57,11 +54,8 @@ public class DiagramAgent extends BaseAgent {
                 "diagram_agent",
                 "图表生成",
                 "生成流程图、思维导图、UML 等代码图表（mermaid）",
-                List.of("diagram", "mindmap", "flowchart", "uml", "mermaid", "visualize"),
-                List.of(
-                        ToolSpec.of("generate_diagram", "生成图表"),
-                        ToolSpec.of("visualize", "ai-server 可视化生成")
-                ),
+                List.of("diagram", "mindmap", "flowchart", "uml", "mermaid"),
+                List.of(ToolSpec.of("generate_diagram", "生成图表")),
                 List.of("text"),
                 List.of("diagram"),
                 1, 60000L

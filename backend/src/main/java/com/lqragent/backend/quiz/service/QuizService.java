@@ -49,7 +49,6 @@ public class QuizService {
 
     private static final int ENABLED_STATUS = 1;
 
-    /** learning_loop Pipeline 固定四步（与 PipelineTemplates.learningLoop 一致） */
     public static final List<String> LEARNING_LOOP_STEP_IDS = List.of(
             "assessment", "effect", "path_adjust", "resource_push");
 
@@ -208,7 +207,8 @@ public class QuizService {
                                           boolean correct, int score, String kpId) {
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
-                executeLearningLoop(userId, question, request.getAnswer(), correct, score, kpId, true);
+                executeLearningLoopForQuestion(userId, question.getId(), request.getAnswer(),
+                        correct, score, kpId, false);
             } catch (Exception e) {
                 log.warn("[Quiz] 学习闭环 Pipeline 异常: {}", e.getMessage());
             }
@@ -216,13 +216,12 @@ public class QuizService {
     }
 
     /**
-     * 执行 learning_loop Pipeline（线上 submit 与测试 API 共用）
-     *
-     * @param persistToMemory 成功时是否写入用户记忆（测试 API 传 false）
+     * 同步执行学习闭环 Pipeline（供测试/控制台使用）。
      */
-    public PipelineResult executeLearningLoop(Long userId, QuestionBank question,
-                                            String answer, boolean correct, int score,
-                                            String kpId, boolean persistToMemory) {
+    public PipelineResult executeLearningLoopForQuestion(
+            Long userId, Long questionId, String answer,
+            boolean correct, int score, String kpId, boolean sync) {
+        QuestionBank question = requireEnabledQuestion(questionId);
         PipelineConfig config = PipelineTemplates.learningLoop();
         TaskContext context = new TaskContext(
                 "quiz-loop-" + System.currentTimeMillis(),
@@ -230,82 +229,27 @@ public class QuizService {
                 "quiz-submit",
                 "学生提交题目后进行学习闭环"
         );
-        Map<String, Object> quizSubmission = buildQuizSubmission(
-                userId, question, answer, correct, score, kpId);
-        context.setResult("quiz_submission", Map.of("answers", quizSubmission, "quiz", quizSubmission));
-
-        PipelineResult result = pipelineEngine.execute(config, context);
-        if (result.isSuccess()) {
-            if (persistToMemory) {
-                persistLearningLoopResult(userId, question.getId(), result);
-            }
-            log.info("[Quiz] 学习闭环 Pipeline 完成: userId={}, questionId={}", userId, question.getId());
-        } else {
-            log.warn("[Quiz] 学习闭环 Pipeline 失败: userId={}, questionId={}, error={}",
-                    userId, question.getId(), result.getErrorMessage());
-        }
-        return result;
-    }
-
-    /**
-     * 按题目 ID 执行 learning_loop（测试 API 入口）
-     */
-    @Transactional(readOnly = true)
-    public PipelineResult executeLearningLoopForQuestion(Long userId, Long questionId,
-                                                         String answer, boolean correct, int score,
-                                                         String kpIdOverride, boolean persistToMemory) {
-        QuestionBank question = requireEnabledQuestion(questionId);
-        String kpId = resolveKpId(kpIdOverride, question);
-        return executeLearningLoop(userId, question, answer, correct, score, kpId, persistToMemory);
-    }
-
-    private Map<String, Object> buildQuizSubmission(Long userId, QuestionBank question,
-                                                   String answer, boolean correct, int score, String kpId) {
         Map<String, Object> quizSubmission = new java.util.LinkedHashMap<>();
         quizSubmission.put("userId", userId);
         quizSubmission.put("questionId", question.getId());
         quizSubmission.put("kpId", kpId);
         quizSubmission.put("question", question.getTitle());
         quizSubmission.put("questionType", question.getQuestionType());
-        quizSubmission.put("answer", answer != null ? answer : "");
+        quizSubmission.put("answer", answer);
         quizSubmission.put("correctAnswer", question.getCorrectAnswer());
         quizSubmission.put("correct", correct);
         quizSubmission.put("score", score);
         quizSubmission.put("analysis", question.getAnalysis());
-        return quizSubmission;
-    }
+        context.setResult("quiz_submission", Map.of("answers", quizSubmission, "quiz", quizSubmission));
 
-    /**
-     * 阶段五新增：把学习闭环结果沉淀到用户记忆，让后续聊天/路径/推荐能感知。
-     */
-    private void persistLearningLoopResult(Long userId, Long questionId, PipelineResult result) {
-        try {
-            StringBuilder summary = new StringBuilder();
-            summary.append("[自动] 答题后的学习闭环结果：题目ID=").append(questionId).append("\n");
-            if (result.getStepResults() != null) {
-                result.getStepResults().forEach(step -> {
-                    if (step.isSuccess() && step.getData() != null) {
-                        Object content = step.getData().get("content");
-                        if (content != null && !String.valueOf(content).isBlank()) {
-                            summary.append("- ").append(step.getStepId()).append("：")
-                                    .append(truncateMemory(String.valueOf(content), 500))
-                                    .append("\n");
-                        }
-                    }
-                });
-            }
-            if (summary.length() > 0) {
-                userMemoryService.addMemory(userId, MemoryType.LEARNING_PROGRESS,
-                        truncateMemory(summary.toString(), 1800), "learning_loop", 3);
-            }
-        } catch (Exception e) {
-            log.warn("[Quiz] 保存学习闭环记忆失败: {}", e.getMessage());
+        var result = pipelineEngine.execute(config, context);
+        if (result.isSuccess()) {
+            log.info("[Quiz] 学习闭环 Pipeline 完成: userId={}, questionId={}", userId, question.getId());
+        } else {
+            log.warn("[Quiz] 学习闭环 Pipeline 失败: userId={}, questionId={}, error={}",
+                    userId, question.getId(), result.getErrorMessage());
         }
-    }
-
-    private String truncateMemory(String text, int maxLen) {
-        if (text == null) return "";
-        return text.length() > maxLen ? text.substring(0, maxLen) + "..." : text;
+        return result;
     }
 
     /**
@@ -365,12 +309,8 @@ public class QuizService {
     }
 
     private String resolveKpId(QuizSubmitRequest request, QuestionBank question) {
-        return resolveKpId(request.getKpId(), question);
-    }
-
-    private String resolveKpId(String kpIdOverride, QuestionBank question) {
-        if (kpIdOverride != null && !kpIdOverride.isBlank()) {
-            return kpIdOverride.trim();
+        if (request.getKpId() != null && !request.getKpId().isBlank()) {
+            return request.getKpId().trim();
         }
         if (question.getKnowledgePoint() != null && !question.getKnowledgePoint().isBlank()) {
             return question.getKnowledgePoint().trim();

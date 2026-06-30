@@ -52,7 +52,16 @@ public class AIServerRunner implements CommandLineRunner {
                         "Could not find ai-server directory. Check the project layout."
                 ));
 
-        installDependencies(workDir);
+        if (isAiServerAlreadyUp()) {
+            log.info("[AIServerRunner] AI Server 已在 {} 运行，跳过安装与启动", runtimeConfig.getAiServerBaseUrl());
+            return;
+        }
+
+        try {
+            installDependencies(workDir);
+        } catch (Exception e) {
+            log.warn("[AIServerRunner] AI Server 依赖安装失败（可能被沙箱限制），将继续尝试启动已安装的 AI Server: {}", e.getMessage());
+        }
         startAiServer(workDir);
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -70,6 +79,21 @@ public class AIServerRunner implements CommandLineRunner {
                 }
             }
         }, "ai-server-shutdown-hook"));
+    }
+
+    private boolean isAiServerAlreadyUp() {
+        try {
+            java.net.URL url = new java.net.URL(runtimeConfig.getAiServerBaseUrl() + "/health");
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(2000);
+            conn.setRequestMethod("GET");
+            int code = conn.getResponseCode();
+            conn.disconnect();
+            return code >= 200 && code < 300;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private Optional<File> resolveAiServerDir() throws Exception {

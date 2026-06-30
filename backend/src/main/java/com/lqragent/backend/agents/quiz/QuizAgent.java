@@ -4,13 +4,9 @@ import java.util.List;
 
 import org.springframework.stereotype.Component;
 
-import com.lqragent.backend.agents.aiserver.tools.AiServerToolFactory;
 import com.lqragent.backend.agents.base.AgentTool;
 import com.lqragent.backend.agents.base.AgentToolRegistry;
-import com.lqragent.backend.agents.base.AgentRequest;
-import com.lqragent.backend.agents.base.AgentResponse;
 import com.lqragent.backend.agents.base.LlmClient;
-import com.lqragent.backend.orchestrator.consultation.QuizConsultationEngine;
 import com.lqragent.backend.agents.base.RagSearchTool;
 import com.lqragent.backend.agents.quiz.tools.GenerateQuizTool;
 import com.lqragent.backend.orchestrator.AgentIds;
@@ -18,7 +14,6 @@ import com.lqragent.backend.orchestrator.agents.BaseAgent;
 import com.lqragent.backend.orchestrator.card.AgentCard;
 import com.lqragent.backend.orchestrator.card.ToolSpec;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
-import com.lqragent.backend.orchestrator.context.TaskContext;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.prompt.service.PromptService;
 
@@ -27,19 +22,13 @@ public class QuizAgent extends BaseAgent {
 
     private final RagSearchTool ragSearchTool;
     private final GenerateQuizTool generateQuizTool;
-    private final AiServerToolFactory aiServerToolFactory;
-    private final QuizConsultationEngine quizConsultationEngine;
 
     public QuizAgent(RedisStreamsService streams, LlmClient llmClient,
                      AgentToolRegistry toolRegistry, RagSearchTool ragSearchTool,
-                     GenerateQuizTool generateQuizTool, PromptService promptService,
-                     AiServerToolFactory aiServerToolFactory,
-                     QuizConsultationEngine quizConsultationEngine) {
+                     GenerateQuizTool generateQuizTool, PromptService promptService) {
         super(AgentIds.QUIZ, streams, llmClient, toolRegistry, promptService);
         this.ragSearchTool = ragSearchTool;
         this.generateQuizTool = generateQuizTool;
-        this.aiServerToolFactory = aiServerToolFactory;
-        this.quizConsultationEngine = quizConsultationEngine;
     }
 
     @Override
@@ -49,20 +38,12 @@ public class QuizAgent extends BaseAgent {
 
     @Override
     protected List<AgentTool> getTools() {
-        return List.of(ragSearchTool, generateQuizTool, aiServerToolFactory.deepQuestionTool());
+        return List.of(ragSearchTool, generateQuizTool);
     }
 
     @Override
     public AgentMessage process(AgentMessage request) {
         return executeLlmLoop(request);
-    }
-
-    @Override
-    public AgentResponse process(AgentRequest request, TaskContext context) {
-        if ("consult_quiz".equals(request.action())) {
-            return quizConsultationEngine.consultAsAgentResponse(request, context);
-        }
-        return super.process(request, context);
     }
 
     @Override
@@ -90,11 +71,10 @@ public class QuizAgent extends BaseAgent {
                 AgentIds.QUIZ,
                 "题目生成",
                 "按要求或基于知识库资料生成混合题型练习题",
-                List.of("quiz", "exercise", "test", "question", "practice", "deep_question"),
+                List.of("quiz", "exercise", "test", "question", "practice"),
                 List.of(
                         ToolSpec.of("search_knowledge", "知识库检索"),
-                        ToolSpec.of("generate_quiz", "生成题目"),
-                        ToolSpec.of("deep_question", "深度出题")
+                        ToolSpec.of("generate_quiz", "生成题目")
                 ),
                 List.of("text", "rag_sources"),
                 List.of("quiz"),

@@ -2,20 +2,19 @@ package com.lqragent.backend.orchestrator.agents;
 
 import com.lqragent.backend.agents.base.LlmClient;
 import com.lqragent.backend.agents.base.LlmResponse;
-import com.lqragent.backend.agents.base.ToolCall;
 import com.lqragent.backend.agents.base.AgentTool;
 import com.lqragent.backend.agents.base.AgentToolRegistry;
 import com.lqragent.backend.agents.base.AgentRegistry;
 import com.lqragent.backend.agents.base.AgentInterface;
 import com.lqragent.backend.agents.base.AgentRequest;
 import com.lqragent.backend.agents.base.AgentResponse;
-import com.lqragent.backend.agents.base.PeerCallContext;
+import com.lqragent.backend.agents.base.ToolCall;
 import com.lqragent.backend.orchestrator.artifact.Artifact;
-import com.lqragent.backend.orchestrator.artifact.ArtifactExtractor;
 import com.lqragent.backend.orchestrator.artifact.ArtifactKind;
+import com.lqragent.backend.orchestrator.capability.AgentCapability;
+import com.lqragent.backend.orchestrator.capability.CapabilityRegistry;
 import com.lqragent.backend.orchestrator.card.AgentCard;
 import com.lqragent.backend.orchestrator.card.AgentCardRegistry;
-import com.lqragent.backend.orchestrator.card.ToolSpec;
 import com.lqragent.backend.orchestrator.infra.RedisStreamsService;
 import com.lqragent.backend.orchestrator.message.AgentMessage;
 import com.lqragent.backend.orchestrator.message.Performative;
@@ -62,16 +61,16 @@ public abstract class BaseAgent implements AgentInterface {
 
     protected static final int MAX_ITERATIONS = 3;
 
-    /** AgentCardRegistry（能力目录 / CFP 协商） */
-    @Autowired(required = false)
-    protected AgentCardRegistry agentCardRegistry;
+    /** CapabilityRegistry（CFP 协商协议使用） */
+    protected CapabilityRegistry capabilityRegistry;
 
     /** AgentRegistry（PipelineEngine 使用） */
     @Autowired(required = false)
     protected AgentRegistry agentRegistry;
 
-    /** 阶段六新增：Agent 间动态协作上下文 */
-    protected final ThreadLocal<Map<String, Object>> currentTaskContext = ThreadLocal.withInitial(HashMap::new);
+    /** 阶段一新增：AgentCardRegistry（声明式能力目录，供 PlanningAgent v2 使用） */
+    @Autowired(required = false)
+    protected AgentCardRegistry agentCardRegistry;
 
     protected BaseAgent(String agentId, RedisStreamsService streams,
                         LlmClient llmClient, AgentToolRegistry toolRegistry,
@@ -81,6 +80,10 @@ public abstract class BaseAgent implements AgentInterface {
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.promptService = promptService;
+    }
+
+    public void setCapabilityRegistry(CapabilityRegistry registry) {
+        this.capabilityRegistry = registry;
     }
 
     public void setAgentRegistry(AgentRegistry registry) {
@@ -145,10 +148,6 @@ public abstract class BaseAgent implements AgentInterface {
             Map<String, Object> requestContent = new LinkedHashMap<>();
             if (request.context() != null) {
                 requestContent.putAll(request.context());
-                Object peerCtx = request.context().get("peerCallContext");
-                if (peerCtx instanceof PeerCallContext) {
-                    currentTaskContext.get().put("peerCallContext", peerCtx);
-                }
             }
             requestContent.putIfAbsent("goal", request.goal());
             requestContent.put("action", request.action());
@@ -171,11 +170,19 @@ public abstract class BaseAgent implements AgentInterface {
             }
             Object artifactKind = result.getContent().get("artifactKind");
             Object artifactPayload = result.getContent().get("artifactPayload");
+            List<Artifact> artifacts = List.of();
             if (artifactKind != null && artifactPayload != null) {
                 metadata.put("artifactKind", artifactKind);
                 metadata.put("artifactPayload", artifactPayload);
+                // 阶段四：把 metadata 形式的 artifact 同步翻译为统一 Artifact 模型，让 QualityGate 可见
+                if (artifactPayload instanceof Map<?, ?> payloadMap) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> payload = (Map<String, Object>) payloadMap;
+                    ArtifactKind kind = ArtifactKind.fromWire(String.valueOf(artifactKind));
+                    Artifact artifact = Artifact.of(kind, agentId, payload);
+                    artifacts = List.of(artifact);
+                }
             }
-            List<Artifact> artifacts = ArtifactExtractor.fromMessageContent(agentId, result.getContent());
             if (success && !artifacts.isEmpty()) {
                 return AgentResponse.successWithArtifacts(content, artifacts, metadata);
             }
@@ -184,41 +191,6 @@ public abstract class BaseAgent implements AgentInterface {
             log.error("[{}] adapter process failed: {}", agentId, e.getMessage());
             return AgentResponse.failure(e.getMessage());
         }
-    }
-
-    /**
-     * 阶段六新增：Agent 间动态协作。
-     * 子类可在确实需要时调用，默认限制深度 max=2，防止循环调用。
-     */
-    protected AgentResponse requestPeer(String peerId, AgentRequest req) {
-        if (agentRegistry == null) {
-            return AgentResponse.failure("agent registry unavailable");
-        }
-        PeerCallContext peerCtx = (PeerCallContext) currentTaskContext.get().get("peerCallContext");
-        if (peerCtx == null) {
-            peerCtx = new PeerCallContext();
-        }
-        if (!peerCtx.canCall(peerId)) {
-            log.warn("[{}] peer call blocked: {} (depth={}, visited={})",
-                    agentId, peerId, peerCtx.getDepth(), peerCtx.getVisitedPeers());
-            return AgentResponse.failure("peer call blocked: " + peerId);
-        }
-
-        var peer = agentRegistry.getAgent(peerId).orElse(null);
-        if (peer == null) {
-            return AgentResponse.failure("peer not found: " + peerId);
-        }
-
-        PeerCallContext nextCtx = peerCtx.enter(peerId);
-        Map<String, Object> peerContext = new LinkedHashMap<>();
-        if (req.context() != null) {
-            peerContext.putAll(req.context());
-        }
-        peerContext.put("peerCallContext", nextCtx);
-        AgentRequest peerRequest = new AgentRequest(req.action(), req.goal(), peerContext);
-
-        log.info("[{}] requesting peer: {} (depth={})", agentId, peerId, peerCtx.getDepth());
-        return peer.process(peerRequest);
     }
 
     // ==================== Redis Streams 消费者 ====================
@@ -328,19 +300,8 @@ public abstract class BaseAgent implements AgentInterface {
 
         // 收集工具执行过程中产生的 RAG 引用来源和多模态产物
         List<Map<String, Object>> collectedRagSources = new ArrayList<>();
-        Object prefetchedRag = request.getContent().get("ragSources");
-        if (prefetchedRag instanceof List<?> prefetchedList) {
-            for (Object item : prefetchedList) {
-                if (item instanceof Map<?, ?> map) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> source = (Map<String, Object>) map;
-                    collectedRagSources.add(source);
-                }
-            }
-        }
         String artifactKind = null;
         Object artifactPayload = null;
-        List<Artifact> toolArtifacts = new ArrayList<>();
 
         for (int iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
             log.debug("[{}] LLM iteration {}/{}", agentId, iteration + 1, MAX_ITERATIONS);
@@ -363,15 +324,6 @@ public abstract class BaseAgent implements AgentInterface {
                 if (artifactKind != null && artifactPayload != null) {
                     resultContent.put("artifactKind", artifactKind);
                     resultContent.put("artifactPayload", artifactPayload);
-                }
-                List<Artifact> artifacts = new ArrayList<>(toolArtifacts);
-                for (Artifact extracted : ArtifactExtractor.fromMessageContent(agentId, resultContent)) {
-                    if (artifacts.stream().noneMatch(a -> a.getKind() == extracted.getKind())) {
-                        artifacts.add(extracted);
-                    }
-                }
-                if (!artifacts.isEmpty()) {
-                    resultContent.put("artifacts", artifacts);
                 }
                 log.info("[{}] LLM completed after {} iterations", agentId, iteration + 1);
                 return AgentMessage.inform(taskId, agentId, "pipeline", resultContent);
@@ -411,7 +363,6 @@ public abstract class BaseAgent implements AgentInterface {
                     if (result.success()) {
                         ArtifactInfo artifact = detectToolArtifact(result.content());
                         if (artifact != null) {
-                            addToolArtifact(toolArtifacts, artifact);
                             artifactKind = artifact.kind();
                             artifactPayload = artifact.payload();
                         }
@@ -429,63 +380,7 @@ public abstract class BaseAgent implements AgentInterface {
         return AgentMessage.error(taskId, agentId, "Reached maximum iterations");
     }
 
-    /**
-     * 直接执行工具并封装为 INFORM 消息（学习闭环等确定性场景使用）
-     */
-    protected AgentMessage informFromToolResult(String taskId, AgentTool.ToolResult result) {
-        if (!result.success()) {
-            return AgentMessage.error(taskId, agentId, String.valueOf(result.content()));
-        }
-        Map<String, Object> resultContent = new LinkedHashMap<>();
-        resultContent.put("content", result.content());
-        resultContent.put("status", "completed");
-        if (result.metadata() != null && !result.metadata().isEmpty()) {
-            Object ragSources = result.metadata().get("ragSources");
-            if (ragSources != null) {
-                resultContent.put("ragSources", ragSources);
-            }
-        }
-        ArtifactInfo artifact = detectToolArtifact(result.content());
-        if (artifact != null) {
-            resultContent.put("artifactKind", artifact.kind());
-            resultContent.put("artifactPayload", artifact.payload());
-        }
-        List<Artifact> artifacts = ArtifactExtractor.fromMessageContent(agentId, resultContent);
-        if (!artifacts.isEmpty()) {
-            resultContent.put("artifacts", artifacts);
-        }
-        return AgentMessage.inform(taskId, agentId, "pipeline", resultContent);
-    }
-
-    @SuppressWarnings("unchecked")
-    protected Map<String, Object> extractQuizSubmission(Object answersField) {
-        if (answersField instanceof Map<?, ?> map) {
-            Object inner = map.get("answers");
-            if (inner instanceof Map<?, ?> submission) {
-                return (Map<String, Object>) submission;
-            }
-            return (Map<String, Object>) map;
-        }
-        return Map.of();
-    }
-
     private record ArtifactInfo(String kind, Object payload) {}
-
-    private void addToolArtifact(List<Artifact> list, ArtifactInfo info) {
-        ArtifactKind kind = ArtifactKind.fromWire(info.kind());
-        Map<String, Object> payloadMap;
-        if (info.payload() instanceof Map<?, ?> map) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> m = (Map<String, Object>) map;
-            payloadMap = new LinkedHashMap<>(m);
-        } else {
-            payloadMap = Map.of("value", info.payload());
-        }
-        if (list.stream().anyMatch(a -> a.getKind() == kind)) {
-            return;
-        }
-        list.add(Artifact.of(kind, agentId, payloadMap));
-    }
 
     private ArtifactInfo detectToolArtifact(String content) {
         if (content == null || content.isBlank()) return null;
@@ -511,43 +406,6 @@ public abstract class BaseAgent implements AgentInterface {
                 payload.put("prompt", root.path("prompt").asText(""));
                 payload.put("mediaType", mediaType.isBlank() ? "image" : mediaType);
                 return new ArtifactInfo("video".equalsIgnoreCase(mediaType) ? "video" : "media_image", payload);
-            }
-            if (root.has("diagram")) {
-                var payload = new LinkedHashMap<String, Object>();
-                payload.put("diagram", root.path("diagram").asText());
-                payload.put("format", root.has("format") ? root.path("format").asText()
-                        : root.path("type").asText("mermaid"));
-                if (root.has("topic")) {
-                    payload.put("topic", root.path("topic").asText());
-                }
-                return new ArtifactInfo("diagram", payload);
-            }
-            if (root.has("nodes") && root.get("nodes").isArray()) {
-                return new ArtifactInfo("learning_path", mapper.convertValue(root, Object.class));
-            }
-            if (root.has("score") && (root.has("feedback") || root.has("passed"))) {
-                return new ArtifactInfo("assessment", mapper.convertValue(root, Object.class));
-            }
-            if (root.has("weakPoints")) {
-                return new ArtifactInfo("weakness_profile", mapper.convertValue(root, Object.class));
-            }
-            if (root.has("type") && "recommendation".equals(root.path("type").asText())) {
-                var payload = new LinkedHashMap<String, Object>();
-                if (root.has("data") && !root.path("data").isNull()) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> data = mapper.convertValue(root.path("data"), Map.class);
-                    payload.putAll(data);
-                }
-                if (root.has("content")) {
-                    payload.put("content", root.path("content").asText());
-                }
-                if (root.has("title")) {
-                    payload.put("title", root.path("title").asText());
-                }
-                return new ArtifactInfo("multi_card", payload);
-            }
-            if (root.isArray() && root.size() > 0 && root.get(0).has("title")) {
-                return new ArtifactInfo("multi_card", Map.of("items", mapper.convertValue(root, List.class)));
             }
         } catch (Exception ignored) {
         }
@@ -632,36 +490,61 @@ public abstract class BaseAgent implements AgentInterface {
     }
 
     protected boolean evaluateCapability(String taskDescription) {
-        if (agentCardRegistry == null) {
-            return true;
-        }
-        return agentCardRegistry.findById(agentId)
-                .map(card -> card.capabilities().stream()
-                        .anyMatch(tag -> taskDescription.toLowerCase().contains(tag.toLowerCase()))
-                        || card.description().toLowerCase().contains(taskDescription.toLowerCase()))
+        if (capabilityRegistry == null) return true;
+        return capabilityRegistry.findById(agentId)
+                .map(cap -> cap.tags().stream().anyMatch(taskDescription.toLowerCase()::contains)
+                        || cap.description().toLowerCase().contains(taskDescription.toLowerCase()))
                 .orElse(false);
     }
 
     protected long estimateDuration(String taskDescription) {
-        if (agentCardRegistry == null) {
-            return 30000;
-        }
-        return agentCardRegistry.findById(agentId)
-                .map(AgentCard::avgLatencyMs)
+        if (capabilityRegistry == null) return 30000;
+        return capabilityRegistry.findById(agentId)
+                .map(AgentCapability::avgLatencyMs)
                 .orElse(30000L);
     }
 
-    protected List<AgentCard> findCapablePeers(String keyword) {
-        if (agentCardRegistry == null) {
-            return List.of();
-        }
-        return agentCardRegistry.findByKeyword(keyword);
+    protected List<AgentCapability> findCapablePeers(String keyword) {
+        if (capabilityRegistry == null) return List.of();
+        return capabilityRegistry.findByKeyword(keyword);
     }
 
-    protected Optional<AgentCard> getPeerCard(String peerAgentId) {
-        if (agentCardRegistry == null) {
-            return Optional.empty();
+    protected Optional<AgentCapability> getPeerCapability(String peerAgentId) {
+        if (capabilityRegistry == null) return Optional.empty();
+        return capabilityRegistry.findById(peerAgentId);
+    }
+
+    /**
+     * 将工具执行结果包装为 INFORM 消息。
+     */
+    protected AgentMessage informFromToolResult(String taskId, AgentTool.ToolResult result) {
+        Map<String, Object> content = new LinkedHashMap<>();
+        content.put("success", result.success());
+        content.put("content", result.content());
+        if (result.metadata() != null && !result.metadata().isEmpty()) {
+            content.put("metadata", result.metadata());
         }
-        return agentCardRegistry.findById(peerAgentId);
+        if (!result.success()) {
+            return AgentMessage.error(taskId, agentId, result.content());
+        }
+        return AgentMessage.inform(taskId, agentId, "pipeline", content);
+    }
+
+    /**
+     * 从答题提交对象中提取标准化字段。
+     */
+    @SuppressWarnings("unchecked")
+    protected Map<String, Object> extractQuizSubmission(Object answers) {
+        if (answers instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        if (answers instanceof String s) {
+            try {
+                return new ObjectMapper().readValue(s, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+            } catch (Exception e) {
+                log.warn("[{}] 无法解析答题提交字符串: {}", agentId, e.getMessage());
+            }
+        }
+        return Map.of();
     }
 }

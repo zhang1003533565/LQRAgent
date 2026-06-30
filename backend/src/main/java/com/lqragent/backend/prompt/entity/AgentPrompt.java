@@ -50,12 +50,12 @@ public class AgentPrompt {
     private String agentName;
 
     @Lob
-    @Column(name = "prompt_content", nullable = false)
+    @Column(name = "prompt_content", nullable = false, columnDefinition = "LONGTEXT")
     @Comment("提示词内容（Markdown 格式）")
     private String promptContent;
 
     @Lob
-    @Column(name = "default_content")
+    @Column(name = "default_content", columnDefinition = "LONGTEXT")
     @Comment("默认提示词（从文件加载，用于重置）")
     private String defaultContent;
 

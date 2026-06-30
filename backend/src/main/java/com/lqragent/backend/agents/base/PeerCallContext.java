@@ -1,29 +1,24 @@
 package com.lqragent.backend.agents.base;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
-import lombok.Data;
+import lombok.Getter;
 
 /**
- * Agent 间动态协作上下文，限制调用深度并防止循环调用。
+ * Agent 间 peer 调用上下文，用于记录调用链路与来源 Agent。
  */
-@Data
+@Getter
 public class PeerCallContext {
-    private static final int MAX_DEPTH = 2;
 
-    private int depth = 0;
-    private Set<String> visitedPeers = new HashSet<>();
+    private final List<String> callChain = new ArrayList<>();
 
-    public boolean canCall(String peerId) {
-        return depth < MAX_DEPTH && !visitedPeers.contains(peerId);
+    public PeerCallContext enter(String agentId) {
+        callChain.add(agentId);
+        return this;
     }
 
-    public PeerCallContext enter(String peerId) {
-        PeerCallContext next = new PeerCallContext();
-        next.setDepth(depth + 1);
-        next.getVisitedPeers().addAll(visitedPeers);
-        next.getVisitedPeers().add(peerId);
-        return next;
+    public String currentAgent() {
+        return callChain.isEmpty() ? null : callChain.get(callChain.size() - 1);
     }
 }
